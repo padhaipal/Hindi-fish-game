@@ -16,8 +16,13 @@ The 8 practised letters are: **ब स प र त क च ल**
 
 - **No login, no backend** — pure client-side, works offline once loaded.
 - **Mobile-first & touch-friendly** — big letters, big tap targets, locked zoom.
-- **Level progression** — early levels: fewer/slower fish + easy distractors;
-  later levels: more/faster fish + look-alike & sound-alike distractor letters.
+- **8 levels, one per letter** — each level targets a different one of the 8
+  letters, in a **random order per player**. Difficulty ramps from 3 fish (1
+  target) up to 10 fish (5 targets); the target always fills **half** the fish.
+- **Win up / lose down** — winning advances a level; losing (timeout or 3 wrong
+  taps) drops you back to the preceding level.
+- **Finish screen** — clearing all 8 levels shows the PadhaiPal picture, plays a
+  spoken message, and offers a **पाठ पर जाएं** button back to the app.
 - **Safe audio fallback** — if a sound file is missing, a synthesized tone plays
   instead, so the game never breaks.
 - **Low-end friendly** — fish motion is animated with `requestAnimationFrame`
@@ -59,7 +64,11 @@ Everything you'll commonly want to tweak is small and commented:
 
 The picture beside the target letter is a big **emoji** (see `emoji` in
 `lib/letters.ts`) — crisp on small screens and easy to change, no image files
-needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन).
+needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन). The one exception is ल (लट्टू),
+drawn as a small SVG `LattuIcon` since no emoji is a real Indian spinning top.
+
+The finish screen shows `public/images/padhaipal.png` (with a branded-badge
+fallback if it isn't present yet).
 
 ## 🔊 Audio
 
@@ -69,6 +78,7 @@ needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन).
 - `public/audio/wrong-baap.mp3` — the soft "baaap" for a wrong tap.
 - `public/audio/clap.mp3` — clapping/cheer when a level is won.
 - `public/audio/wa-wa-wa.mp3` — sad "wa wa wa" when a level is lost.
+- `public/audio/endgame-message.mp3` — spoken message on the finish screen.
 
 If any file is missing, the game plays a gentle **synthesized tone** shaped to
 match (so it never breaks). Drop in real recordings with the same filenames and

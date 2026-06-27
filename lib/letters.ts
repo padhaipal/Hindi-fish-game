@@ -108,8 +108,11 @@ export const LETTERS: Letter[] = [
     char: "ल",
     roman: "la",
     audio: "/audio/letters/la.mp3",
-    word: "लट्टू", // spinning top
-    emoji: "🪀",
+    word: "लट्टू", // spinning top (lattu)
+    // No emoji is a real lattu (🪀 is a yo-yo), so this one is drawn as a custom
+    // SVG — see `LattuIcon` in components/PondGame.tsx. Emoji kept only as a
+    // last-ditch fallback.
+    emoji: "🌀",
     lookAlikes: ["sa"],
     soundAlikes: ["ra"],
   },

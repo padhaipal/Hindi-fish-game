@@ -26,14 +26,18 @@ import {
 import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/levels";
-import { getLetter, Letter } from "@/lib/letters";
+import { getLetter, Letter, LETTERS } from "@/lib/letters";
 import {
   playLetterSound,
   playWrongSound,
   playWinSound,
   playLoseSound,
+  playEndgameSound,
   unlockAudio,
 } from "@/lib/audio";
+
+// Where the final "पाठ पर जाएं" button sends the child (back to the PadhaiPal app).
+const PADHAIPAL_URL = "https://dashboard.padhaipal.com/r/919565897842";
 
 // Must match the .fish width/height in globals.css.
 const FISH = 88;
@@ -57,7 +61,13 @@ interface Burst {
   emoji: string;
 }
 
-type Phase = "start" | "intro" | "playing" | "levelComplete" | "lost";
+type Phase =
+  | "start"
+  | "intro"
+  | "playing"
+  | "levelComplete"
+  | "lost"
+  | "allDone"; // all 8 levels cleared
 
 // Why a level was lost — changes the message/emoji on the lose screen.
 type LoseReason = "time" | "wrong";
@@ -104,6 +114,9 @@ export default function PondGame() {
   const introDoneForRound = useRef(-1);
   const wrongTapsRef = useRef(0); // wrong taps this level (for star penalty + loss)
   const roundOverRef = useRef(false); // true once the level is won or lost
+  const levelRef = useRef(1); // current level (avoids stale closures in handleTap)
+  // The 8 letters in a random order — one letter per level, reshuffled each game.
+  const letterOrderRef = useRef<string[]>([]);
 
   const registerRoot = useCallback(
     (id: number, el: HTMLButtonElement | null) => {
@@ -123,8 +136,12 @@ export default function PondGame() {
   // ---- start (or restart) a level ----------------------------------------
   const startLevel = useCallback((levelNumber: number) => {
     const cfg = getLevelConfig(levelNumber);
-    const plan = buildRound(cfg, fishIdSeq.current);
+    // This level's target letter comes from the shuffled per-game order.
+    const order = letterOrderRef.current;
+    const targetId = order[(levelNumber - 1) % order.length];
+    const plan = buildRound(cfg, getLetter(targetId), fishIdSeq.current);
     fishIdSeq.current += plan.fish.length + 5;
+    levelRef.current = levelNumber;
 
     // reset per-round state
     caughtRef.current = new Set();
@@ -145,6 +162,20 @@ export default function PondGame() {
     setPhase("intro"); // start FROZEN; the intro sound effect will unfreeze
     setRoundId((r) => r + 1);
   }, []);
+
+  // ---- start a brand-new game --------------------------------------------
+  // Reshuffle the 8 letters (so each level's target is random per player), reset
+  // the score, and begin at Level 1.
+  const newGame = useCallback(() => {
+    const ids = LETTERS.map((l) => l.id);
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    letterOrderRef.current = ids;
+    setScore(0);
+    startLevel(1);
+  }, [startLevel]);
 
   // ---- place the fish + (after layout) play the frozen intro sound -------
   // Runs once per round. Positions the fish so the frozen board looks set up,
@@ -254,9 +285,16 @@ export default function PondGame() {
           const pct = remainingRef.current / totalTimeRef.current;
           const timeStars = pct > 0.5 ? 3 : pct > 0.2 ? 2 : 1;
           setStars(Math.max(1, timeStars - wrongTapsRef.current));
+
+          const wasLastLevel = levelRef.current >= TOTAL_LEVELS;
           window.setTimeout(() => {
-            setPhase("levelComplete");
-            playWinSound(); // clapping/cheer
+            if (wasLastLevel) {
+              // Finished all 8 levels -> the final "go back to the app" screen.
+              setPhase("allDone");
+            } else {
+              setPhase("levelComplete");
+              playWinSound(); // clapping/cheer
+            }
           }, 450);
         }
       } else {
@@ -405,6 +443,11 @@ export default function PondGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, phase]);
 
+  // ---- play the spoken finish message on the final screen ----------------
+  useEffect(() => {
+    if (phase === "allDone") playEndgameSound();
+  }, [phase]);
+
   // ---- render -------------------------------------------------------------
   const target = round?.target;
 
@@ -482,8 +525,7 @@ export default function PondGame() {
               className="bigButton"
               onClick={() => {
                 unlockAudio();
-                setScore(0);
-                startLevel(1);
+                newGame();
               }}
             >
               ▶ खेलो
@@ -527,11 +569,31 @@ export default function PondGame() {
               className="bigButton blue"
               onClick={() => {
                 unlockAudio();
-                startLevel(level);
+                // On a loss, drop back to the PRECEDING level (min level 1).
+                startLevel(Math.max(1, level - 1));
               }}
             >
               🔁 दोबारा
             </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "allDone" && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">🏆</div>
+            <div className="overlayTitle">शाबाश!</div>
+            <div
+              style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 12px" }}
+            >
+              सभी स्तर पूरे!
+            </div>
+            <PadhaipalImage />
+            {/* Sends the child back to the PadhaiPal app / lesson. */}
+            <a className="bigButton" href={PADHAIPAL_URL}>
+              पाठ पर जाएं
+            </a>
           </div>
         </div>
       )}
@@ -544,11 +606,70 @@ export default function PondGame() {
 // We use a big EMOJI rather than an image file: it stays crisp on small / low-end
 // screens, needs no asset loading, and is easy to change (see `emoji` in
 // lib/letters.ts). e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन).
+// Exception: ल (लट्टू) uses a hand-drawn SVG lattu, since no emoji is a real
+// Indian spinning top (🪀 is a yo-yo).
 // ---------------------------------------------------------------------------
 function WordPicture({ letter }: { letter: Letter }) {
   return (
     <div className="wordPic" aria-label={letter.word}>
-      <span className="wordEmoji">{letter.emoji}</span>
+      {letter.id === "la" ? (
+        <LattuIcon />
+      ) : (
+        <span className="wordEmoji">{letter.emoji}</span>
+      )}
     </div>
+  );
+}
+
+// A traditional Indian lattu (wooden spinning top): striped wooden body with a
+// pointed metal tip and the lower cone wound with cream string.
+function LattuIcon() {
+  return (
+    <svg viewBox="0 0 100 100" width="78" height="78" aria-hidden="true">
+      <defs>
+        <clipPath id="lattuBody">
+          <path d="M50 18 C 28 20 20 36 22 50 C 24 66 38 80 50 87 C 62 80 76 66 78 50 C 80 36 72 20 50 18 Z" />
+        </clipPath>
+      </defs>
+      {/* top knob */}
+      <rect x="45" y="9" width="10" height="13" rx="4" fill="#7a4a22" />
+      {/* striped body */}
+      <g clipPath="url(#lattuBody)">
+        <rect x="0" y="0" width="100" height="100" fill="#d2772b" />
+        <rect x="0" y="30" width="100" height="8" fill="#f2b134" />
+        <rect x="0" y="42" width="100" height="6" fill="#7a1f1f" />
+        <rect x="0" y="56" width="100" height="24" fill="#f3ead7" />
+      </g>
+      {/* metal tip */}
+      <path d="M44 76 L50 96 L56 76 Z" fill="#9aa0a6" />
+      <path d="M47 82 L50 96 L53 82 Z" fill="#6b7075" />
+    </svg>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// PADHAIPAL IMAGE — shown on the final "all done" screen above the link button.
+// Loads /images/padhaipal.png; if that file isn't present yet it falls back to
+// a simple branded badge so the screen is never broken.
+// ---------------------------------------------------------------------------
+function PadhaipalImage() {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <div className="brandBadge">
+        <span style={{ fontSize: 40 }}>🐟</span>
+        <span>PadhaiPal</span>
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      className="padhaipalImg"
+      src="/images/padhaipal.png"
+      alt="PadhaiPal"
+      onError={() => setFailed(true)}
+      draggable={false}
+    />
   );
 }
