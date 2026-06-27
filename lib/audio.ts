@@ -174,3 +174,8 @@ export function playWinSound(): void {
 export function playLoseSound(): void {
   playSound("/audio/wa-wa-wa.mp3", "lose");
 }
+
+// Spoken "well done — go back to the app" message on the final finish screen.
+export function playEndgameSound(): void {
+  playSound("/audio/endgame-message.mp3", "win");
+}

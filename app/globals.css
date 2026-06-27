@@ -373,6 +373,28 @@ body > div {
   background: linear-gradient(#37d67a, #1faa5a);
   box-shadow: 0 6px 0 #14773f;
   cursor: pointer;
+  text-decoration: none; /* in case it is an <a> link */
+  box-sizing: border-box;
+}
+
+/* Final-screen PadhaiPal picture + fallback badge */
+.padhaipalImg {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  border-radius: 18px;
+  margin: 4px auto 16px;
+  display: block;
+}
+.brandBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 6px auto 16px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #1f8bbf;
 }
 .bigButton:active {
   transform: translateY(4px);

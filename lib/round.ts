@@ -65,13 +65,15 @@ function buildDistractorPool(target: Letter, mode: DistractorMode): string[] {
   return allOthers;
 }
 
-// Create the full plan of fish for one round given the level config.
-export function buildRound(level: LevelConfig, fishIdStart: number): RoundPlan {
-  // 1) Choose a random target letter from our 8 letters.
-  const target = pick(LETTERS);
-
-  // 2) Decide how many target fish vs distractor fish.
-  const targetCount = Math.min(level.targetCount, level.fishCount);
+// Create the full plan of fish for one round. The target letter is chosen by
+// the caller (each level gets a fixed letter), not at random.
+export function buildRound(
+  level: LevelConfig,
+  target: Letter,
+  fishIdStart: number
+): RoundPlan {
+  // The target appears in HALF the fish (rounded down), the rest are distractors.
+  const targetCount = Math.max(1, Math.floor(level.fishCount / 2));
   const distractorCount = level.fishCount - targetCount;
 
   const distractorPool = buildDistractorPool(target, level.distractorMode);
