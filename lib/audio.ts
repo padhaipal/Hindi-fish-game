@@ -179,3 +179,24 @@ export function playLoseSound(): void {
 export function playEndgameSound(): void {
   playSound("/audio/endgame-message.mp3", "win");
 }
+
+// Stop a specific sound file if it is currently playing.
+function stopSound(src: string): void {
+  const el = audioCache.get(src);
+  if (el) {
+    try {
+      el.pause();
+      el.currentTime = 0;
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+// Stop the win (clap) and lose ("wa wa wa") sounds — called when the player taps
+// a button to leave the level-complete / lost screen, so the sound doesn't carry
+// over into the next level.
+export function stopWinLoseSounds(): void {
+  stopSound("/audio/clap.mp3");
+  stopSound("/audio/wa-wa-wa.mp3");
+}

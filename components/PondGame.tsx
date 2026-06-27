@@ -33,6 +33,7 @@ import {
   playWinSound,
   playLoseSound,
   playEndgameSound,
+  stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
 
@@ -548,6 +549,7 @@ export default function PondGame() {
               className="bigButton"
               onClick={() => {
                 unlockAudio();
+                stopWinLoseSounds(); // cut the clapping before the next level
                 startLevel(level + 1);
               }}
             >
@@ -569,6 +571,7 @@ export default function PondGame() {
               className="bigButton blue"
               onClick={() => {
                 unlockAudio();
+                stopWinLoseSounds(); // cut the "wa wa wa" before restarting
                 // On a loss, drop back to the PRECEDING level (min level 1).
                 startLevel(Math.max(1, level - 1));
               }}
@@ -666,7 +669,7 @@ function PadhaipalImage() {
     // eslint-disable-next-line @next/next/no-img-element
     <img
       className="padhaipalImg"
-      src="/images/padhaipal.png"
+      src="/images/padhaipal.jpeg"
       alt="PadhaiPal"
       onError={() => setFailed(true)}
       draggable={false}

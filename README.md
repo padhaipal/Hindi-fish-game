@@ -67,7 +67,7 @@ The picture beside the target letter is a big **emoji** (see `emoji` in
 needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन). The one exception is ल (लट्टू),
 drawn as a small SVG `LattuIcon` since no emoji is a real Indian spinning top.
 
-The finish screen shows `public/images/padhaipal.png` (with a branded-badge
+The finish screen shows `public/images/padhaipal.jpeg` (with a branded-badge
 fallback if it isn't present yet).
 
 ## 🔊 Audio
