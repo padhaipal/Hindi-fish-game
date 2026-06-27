@@ -32,36 +32,60 @@ function getAudioContext(): AudioContext | null {
   }
 }
 
-// Play a short tone as a fallback. `kind` shapes the tone so "correct" sounds
-// cheerful (higher) and "wrong" sounds soft/low (a gentle "baaap").
-function playFallbackTone(kind: "correct" | "wrong"): void {
+// The kinds of feedback the game can play. Each has a real audio file, and the
+// fallback tone below is shaped to match its mood if that file is missing.
+type SoundKind = "correct" | "wrong" | "win" | "lose";
+
+// Play one note: a frequency glide from `f0` to `f1` over `dur` seconds,
+// starting at `at` seconds from now.
+function playNote(
+  ctx: AudioContext,
+  f0: number,
+  f1: number,
+  at: number,
+  dur: number,
+  type: OscillatorType,
+  vol: number
+): void {
+  const t = ctx.currentTime + at;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(f0, t);
+  osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(vol, t + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  osc.start(t);
+  osc.stop(t + dur + 0.02);
+}
+
+// Play a short tone (or little sequence) as a fallback when an audio file is
+// missing. The shape matches the mood:
+//   correct -> a cheerful upward "ding"
+//   wrong   -> a soft low "baaap"
+//   win     -> a happy rising 3-note arpeggio (stand-in for clapping)
+//   lose    -> three falling "wa wa wa" tones (sad trombone)
+function playFallbackTone(kind: SoundKind): void {
   const ctx = getAudioContext();
   if (!ctx) return;
   try {
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
     if (kind === "correct") {
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(990, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.26);
+      playNote(ctx, 660, 990, 0, 0.22, "sine", 0.25);
+    } else if (kind === "wrong") {
+      playNote(ctx, 200, 120, 0, 0.28, "sawtooth", 0.18);
+    } else if (kind === "win") {
+      // C5 → E5 → G5, quick and bright.
+      playNote(ctx, 523, 523, 0.0, 0.14, "triangle", 0.22);
+      playNote(ctx, 659, 659, 0.13, 0.14, "triangle", 0.22);
+      playNote(ctx, 784, 880, 0.26, 0.22, "triangle", 0.24);
     } else {
-      // Soft low "baaap" buzz.
-      osc.type = "sawtooth";
-      osc.frequency.setValueAtTime(200, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.2);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.3);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.31);
+      // "wa wa wa" — three descending wobbly tones.
+      playNote(ctx, 392, 330, 0.0, 0.22, "sawtooth", 0.18);
+      playNote(ctx, 330, 277, 0.24, 0.22, "sawtooth", 0.18);
+      playNote(ctx, 277, 196, 0.48, 0.34, "sawtooth", 0.18);
     }
   } catch {
     // Ignore — audio is a nice-to-have, never a blocker.
@@ -85,7 +109,7 @@ function once(fn?: () => void): () => void {
 // timeout) so the game never gets stuck waiting for audio.
 export function playSound(
   src: string,
-  kind: "correct" | "wrong",
+  kind: SoundKind,
   onEnd?: () => void
 ): void {
   if (typeof window === "undefined") {
@@ -139,4 +163,14 @@ export function playLetterSound(audioPath: string, onEnd?: () => void): void {
 
 export function playWrongSound(): void {
   playSound("/audio/wrong-baap.mp3", "wrong");
+}
+
+// Clapping/cheer when a level is won.
+export function playWinSound(): void {
+  playSound("/audio/clap.mp3", "win");
+}
+
+// Sad "wa wa wa" when a level is lost (timeout or too many wrong taps).
+export function playLoseSound(): void {
+  playSound("/audio/wa-wa-wa.mp3", "lose");
 }

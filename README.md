@@ -38,24 +38,41 @@ Everything you'll commonly want to tweak is small and commented:
 
 | What | File |
 | --- | --- |
-| The Hindi letters + look-alike / sound-alike hints | `lib/letters.ts` |
+| The Hindi letters + picture emoji + look/sound-alike hints | `lib/letters.ts` |
 | Level difficulty (fish count, speed, time, distractors) | `lib/levels.ts` |
-| How a round's fish are chosen | `lib/round.ts` |
+| How a round's fish are chosen + fish colours | `lib/round.ts` |
 | Audio playback + safe fallback | `lib/audio.ts` |
 | The game screen / fish / overlays | `components/PondGame.tsx`, `components/Fish.tsx` |
 | Colours, sizes, animations | `app/globals.css` |
 
+## 🏆 Scoring
+
+- **🐟 (top-left)** — running count of correct fish caught; carries across
+  levels, resets only on a fresh game. Wrong taps are never penalised here.
+- **⭐ (top-right)** — the current level number.
+- **End-of-level stars (1–3)** — start from how much time was left
+  (>50% → 3, >20% → 2, else 1), then **lose one star per wrong tap**
+  (minimum 1 for a win).
+- **Losing** — running out of time **or** making 3 wrong taps in a level.
+
+## 🖼️ Pictures
+
+The picture beside the target letter is a big **emoji** (see `emoji` in
+`lib/letters.ts`) — crisp on small screens and easy to change, no image files
+needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन).
+
 ## 🔊 Audio
 
-Placeholder paths live in:
-
-- `public/audio/letters/<id>.mp3` — one per letter (`ba`, `sa`, `pa`, `ra`,
-  `ta`, `ka`, `cha`, `la`).
+- `public/audio/letters/<id>.mp3` — one spoken letter per letter (`ba`, `sa`,
+  `pa`, `ra`, `ta`, `ka`, `cha`, `la`). Played on the frozen round intro, on
+  "सुनो", and on each correct catch.
 - `public/audio/wrong-baap.mp3` — the soft "baaap" for a wrong tap.
+- `public/audio/clap.mp3` — clapping/cheer when a level is won.
+- `public/audio/wa-wa-wa.mp3` — sad "wa wa wa" when a level is lost.
 
-These are **placeholders**. Drop in real recordings with the same filenames and
-they're used automatically. Until then, the game plays a gentle synthesized
-tone. See `public/audio/letters/README.md`.
+If any file is missing, the game plays a gentle **synthesized tone** shaped to
+match (so it never breaks). Drop in real recordings with the same filenames and
+they're used automatically. See `public/audio/letters/README.md`.
 
 ## 🧱 Tech
 

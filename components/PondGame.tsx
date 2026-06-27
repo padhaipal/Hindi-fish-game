@@ -27,7 +27,13 @@ import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/levels";
 import { getLetter, Letter } from "@/lib/letters";
-import { playLetterSound, playWrongSound, unlockAudio } from "@/lib/audio";
+import {
+  playLetterSound,
+  playWrongSound,
+  playWinSound,
+  playLoseSound,
+  unlockAudio,
+} from "@/lib/audio";
 
 // Must match the .fish width/height in globals.css.
 const FISH = 88;
@@ -51,7 +57,13 @@ interface Burst {
   emoji: string;
 }
 
-type Phase = "start" | "intro" | "playing" | "levelComplete" | "timeUp";
+type Phase = "start" | "intro" | "playing" | "levelComplete" | "lost";
+
+// Why a level was lost — changes the message/emoji on the lose screen.
+type LoseReason = "time" | "wrong";
+
+// Lose the level after this many wrong taps.
+const MAX_WRONG_TAPS = 3;
 
 // Build the CSS transform that swivels a fish to face its travel direction.
 // The graphic points right by default; when swimming left we mirror it so it
@@ -70,6 +82,7 @@ export default function PondGame() {
   const [score, setScore] = useState(0);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const [stars, setStars] = useState(3);
+  const [loseReason, setLoseReason] = useState<LoseReason>("time");
 
   // ---- refs used by the animation loop / tap handling --------------------
   const pondRef = useRef<HTMLDivElement>(null);
@@ -89,6 +102,8 @@ export default function PondGame() {
   const fishIdSeq = useRef(0);
   const currentRoundRef = useRef(0);
   const introDoneForRound = useRef(-1);
+  const wrongTapsRef = useRef(0); // wrong taps this level (for star penalty + loss)
+  const roundOverRef = useRef(false); // true once the level is won or lost
 
   const registerRoot = useCallback(
     (id: number, el: HTMLButtonElement | null) => {
@@ -114,6 +129,8 @@ export default function PondGame() {
     // reset per-round state
     caughtRef.current = new Set();
     caughtTargetsRef.current = 0;
+    wrongTapsRef.current = 0;
+    roundOverRef.current = false;
     targetsNeededRef.current = plan.fish.filter((f) => f.isTarget).length;
     remainingRef.current = cfg.timeSeconds * 1000;
     totalTimeRef.current = cfg.timeSeconds * 1000;
@@ -214,8 +231,8 @@ export default function PondGame() {
     (spec: FishSpec, el: HTMLButtonElement) => {
       unlockAudio(); // first gesture unlocks audio on mobile
       // Only respond while actually playing (ignore taps during the frozen
-      // intro and while overlays are showing).
-      if (phase !== "playing") return;
+      // intro, overlays, or once the level is already won/lost).
+      if (phase !== "playing" || roundOverRef.current) return;
       if (caughtRef.current.has(spec.id)) return;
 
       if (spec.isTarget) {
@@ -229,17 +246,34 @@ export default function PondGame() {
         if (m) spawnBurst(m.x + FISH / 2, m.y);
         setScore((s) => s + 1);
 
-        // All target fish caught -> level complete.
+        // All target fish caught -> level complete (you win!).
         if (caughtTargetsRef.current >= targetsNeededRef.current) {
+          roundOverRef.current = true;
+          // Stars: start from how much time was left, then LOSE ONE STAR per
+          // wrong tap. Always keep at least 1 star for a win.
           const pct = remainingRef.current / totalTimeRef.current;
-          setStars(pct > 0.5 ? 3 : pct > 0.2 ? 2 : 1);
-          window.setTimeout(() => setPhase("levelComplete"), 450);
+          const timeStars = pct > 0.5 ? 3 : pct > 0.2 ? 2 : 1;
+          setStars(Math.max(1, timeStars - wrongTapsRef.current));
+          window.setTimeout(() => {
+            setPhase("levelComplete");
+            playWinSound(); // clapping/cheer
+          }, 450);
         }
       } else {
-        // WRONG: fish stays, shakes gently, soft "baaap".
-        playWrongSound();
+        // WRONG: fish stays and shakes gently.
+        wrongTapsRef.current += 1;
         el.classList.add("shake");
         window.setTimeout(() => el.classList.remove("shake"), 450);
+
+        if (wrongTapsRef.current >= MAX_WRONG_TAPS) {
+          // Too many wrong taps -> you lose. Play the sad "wa wa wa".
+          roundOverRef.current = true;
+          setLoseReason("wrong");
+          playLoseSound();
+          window.setTimeout(() => setPhase("lost"), 500);
+        } else {
+          playWrongSound(); // soft "baaap"
+        }
       }
     },
     [phase, spawnBurst]
@@ -355,7 +389,12 @@ export default function PondGame() {
       }
 
       if (remainingRef.current <= 0) {
-        setPhase("timeUp");
+        if (!roundOverRef.current) {
+          roundOverRef.current = true;
+          setLoseReason("time");
+          playLoseSound(); // sad "wa wa wa"
+        }
+        setPhase("lost");
         return; // stop the loop; overlay takes over
       }
       rafRef.current = requestAnimationFrame(loop);
@@ -374,7 +413,7 @@ export default function PondGame() {
       {/* Top bar: score + level */}
       <div className="topbar">
         <div className="scorePill">
-          <span>🪙</span>
+          <span>🐟</span>
           <span>{score}</span>
         </div>
         <div className="levelPill">⭐ {Math.min(level, TOTAL_LEVELS)}</div>
@@ -476,10 +515,12 @@ export default function PondGame() {
         </div>
       )}
 
-      {phase === "timeUp" && (
+      {phase === "lost" && (
         <div className="overlay">
           <div className="overlayCard">
-            <div className="overlayEmoji">⏰</div>
+            <div className="overlayEmoji">
+              {loseReason === "wrong" ? "🙈" : "⏰"}
+            </div>
             <div className="overlayTitle">फिर कोशिश करो</div>
             <button
               type="button"
@@ -499,25 +540,15 @@ export default function PondGame() {
 }
 
 // ---------------------------------------------------------------------------
-// WORD PICTURE — the illustration shown beside the target letter.
-// Tries the real image; if it is missing, falls back to the letter's emoji so
-// the slot is never empty. (Drop real art into /public/images/words to upgrade.)
+// WORD PICTURE — the picture shown beside the target letter.
+// We use a big EMOJI rather than an image file: it stays crisp on small / low-end
+// screens, needs no asset loading, and is easy to change (see `emoji` in
+// lib/letters.ts). e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन).
 // ---------------------------------------------------------------------------
 function WordPicture({ letter }: { letter: Letter }) {
-  const [failed, setFailed] = useState(false);
   return (
     <div className="wordPic" aria-label={letter.word}>
-      {failed ? (
-        <span className="wordEmoji">{letter.emoji}</span>
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={letter.image}
-          alt={letter.word}
-          onError={() => setFailed(true)}
-          draggable={false}
-        />
-      )}
+      <span className="wordEmoji">{letter.emoji}</span>
     </div>
   );
 }

@@ -14,12 +14,23 @@ export interface FishSpec {
   letterId: string;
   char: string;
   isTarget: boolean;
+  color: string; // fish body colour (random — NOT tied to the letter)
 }
 
 export interface RoundPlan {
   target: Letter;
   fish: FishSpec[];
 }
+
+// Fish body colours. Each fish gets a RANDOM colour from this list so colour
+// never hints at which letter a fish carries. Deliberately NO blue (the pond is
+// blue) and NO red — just cheerful yellow / green / purple / orange.
+export const FISH_COLORS = [
+  "#ffc233", // yellow
+  "#36c46b", // green
+  "#9b5cff", // purple
+  "#ff8a3d", // orange
+];
 
 // Pick a random item from an array.
 function pick<T>(arr: T[]): T {
@@ -75,6 +86,7 @@ export function buildRound(level: LevelConfig, fishIdStart: number): RoundPlan {
       letterId: target.id,
       char: target.char,
       isTarget: true,
+      color: pick(FISH_COLORS),
     });
   }
 
@@ -87,6 +99,7 @@ export function buildRound(level: LevelConfig, fishIdStart: number): RoundPlan {
       letterId: letter.id,
       char: letter.char,
       isTarget: false,
+      color: pick(FISH_COLORS),
     });
   }
 
