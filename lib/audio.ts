@@ -68,9 +68,32 @@ function playFallbackTone(kind: "correct" | "wrong"): void {
   }
 }
 
+// Wrap a callback so it can only ever fire once.
+function once(fn?: () => void): () => void {
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    if (fn) fn();
+  };
+}
+
 // Try to play a file; if it fails (missing/blocked), use the fallback tone.
-export function playSound(src: string, kind: "correct" | "wrong"): void {
-  if (typeof window === "undefined") return;
+// `onEnd` (optional) fires when the sound finishes — used by the game to keep
+// the board "frozen" until the intro letter sound has finished playing. It is
+// guaranteed to fire exactly once (on natural end, on fallback, or via a safety
+// timeout) so the game never gets stuck waiting for audio.
+export function playSound(
+  src: string,
+  kind: "correct" | "wrong",
+  onEnd?: () => void
+): void {
+  if (typeof window === "undefined") {
+    if (onEnd) onEnd();
+    return;
+  }
+
+  const finish = once(onEnd);
 
   let el = audioCache.get(src);
   if (!el) {
@@ -78,15 +101,22 @@ export function playSound(src: string, kind: "correct" | "wrong"): void {
     el.preload = "auto";
     audioCache.set(src, el);
   }
+  el.onended = () => finish();
 
   try {
     el.currentTime = 0;
     const playPromise = el.play();
     if (playPromise && typeof playPromise.then === "function") {
-      playPromise.catch(() => playFallbackTone(kind));
+      playPromise.catch(() => {
+        playFallbackTone(kind);
+        window.setTimeout(finish, 600);
+      });
     }
+    // Safety net: if "ended" never fires (some mobile browsers), unfreeze anyway.
+    window.setTimeout(finish, 4000);
   } catch {
     playFallbackTone(kind);
+    window.setTimeout(finish, 600);
   }
 }
 
@@ -102,8 +132,9 @@ export function unlockAudio(): void {
 }
 
 // Convenience wrappers used by the game.
-export function playLetterSound(audioPath: string): void {
-  playSound(audioPath, "correct");
+// `onEnd` lets callers (e.g. the frozen round intro) wait for the sound to end.
+export function playLetterSound(audioPath: string, onEnd?: () => void): void {
+  playSound(audioPath, "correct", onEnd);
 }
 
 export function playWrongSound(): void {

@@ -3,32 +3,36 @@
 // ---------------------------------------------------------------------------
 // POND GAME — the whole game screen.
 // ---------------------------------------------------------------------------
-// Responsibilities:
-//   - build a round from the current level (target letter + fish)
-//   - animate the fish around the pond (requestAnimationFrame, direct DOM writes)
-//   - run the countdown timer bar
-//   - handle taps: correct -> splash + sound + reward; wrong -> shake + "baaap"
-//   - show start / level-complete / time-up overlays and advance levels
+// Round flow:
+//   1. "intro"  — the board is set up and FROZEN (fish placed but not moving,
+//                 timer not running) while the target letter's sound plays.
+//   2. "playing"— the sound has finished: the timer starts and the fish swim.
+//   3. tapping  — correct: splash + reward + replay the letter sound;
+//                 wrong:   the fish stays, shakes, and plays a soft "baaap".
+//   4. overlays — level-complete / time-up, then the next/again level.
 //
-// The game logic is intentionally kept readable. Movement uses refs (not React
-// state) so we never re-render on every animation frame — important for keeping
-// things smooth on low-end phones.
+// Fish motion (position + swivel + bounce-off-each-other) is animated with
+// requestAnimationFrame writing transforms straight to the DOM, so we never
+// re-render on every frame — important for smoothness on low-end phones.
 // ---------------------------------------------------------------------------
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/levels";
-import { getLetter } from "@/lib/letters";
-import {
-  playLetterSound,
-  playWrongSound,
-  unlockAudio,
-} from "@/lib/audio";
+import { getLetter, Letter } from "@/lib/letters";
+import { playLetterSound, playWrongSound, unlockAudio } from "@/lib/audio";
 
 // Must match the .fish width/height in globals.css.
-const FISH_W = 92;
-const FISH_H = 70;
+const FISH = 88;
+// How close two fish centres may get before they bounce off each other.
+const COLLIDE_DIST = 60;
 
 // Internal motion state for one fish (lives in a ref, not React state).
 interface Motion {
@@ -36,7 +40,8 @@ interface Motion {
   y: number;
   vx: number;
   vy: number;
-  bob: number;
+  bob: number; // phase for the gentle up/down bobbing
+  facing: string; // last applied swivel transform (so we only update on change)
 }
 
 interface Burst {
@@ -46,7 +51,16 @@ interface Burst {
   emoji: string;
 }
 
-type Phase = "start" | "playing" | "levelComplete" | "timeUp";
+type Phase = "start" | "intro" | "playing" | "levelComplete" | "timeUp";
+
+// Build the CSS transform that swivels a fish to face its travel direction.
+// The graphic points right by default; when swimming left we mirror it so it
+// stays upright (never belly-up) instead of rotating a full 180°.
+function facingTransform(vx: number, vy: number): string {
+  const deg = (Math.atan2(vy, vx) * 180) / Math.PI;
+  if (vx >= 0) return `rotate(${deg}deg)`;
+  return `scaleX(-1) rotate(${180 - deg}deg)`;
+}
 
 export default function PondGame() {
   const [phase, setPhase] = useState<Phase>("start");
@@ -61,6 +75,7 @@ export default function PondGame() {
   const pondRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<HTMLDivElement>(null);
   const fishEls = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const fishGraphics = useRef<Map<number, HTMLSpanElement>>(new Map());
   const motion = useRef<Map<number, Motion>>(new Map());
   const caughtRef = useRef<Set<number>>(new Set());
   const caughtTargetsRef = useRef(0);
@@ -72,12 +87,20 @@ export default function PondGame() {
   const lastRef = useRef<number>(0);
   const burstSeq = useRef(0);
   const fishIdSeq = useRef(0);
+  const currentRoundRef = useRef(0);
+  const introDoneForRound = useRef(-1);
 
-  // Register/unregister a fish's DOM node so the loop can move it.
-  const registerRef = useCallback(
+  const registerRoot = useCallback(
     (id: number, el: HTMLButtonElement | null) => {
       if (el) fishEls.current.set(id, el);
       else fishEls.current.delete(id);
+    },
+    []
+  );
+  const registerGraphic = useCallback(
+    (id: number, el: HTMLSpanElement | null) => {
+      if (el) fishGraphics.current.set(id, el);
+      else fishGraphics.current.delete(id);
     },
     []
   );
@@ -96,14 +119,85 @@ export default function PondGame() {
     totalTimeRef.current = cfg.timeSeconds * 1000;
     configRef.current = cfg;
     fishEls.current = new Map();
+    fishGraphics.current = new Map();
     motion.current = new Map();
     lastRef.current = 0;
 
     setLevel(levelNumber);
     setRound(plan);
-    setPhase("playing");
+    setPhase("intro"); // start FROZEN; the intro sound effect will unfreeze
     setRoundId((r) => r + 1);
   }, []);
+
+  // ---- place the fish + (after layout) play the frozen intro sound -------
+  // Runs once per round. Positions the fish so the frozen board looks set up,
+  // then plays the target letter's sound and unfreezes when it finishes.
+  useLayoutEffect(() => {
+    if (!round) return;
+    const pond = pondRef.current;
+    if (!pond) return;
+    currentRoundRef.current = roundId;
+
+    const rect = pond.getBoundingClientRect();
+    const W = rect.width;
+    const H = rect.height;
+    const speed = configRef.current?.speed ?? 40;
+
+    // Place each fish at a random spot, trying not to overlap the others.
+    const placed: { cx: number; cy: number }[] = [];
+    const m = new Map<number, Motion>();
+    for (const f of round.fish) {
+      let x = 0;
+      let y = 0;
+      for (let tries = 0; tries < 30; tries++) {
+        x = Math.random() * Math.max(1, W - FISH);
+        y = Math.random() * Math.max(1, H - FISH);
+        const cx = x + FISH / 2;
+        const cy = y + FISH / 2;
+        const clash = placed.some(
+          (p) => Math.hypot(p.cx - cx, p.cy - cy) < COLLIDE_DIST
+        );
+        if (!clash) break;
+      }
+      placed.push({ cx: x + FISH / 2, cy: y + FISH / 2 });
+      const angle = Math.random() * Math.PI * 2;
+      m.set(f.id, {
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        bob: Math.random() * Math.PI * 2,
+        facing: "",
+      });
+    }
+    motion.current = m;
+
+    // Apply the initial position + facing so the frozen board looks natural.
+    motion.current.forEach((fm, id) => {
+      const el = fishEls.current.get(id);
+      if (el) el.style.transform = `translate3d(${fm.x}px, ${fm.y}px, 0)`;
+      const g = fishGraphics.current.get(id);
+      if (g) {
+        fm.facing = facingTransform(fm.vx, fm.vy);
+        g.style.transform = fm.facing;
+      }
+    });
+
+    // Reset the timer bar to full.
+    if (timerRef.current) {
+      timerRef.current.style.width = "100%";
+      timerRef.current.classList.remove("low");
+    }
+
+    // Play the target sound once; unfreeze (start playing) when it ends.
+    if (introDoneForRound.current !== roundId) {
+      introDoneForRound.current = roundId;
+      playLetterSound(round.target.audio, () => {
+        if (currentRoundRef.current === roundId) setPhase("playing");
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roundId]);
 
   // ---- spawn a coin/star reward at a pond position -----------------------
   const spawnBurst = useCallback((x: number, y: number) => {
@@ -119,17 +213,20 @@ export default function PondGame() {
   const handleTap = useCallback(
     (spec: FishSpec, el: HTMLButtonElement) => {
       unlockAudio(); // first gesture unlocks audio on mobile
+      // Only respond while actually playing (ignore taps during the frozen
+      // intro and while overlays are showing).
+      if (phase !== "playing") return;
       if (caughtRef.current.has(spec.id)) return;
 
       if (spec.isTarget) {
-        // CORRECT: splash away, play the letter sound, show a reward.
+        // CORRECT: splash away, REPLAY the letter sound, show a reward.
         caughtRef.current.add(spec.id);
         caughtTargetsRef.current += 1;
         playLetterSound(getLetter(spec.letterId).audio);
         el.classList.add("caught");
 
         const m = motion.current.get(spec.id);
-        if (m) spawnBurst(m.x + FISH_W / 2, m.y);
+        if (m) spawnBurst(m.x + FISH / 2, m.y);
         setScore((s) => s + 1);
 
         // All target fish caught -> level complete.
@@ -145,73 +242,107 @@ export default function PondGame() {
         window.setTimeout(() => el.classList.remove("shake"), 450);
       }
     },
-    [spawnBurst]
+    [phase, spawnBurst]
   );
 
-  // ---- the animation + timer loop ----------------------------------------
+  // ---- the animation + timer loop (runs only while "playing") ------------
   useEffect(() => {
     if (phase !== "playing" || !round) return;
-    const pond = pondRef.current;
-    if (!pond) return;
-
-    // Place each fish at a random spot with a random direction.
-    const rect = pond.getBoundingClientRect();
-    const W = rect.width;
-    const H = rect.height;
-    const speed = configRef.current?.speed ?? 40;
-
-    const m = new Map<number, Motion>();
-    for (const f of round.fish) {
-      const angle = Math.random() * Math.PI * 2;
-      m.set(f.id, {
-        x: Math.random() * Math.max(1, W - FISH_W),
-        y: Math.random() * Math.max(1, H - FISH_H),
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed,
-        bob: Math.random() * Math.PI * 2,
-      });
-    }
-    motion.current = m;
+    lastRef.current = 0;
 
     const loop = (t: number) => {
       if (lastRef.current === 0) lastRef.current = t;
       let dt = (t - lastRef.current) / 1000;
       lastRef.current = t;
-      if (dt > 0.05) dt = 0.05; // clamp big gaps (tab switch, slow frame)
+      if (dt > 0.05) dt = 0.05; // clamp big gaps (tab switch / slow frame)
 
-      const p = pondRef.current;
-      if (p) {
-        const w = p.clientWidth;
-        const h = p.clientHeight;
-        motion.current.forEach((fishM, id) => {
-          if (caughtRef.current.has(id)) return; // frozen while splashing
-          fishM.x += fishM.vx * dt;
-          fishM.y += fishM.vy * dt;
+      const pond = pondRef.current;
+      if (pond) {
+        const w = pond.clientWidth;
+        const h = pond.clientHeight;
 
-          // Bounce off the pond walls.
-          if (fishM.x <= 0) {
-            fishM.x = 0;
-            fishM.vx = Math.abs(fishM.vx);
-          } else if (fishM.x >= w - FISH_W) {
-            fishM.x = w - FISH_W;
-            fishM.vx = -Math.abs(fishM.vx);
+        // Active (uncaught) fish ids.
+        const ids: number[] = [];
+        motion.current.forEach((_, id) => {
+          if (!caughtRef.current.has(id)) ids.push(id);
+        });
+
+        // 1) Move + bounce off the pond walls.
+        for (const id of ids) {
+          const m = motion.current.get(id)!;
+          m.x += m.vx * dt;
+          m.y += m.vy * dt;
+          if (m.x <= 0) {
+            m.x = 0;
+            m.vx = Math.abs(m.vx);
+          } else if (m.x >= w - FISH) {
+            m.x = w - FISH;
+            m.vx = -Math.abs(m.vx);
           }
-          if (fishM.y <= 0) {
-            fishM.y = 0;
-            fishM.vy = Math.abs(fishM.vy);
-          } else if (fishM.y >= h - FISH_H) {
-            fishM.y = h - FISH_H;
-            fishM.vy = -Math.abs(fishM.vy);
+          if (m.y <= 0) {
+            m.y = 0;
+            m.vy = Math.abs(m.vy);
+          } else if (m.y >= h - FISH) {
+            m.y = h - FISH;
+            m.vy = -Math.abs(m.vy);
           }
+        }
 
-          fishM.bob += dt * 3;
+        // 2) Bounce fish off EACH OTHER (equal-mass elastic collision).
+        for (let i = 0; i < ids.length; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            const a = motion.current.get(ids[i])!;
+            const b = motion.current.get(ids[j])!;
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > 0 && dist < COLLIDE_DIST) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = (COLLIDE_DIST - dist) / 2;
+              // push them apart so they don't overlap
+              a.x -= nx * overlap;
+              a.y -= ny * overlap;
+              b.x += nx * overlap;
+              b.y += ny * overlap;
+              // swap the velocity components along the collision normal
+              const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+              if (rel < 0) {
+                a.vx += rel * nx;
+                a.vy += rel * ny;
+                b.vx -= rel * nx;
+                b.vy -= rel * ny;
+              }
+            }
+          }
+        }
+
+        // 3) Clamp inside walls again, then write transforms.
+        for (const id of ids) {
+          const m = motion.current.get(id)!;
+          if (m.x < 0) m.x = 0;
+          else if (m.x > w - FISH) m.x = w - FISH;
+          if (m.y < 0) m.y = 0;
+          else if (m.y > h - FISH) m.y = h - FISH;
+
+          m.bob += dt * 3;
           const el = fishEls.current.get(id);
           if (el) {
-            el.style.transform = `translate3d(${fishM.x}px, ${
-              fishM.y + Math.sin(fishM.bob) * 4
+            el.style.transform = `translate3d(${m.x}px, ${
+              m.y + Math.sin(m.bob) * 3
             }px, 0)`;
           }
-        });
+          // Swivel only when the heading actually changes (cheap + lets the CSS
+          // transition smooth it out).
+          const g = fishGraphics.current.get(id);
+          if (g) {
+            const f = facingTransform(m.vx, m.vy);
+            if (f !== m.facing) {
+              m.facing = f;
+              g.style.transform = f;
+            }
+          }
+        }
       }
 
       // Countdown timer bar.
@@ -246,18 +377,18 @@ export default function PondGame() {
           <span>🪙</span>
           <span>{score}</span>
         </div>
-        <div className="levelPill">
-          {/* minimal text: a star + level number */}
-          ⭐ {Math.min(level, TOTAL_LEVELS)}
-        </div>
+        <div className="levelPill">⭐ {Math.min(level, TOTAL_LEVELS)}</div>
       </div>
 
-      {/* Target letter the child must find */}
+      {/* Target: picture on the left, letter card on the right */}
       {target && (
         <div className="target">
           <div className="targetLabel">यह पकड़ो</div>
-          <div className="targetCard" key={roundId}>
-            {target.char}
+          <div className="targetRow">
+            <WordPicture letter={target} key={`pic-${roundId}`} />
+            <div className="targetCard" key={`card-${roundId}`}>
+              {target.char}
+            </div>
           </div>
           <button
             type="button"
@@ -284,18 +415,15 @@ export default function PondGame() {
           <Fish
             key={spec.id}
             spec={spec}
-            registerRef={registerRef}
+            registerRoot={registerRoot}
+            registerGraphic={registerGraphic}
             onTap={handleTap}
           />
         ))}
 
         {/* Reward bursts */}
         {bursts.map((b) => (
-          <span
-            key={b.id}
-            className="burst"
-            style={{ left: b.x, top: b.y }}
-          >
+          <span key={b.id} className="burst" style={{ left: b.x, top: b.y }}>
             {b.emoji}
           </span>
         ))}
@@ -365,6 +493,30 @@ export default function PondGame() {
             </button>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WORD PICTURE — the illustration shown beside the target letter.
+// Tries the real image; if it is missing, falls back to the letter's emoji so
+// the slot is never empty. (Drop real art into /public/images/words to upgrade.)
+// ---------------------------------------------------------------------------
+function WordPicture({ letter }: { letter: Letter }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="wordPic" aria-label={letter.word}>
+      {failed ? (
+        <span className="wordEmoji">{letter.emoji}</span>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={letter.image}
+          alt={letter.word}
+          onError={() => setFailed(true)}
+          draggable={false}
+        />
       )}
     </div>
   );
