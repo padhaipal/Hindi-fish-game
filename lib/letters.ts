@@ -7,6 +7,11 @@
 //   - `id`          : a short ASCII id used for audio file names and keys.
 //   - `roman`       : a rough romanisation (only used by developers / labels).
 //   - `audio`       : path to the spoken-letter sound (see /public/audio/letters).
+//   - `word`        : a familiar Hindi word that STARTS with this letter — the
+//                     emoji shown next to the target letter illustrates it.
+//   - `emoji`       : the picture (an emoji) shown beside the target letter.
+//                     We use emojis instead of image files: crisp on small
+//                     screens, no asset loading, and easy to swap here.
 //   - `lookAlikes`  : ids of letters that LOOK similar (visual distractors).
 //   - `soundAlikes` : ids of letters that SOUND similar (audio distractors).
 //
@@ -20,6 +25,8 @@ export interface Letter {
   char: string;
   roman: string;
   audio: string;
+  word: string;
+  emoji: string;
   lookAlikes: string[];
   soundAlikes: string[];
 }
@@ -31,7 +38,8 @@ export const LETTERS: Letter[] = [
     char: "ब",
     roman: "ba",
     audio: "/audio/letters/ba.mp3",
-    // ब looks a lot like व and भ; here we keep it within our 8-letter set.
+    word: "बत्तख़", // duck
+    emoji: "🦆",
     lookAlikes: ["ka"], // क has a similar vertical-stroke feel for beginners
     soundAlikes: ["pa"], // ब / प are an easy voiced-vs-unvoiced mix-up
   },
@@ -40,6 +48,8 @@ export const LETTERS: Letter[] = [
     char: "स",
     roman: "sa",
     audio: "/audio/letters/sa.mp3",
+    word: "साबुन", // soap
+    emoji: "🧼",
     lookAlikes: ["ra"],
     soundAlikes: ["sa"],
   },
@@ -48,6 +58,8 @@ export const LETTERS: Letter[] = [
     char: "प",
     roman: "pa",
     audio: "/audio/letters/pa.mp3",
+    word: "पतंग", // kite
+    emoji: "🪁",
     lookAlikes: ["ra"], // प and र share the open-top shape for young learners
     soundAlikes: ["ba"],
   },
@@ -56,6 +68,8 @@ export const LETTERS: Letter[] = [
     char: "र",
     roman: "ra",
     audio: "/audio/letters/ra.mp3",
+    word: "रस्सी", // rope
+    emoji: "🪢",
     lookAlikes: ["pa", "ta"],
     soundAlikes: ["la"],
   },
@@ -64,6 +78,8 @@ export const LETTERS: Letter[] = [
     char: "त",
     roman: "ta",
     audio: "/audio/letters/ta.mp3",
+    word: "तरबूज़", // watermelon
+    emoji: "🍉",
     lookAlikes: ["ra"],
     soundAlikes: ["ta"],
   },
@@ -72,6 +88,8 @@ export const LETTERS: Letter[] = [
     char: "क",
     roman: "ka",
     audio: "/audio/letters/ka.mp3",
+    word: "कबूतर", // pigeon
+    emoji: "🕊️",
     lookAlikes: ["ba"],
     soundAlikes: ["cha"],
   },
@@ -80,6 +98,8 @@ export const LETTERS: Letter[] = [
     char: "च",
     roman: "cha",
     audio: "/audio/letters/cha.mp3",
+    word: "चम्मच", // spoon
+    emoji: "🥄",
     lookAlikes: ["ta"],
     soundAlikes: ["ka"],
   },
@@ -88,6 +108,8 @@ export const LETTERS: Letter[] = [
     char: "ल",
     roman: "la",
     audio: "/audio/letters/la.mp3",
+    word: "लट्टू", // spinning top
+    emoji: "🪀",
     lookAlikes: ["sa"],
     soundAlikes: ["ra"],
   },
