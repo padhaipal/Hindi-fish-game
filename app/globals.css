@@ -664,3 +664,65 @@ body > div {
   transform: translateY(4px);
   box-shadow: 0 2px 0 #14688f;
 }
+
+/* ---- Blocks game: bigger picture (~2x) ---------------------------------- */
+.blocksTop { padding-top: 10px; }
+.pictureCard { width: 196px; height: 196px; }
+.pictureEmoji { font-size: 140px; }
+.pictureHint { font-size: 24px; right: 10px; bottom: 8px; }
+
+/* ---- Demo hint (first word): pulse the correct pair + a tapping hand ----- */
+.block--hint {
+  z-index: 6;
+  animation: hintPulse 0.9s ease-in-out infinite;
+}
+@keyframes hintPulse {
+  0%, 100% { box-shadow: 0 4px 0 #00000026, 0 0 0 0 #ffd23f; }
+  50% { box-shadow: 0 4px 0 #00000026, 0 0 0 7px #ffd23fb0; }
+}
+.hintHand {
+  position: absolute;
+  transform: translate(-50%, 4px);
+  font-size: 42px;
+  pointer-events: none;
+  z-index: 8;
+  animation: handBob 0.8s ease-in-out infinite;
+}
+@keyframes handBob {
+  0%, 100% { transform: translate(-50%, 4px); }
+  50% { transform: translate(-50%, 16px); }
+}
+
+/* ---- Fireworks on a correct answer -------------------------------------- */
+.fireworks {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 54px;
+  pointer-events: none;
+  z-index: 7;
+  animation: fwPop 0.9s ease forwards;
+}
+@keyframes fwPop {
+  0% { transform: translate(-50%, -50%) scale(0.3); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+.fireworks .spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  animation: spark 0.85s ease-out forwards;
+}
+@keyframes spark {
+  0% { transform: translate(-50%, -50%); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); opacity: 0; }
+}
+.fireworks .s1 { --dx: -48px; --dy: -30px; background: #ff5da2; }
+.fireworks .s2 { --dx: 48px; --dy: -30px; background: #ffd23f; }
+.fireworks .s3 { --dx: -56px; --dy: 16px; background: #37d67a; }
+.fireworks .s4 { --dx: 56px; --dy: 16px; background: #4ea8de; }
+.fireworks .s5 { --dx: -16px; --dy: -56px; background: #9b5cff; }
+.fireworks .s6 { --dx: 16px; --dy: 56px; background: #ff8a3d; }

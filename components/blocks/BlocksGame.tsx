@@ -3,28 +3,38 @@
 // ---------------------------------------------------------------------------
 // HINDI BLOCKS GAME
 // ---------------------------------------------------------------------------
-// A picture (+ spoken word) appears at the top. The child taps the TWO adjacent
-// blocks that spell the word. Correct -> they flash green, a clap plays, and
-// they vanish (blocks above slide straight down). Wrong -> the two flash red and
-// stay. Clear all 14 blocks (7 words) to win.
+// A picture (+ spoken word) appears at the top of a FULL 5x4 grid of 20 blocks.
+// The child taps the TWO adjacent blocks (side-by-side OR stacked) that spell
+// the word:
+//   - Correct -> the pair flashes green, FIREWORKS pop, the word says its name
+//     again, and the blocks vanish (those above slide straight down). After a
+//     short pause the next picture appears, then its word is spoken.
+//   - Wrong -> the two tapped blocks flash red and stay.
+// Tapping a block plays that letter's sound; tapping the picture replays the
+// word. Applause plays only once, at the END (all 10 words cleared = win).
 //
-// Boards are pre-generated and verified winnable (lib/blocks/boards.ts), and the
-// word for each step has a single adjacent occurrence, so the correct move is
-// always unambiguous.
+// A quick auto-demo highlights the correct pair on the very first word.
+//
+// Boards are pre-generated + verified winnable (lib/blocks/boards.ts): the word
+// for each step has a single adjacent occurrence, so the correct move is always
+// unambiguous.
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Block, { BlockState } from "./Block";
 import { BOARDS } from "@/lib/blocks/boards";
 import { getWord } from "@/lib/blocks/words";
 import {
   Board,
+  Occ,
   adjacentPair,
   findBlock,
   isEmpty,
   makeBoard,
-  removeAt,
+  occBlocks,
+  occurrences,
+  removeOcc,
 } from "@/lib/blocks/engine";
 import { getLetter } from "@/lib/letters";
 import {
@@ -38,9 +48,23 @@ import {
 const CELL = 64; // block cell incl. gap
 const SIZE = 58; // visible block size
 const INSET = (CELL - SIZE) / 2;
-const MAX_ROWS = 4; // tallest column
+const ROWS = 4; // full grid height
 
 type Phase = "start" | "playing" | "won";
+
+interface Fireworks {
+  id: number;
+  x: number;
+  y: number;
+}
+
+// Pixel centre (within the board area) of an occurrence's pair.
+function occCenter(occ: Occ): { x: number; y: number } {
+  const bx = occ.c * CELL + INSET + SIZE / 2;
+  const by = (ROWS - 1 - occ.L) * CELL + INSET + SIZE / 2;
+  if (occ.o === "h") return { x: bx + CELL / 2, y: by };
+  return { x: bx, y: by - CELL / 2 }; // vertical: midpoint up half a cell
+}
 
 export default function BlocksGame() {
   const [phase, setPhase] = useState<Phase>("start");
@@ -50,9 +74,21 @@ export default function BlocksGame() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [correctIds, setCorrectIds] = useState<Set<number>>(new Set());
   const [wrongIds, setWrongIds] = useState<Set<number>>(new Set());
+  const [hintIds, setHintIds] = useState<Set<number>>(new Set());
+  const [hintPointer, setHintPointer] = useState<{ x: number; y: number } | null>(null);
+  const [fireworks, setFireworks] = useState<Fireworks | null>(null);
+
   const busyRef = useRef(false); // locks taps during a flash/slide
+  const demoShownRef = useRef(false); // demo plays only on first open
+  const wantDemoRef = useRef(false);
+  const fxSeq = useRef(0);
 
   const target = order.length ? getWord(order[targetIndex]) : null;
+
+  const clearHint = useCallback(() => {
+    setHintIds(new Set());
+    setHintPointer(null);
+  }, []);
 
   // ---- start a new game with a random board ------------------------------
   const newGame = useCallback(() => {
@@ -63,25 +99,41 @@ export default function BlocksGame() {
     setSelectedId(null);
     setCorrectIds(new Set());
     setWrongIds(new Set());
+    clearHint();
+    setFireworks(null);
     busyRef.current = false;
+    // show the demo only the very first time the game is opened
+    wantDemoRef.current = !demoShownRef.current;
     setPhase("playing");
-    // play the first word
-    playWordSound(getWord(data.order[0]).audio);
-  }, []);
+    playWordSound(getWord(data.order[0]).audio); // speak the first word
+  }, [clearHint]);
+
+  // ---- auto-demo: highlight the correct pair on the first word -----------
+  useEffect(() => {
+    if (phase !== "playing" || !wantDemoRef.current || targetIndex !== 0) return;
+    if (board.length === 0) return;
+    demoShownRef.current = true;
+    wantDemoRef.current = false;
+    const occ = occurrences(board, getWord(order[0]).letters)[0];
+    if (!occ) return;
+    setHintIds(new Set(occBlocks(board, occ)));
+    setHintPointer(occCenter(occ));
+    const t = window.setTimeout(clearHint, 4500); // fades on its own if untouched
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, targetIndex, board]);
 
   // ---- tap handling ------------------------------------------------------
   const handleTap = useCallback(
     (id: number) => {
       if (phase !== "playing" || busyRef.current) return;
-      const current = order[targetIndex];
-      const word = getWord(current);
+      clearHint(); // any tap dismisses the demo highlight
+      const word = getWord(order[targetIndex]);
 
-      // Play the tapped letter's sound FIRST — before any green/red flash, so on
-      // the second tap the child still hears the letter before the result.
+      // Play the tapped letter's sound FIRST — before any green/red flash.
       const pos = findBlock(board, id);
       if (pos) playLetterSound(getLetter(board[pos.c][pos.L].letterId).audio);
 
-      // first tap -> select; tapping the same block -> deselect
       if (selectedId === null) {
         setSelectedId(id);
         return;
@@ -94,29 +146,40 @@ export default function BlocksGame() {
       const pair = adjacentPair(board, selectedId, id);
       const isCorrect =
         !!pair &&
-        pair.left.letterId === word.letters[0] &&
-        pair.right.letterId === word.letters[1];
+        pair.letters[0] === word.letters[0] &&
+        pair.letters[1] === word.letters[1];
 
       if (isCorrect && pair) {
-        // CORRECT: green flash + clap, then remove and slide everything down.
+        // CORRECT: green + fireworks + the word says its name again.
         busyRef.current = true;
         setCorrectIds(new Set([selectedId, id]));
         setSelectedId(null);
-        playWinSound(); // clapping (same 3s clip as the fish game)
-        const { c, L } = pair;
+        setFireworks({ id: fxSeq.current++, ...occCenter(pair.occ) });
+        playWordSound(word.audio); // say the word again (no clap mid-game)
+
+        const occ = pair.occ;
         window.setTimeout(() => {
-          const next = removeAt(board, c, L);
+          const next = removeOcc(board, occ);
           setBoard(next);
           setCorrectIds(new Set());
+          setFireworks(null);
           if (isEmpty(next)) {
             setPhase("won");
+            playWinSound(); // applause — only at the very end
+            busyRef.current = false;
           } else {
-            const nextIndex = targetIndex + 1;
-            setTargetIndex(nextIndex);
-            playWordSound(getWord(order[nextIndex]).audio); // next picture's word
+            // 0.5s pause, then the new picture appears...
+            window.setTimeout(() => {
+              const nextIndex = targetIndex + 1;
+              setTargetIndex(nextIndex);
+              // ...then another 0.5s pause before speaking the new word.
+              window.setTimeout(() => {
+                playWordSound(getWord(order[nextIndex]).audio);
+                busyRef.current = false;
+              }, 500);
+            }, 500);
           }
-          busyRef.current = false;
-        }, 480);
+        }, 700);
       } else {
         // WRONG: red flash for ~0.7s, blocks stay.
         busyRef.current = true;
@@ -128,7 +191,7 @@ export default function BlocksGame() {
         }, 700);
       }
     },
-    [phase, order, targetIndex, selectedId, board]
+    [phase, order, targetIndex, selectedId, board, clearHint]
   );
 
   const stateFor = (id: number): BlockState => {
@@ -138,8 +201,7 @@ export default function BlocksGame() {
     return "idle";
   };
 
-  const numCols = board.length;
-  const boardWidth = numCols * CELL;
+  const boardWidth = board.length * CELL;
   const solved = targetIndex; // words cleared so far
 
   return (
@@ -163,13 +225,9 @@ export default function BlocksGame() {
             <span className="pictureEmoji">{target.emoji}</span>
             <span className="pictureHint">🔊</span>
           </button>
-          {/* progress: one dot per word */}
           <div className="progressDots">
             {order.map((_, i) => (
-              <span
-                key={i}
-                className={`dot ${i < solved ? "done" : ""}`}
-              />
+              <span key={i} className={`dot ${i < solved ? "done" : ""}`} />
             ))}
           </div>
         </div>
@@ -179,7 +237,7 @@ export default function BlocksGame() {
       <div className="blocksArea">
         <div
           className="blocksBoard"
-          style={{ width: boardWidth, height: MAX_ROWS * CELL }}
+          style={{ width: boardWidth, height: ROWS * CELL }}
         >
           {board.map((col, c) =>
             col.map((blk, L) => (
@@ -188,12 +246,40 @@ export default function BlocksGame() {
                 id={blk.id}
                 letterId={blk.letterId}
                 x={c * CELL + INSET}
-                y={(MAX_ROWS - 1 - L) * CELL + INSET}
+                y={(ROWS - 1 - L) * CELL + INSET}
                 size={SIZE}
                 state={stateFor(blk.id)}
+                hint={hintIds.has(blk.id)}
                 onTap={handleTap}
               />
             ))
+          )}
+
+          {/* demo pointer */}
+          {hintPointer && (
+            <span
+              className="hintHand"
+              style={{ left: hintPointer.x, top: hintPointer.y }}
+            >
+              👆
+            </span>
+          )}
+
+          {/* fireworks on a correct answer */}
+          {fireworks && (
+            <span
+              key={fireworks.id}
+              className="fireworks"
+              style={{ left: fireworks.x, top: fireworks.y }}
+            >
+              🎆
+              <span className="spark s1" />
+              <span className="spark s2" />
+              <span className="spark s3" />
+              <span className="spark s4" />
+              <span className="spark s5" />
+              <span className="spark s6" />
+            </span>
           )}
         </div>
       </div>
