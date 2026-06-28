@@ -180,6 +180,11 @@ export function playEndgameSound(): void {
   playSound("/audio/endgame-message.mp3", "win");
 }
 
+// Spoken word for the Blocks game (e.g. /audio/words/bus.mp3).
+export function playWordSound(src: string): void {
+  playSound(src, "correct");
+}
+
 // Stop a specific sound file if it is currently playing.
 function stopSound(src: string): void {
   const el = audioCache.get(src);

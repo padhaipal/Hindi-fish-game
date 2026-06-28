@@ -23,6 +23,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/levels";
@@ -532,6 +533,9 @@ export default function PondGame() {
             >
               ▶ खेलो
             </button>
+            <Link href="/blocks" className="overlayLink">
+              🧩 ब्लॉक खेल
+            </Link>
           </div>
         </div>
       )}
