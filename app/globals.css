@@ -160,11 +160,13 @@ body > div {
 }
 .timerFill {
   height: 100%;
-  background: linear-gradient(90deg, #7be36b, #ffd23f, #ff8a3d);
+  /* Green at the RIGHT (lots of time) → yellow → red at the LEFT. The bar
+     shrinks from the right, so the red left end is what's left as time runs out. */
+  background: linear-gradient(90deg, #ff4d4d, #ffd23f, #7be36b);
   border-radius: 999px;
 }
 .timerFill.low {
-  background: linear-gradient(90deg, #ff8a3d, #ff4d4d);
+  background: #ff4d4d; /* almost out of time — solid red */
 }
 
 /* ---- Pond (play area) --------------------------------------------------- */
