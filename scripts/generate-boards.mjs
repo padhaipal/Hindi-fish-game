@@ -1,13 +1,17 @@
-// Board generator for the Hindi Blocks game (reverse construction).
+// Board generator for the Hindi Blocks game (5x4 full grid, reverse construction).
 //
-// Model: columns of blocks, bottom-aligned, straight-down gravity. A word = two
-// HORIZONTALLY adjacent blocks (same level, neighbouring columns) read L->R.
-// Removing a pair splices it from each column so blocks above fall straight down.
+// Model: 5 columns x 4 rows = 20 blocks (a FULL rectangle), bottom-aligned,
+// straight-down gravity. A word is two ADJACENT blocks that spell it:
+//   - HORIZONTAL: same row, neighbouring columns, read left -> right.
+//   - VERTICAL:   same column, stacked, read top -> bottom.
+// Removing a pair splices it from the column(s) so blocks above fall straight
+// down. (A full 5-wide grid can't be cleared with horizontal pairs alone, so
+// vertical pairs are allowed too.)
 //
-// We build a board by INSERTING 7 word-pairs (reverse of clearing) — this
-// guarantees a clearing order exists. Then we VERIFY that, cleared in that
-// order, every word has EXACTLY ONE occurrence at its step (so the child's
-// correct move is always unambiguous and the board is always winnable).
+// We build a board by INSERTING 10 word-pairs (reverse of clearing) until the
+// grid is full, then VERIFY that, cleared in that order, every word has EXACTLY
+// ONE occurrence at its step — so the child's correct move is always unambiguous
+// and the board is always winnable.
 
 const LETTERS = ["ba", "sa", "ka", "pa", "ra", "la", "cha", "ta"];
 const WORDS = {
@@ -16,11 +20,14 @@ const WORDS = {
   sach: ["sa", "cha"], par: ["pa", "ra"], pak: ["pa", "ka"], tap: ["ta", "pa"],
 };
 const WORD_IDS = Object.keys(WORDS);
-const TA_WORD = "tap"; // the only word using त — forced into every board
+const TA_WORD = "tap";
 const NON_TA = WORD_IDS.filter((w) => w !== TA_WORD);
-const MAX_H = 4;
 
-let seed = 987654321;
+const COLS = 5;
+const ROWS = 4;
+const PAIRS = (COLS * ROWS) / 2; // 10
+
+let seed = 20260628;
 function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
 const ri = (n) => Math.floor(rnd() * n);
 const pick = (a) => a[ri(a.length)];
@@ -33,73 +40,111 @@ function occurrences(cols, word) {
   for (let c = 0; c < cols.length - 1; c++) {
     const h = Math.min(cols[c].length, cols[c + 1].length);
     for (let L = 0; L < h; L++) {
-      if (cols[c][L] === word[0] && cols[c + 1][L] === word[1]) out.push([c, L]);
+      if (cols[c][L] === word[0] && cols[c + 1][L] === word[1]) out.push({ c, L, o: "h" });
+    }
+  }
+  for (let c = 0; c < cols.length; c++) {
+    for (let L = 0; L < cols[c].length - 1; L++) {
+      if (cols[c][L + 1] === word[0] && cols[c][L] === word[1]) out.push({ c, L, o: "v" });
     }
   }
   return out;
 }
-function removeAt(cols, c, L) {
+function removeOcc(cols, occ) {
   const next = clone(cols);
-  next[c].splice(L, 1);
-  next[c + 1].splice(L, 1);
+  if (occ.o === "h") { next[occ.c].splice(occ.L, 1); next[occ.c + 1].splice(occ.L, 1); }
+  else { next[occ.c].splice(occ.L, 2); }
   return next;
 }
 function distinct(cols) { const s = new Set(); for (const c of cols) for (const l of c) s.add(l); return s; }
 
-// Verify clearing `order` works with a UNIQUE occurrence at each step.
-function verifyOrder(cols, order) {
-  let cur = clone(cols);
-  for (const id of order) {
-    const occ = occurrences(cur, WORDS[id]);
-    if (occ.length !== 1) return false;
-    cur = removeAt(cur, occ[0][0], occ[0][1]);
+// Find ANY clearing order where every removed word has exactly one occurrence
+// at its step (DFS with memoised dead-ends). Returns the order, or null.
+function solve(cols) {
+  const dead = new Set();
+  let budget = 20000; // cap states explored per board so one bad board can't hang
+  function go(cur) {
+    if (isEmpty(cur)) return [];
+    if (--budget < 0) return null;
+    const k = key(cur);
+    if (dead.has(k)) return null;
+    const ids = WORD_IDS.slice();
+    for (let i = ids.length - 1; i > 0; i--) { const j = ri(i + 1); [ids[i], ids[j]] = [ids[j], ids[i]]; }
+    for (const id of ids) {
+      const occ = occurrences(cur, WORDS[id]);
+      if (occ.length !== 1) continue;
+      const rest = go(removeOcc(cur, occ[0]));
+      if (rest) return [id, ...rest];
+    }
+    dead.add(k);
+    return null;
   }
-  return isEmpty(cur);
+  return go(cols);
 }
 
-// Build a board by inserting 7 word-pairs (one of them always तर).
 function buildBoard() {
-  const numCols = 4 + ri(2); // 4 or 5
-  const cols = Array.from({ length: numCols }, () => []);
+  const cols = Array.from({ length: COLS }, () => []);
   const words = [TA_WORD];
-  for (let i = 0; i < 6; i++) words.push(pick(NON_TA));
+  for (let i = 0; i < PAIRS - 1; i++) words.push(pick(NON_TA));
   for (let i = words.length - 1; i > 0; i--) { const j = ri(i + 1); [words[i], words[j]] = [words[j], words[i]]; }
 
   const inserted = [];
   for (const id of words) {
-    const [l1, l2] = WORDS[id];
-    const cands = [];
-    for (let c = 0; c < numCols - 1; c++) {
-      if (cols[c].length < MAX_H && cols[c + 1].length < MAX_H) cands.push(c);
+    const [w0, w1] = WORDS[id];
+    const moves = [];
+    for (let c = 0; c < COLS - 1; c++) {
+      if (cols[c].length < ROWS && cols[c + 1].length < ROWS) moves.push({ o: "h", c });
     }
-    if (cands.length === 0) return null;
-    const c = pick(cands);
-    const L = ri(Math.min(cols[c].length, cols[c + 1].length) + 1);
-    cols[c].splice(L, 0, l1);
-    cols[c + 1].splice(L, 0, l2);
+    for (let c = 0; c < COLS; c++) {
+      if (cols[c].length <= ROWS - 2) moves.push({ o: "v", c });
+    }
+    if (moves.length === 0) return null;
+    const m = pick(moves);
+    if (m.o === "h") {
+      const L = ri(Math.min(cols[m.c].length, cols[m.c + 1].length) + 1);
+      cols[m.c].splice(L, 0, w0);
+      cols[m.c + 1].splice(L, 0, w1);
+    } else {
+      const L = ri(cols[m.c].length + 1);
+      cols[m.c].splice(L, 0, w1, w0);
+    }
     inserted.push(id);
   }
   return { cols, order: inserted.slice().reverse() };
 }
 
-const boards = [];
-const seen = new Set();
-let tries = 0;
-const TARGET = 30;
-while (boards.length < TARGET && tries < 3_000_000) {
-  tries++;
-  const b = buildBoard();
-  if (!b) continue;
-  const { cols, order } = b;
-  // tidy shape: every column height in [2,4]
-  if (!cols.every((c) => c.length >= 2 && c.length <= MAX_H)) continue;
-  if (distinct(cols).size !== 8) continue; // all 8 letters incl. त
-  if (!verifyOrder(cols, order)) continue;
-  const k = key(cols);
-  if (seen.has(k)) continue;
-  seen.add(k);
-  boards.push({ cols, order });
-}
 
-console.error(`tries=${tries} boards=${boards.length}`);
-process.stdout.write(JSON.stringify(boards));
+import { writeFileSync } from "fs";
+function genSeed(seedVal, acc, seenSet, wantTotal) {
+  seed = seedVal;
+  let tries = 0;
+  let lastNew = 0;
+  while (acc.length < wantTotal && tries < 400000) {
+    tries++;
+    const b = buildBoard();
+    if (!b) continue;
+    const { cols } = b;
+    if (!cols.every((c) => c.length === ROWS)) continue;
+    if (distinct(cols).size !== 8) continue;
+    const k = key(cols);
+    if (seenSet.has(k)) continue;
+    const order = solve(cols);
+    if (!order || order.length !== PAIRS) continue;
+    seenSet.add(k);
+    acc.push({ cols, order });
+    lastNew = tries;
+    if (acc.length >= wantTotal) break;
+    if (tries - lastNew > 80000) break; // this seed exhausted
+  }
+  return tries;
+}
+import { readFileSync, existsSync } from "fs";
+const acc = existsSync("boards2.json") ? JSON.parse(readFileSync("boards2.json","utf8")) : [];
+const seenSet = new Set(acc.map(b => key(b.cols)));
+const WANT = 30;
+for (let s = 1; s <= 200 && acc.length < WANT; s++) {
+  const t = genSeed(s * 2654435761 % 2147483647 + 7, acc, seenSet, WANT);
+  console.error(`seed#${s} -> total ${acc.length} (tries ${t})`);
+  writeFileSync("boards2.json", JSON.stringify(acc)); // incremental save
+}
+console.error(`DONE total=${acc.length}`);

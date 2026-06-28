@@ -19,6 +19,7 @@ interface BlockProps {
   y: number;
   size: number;
   state: BlockState;
+  hint?: boolean; // demo highlight (pulsing) for the correct pair
   onTap: (id: number) => void;
 }
 
@@ -29,12 +30,13 @@ export default function Block({
   y,
   size,
   state,
+  hint,
   onTap,
 }: BlockProps) {
   return (
     <button
       type="button"
-      className={`block block--${state}`}
+      className={`block block--${state}${hint ? " block--hint" : ""}`}
       aria-label={`block ${getLetter(letterId).char}`}
       style={{
         width: size,
