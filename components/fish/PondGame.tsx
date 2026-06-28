@@ -23,10 +23,11 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import Fish from "./Fish";
-import { buildRound, FishSpec, RoundPlan } from "@/lib/round";
-import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/levels";
-import { getLetter, Letter, LETTERS } from "@/lib/letters";
+import { buildRound, FishSpec, RoundPlan } from "@/lib/fish/round";
+import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/fish/levels";
+import { getLetter, letterWordAudio, Letter, LETTERS } from "@/lib/letters";
 import {
   playLetterSound,
   playWrongSound,
@@ -239,10 +240,10 @@ export default function PondGame() {
       timerRef.current.classList.remove("low");
     }
 
-    // Play the target sound once; unfreeze (start playing) when it ends.
+    // Play the PICTURE+LETTER sound once (the intro prompt); unfreeze when done.
     if (introDoneForRound.current !== roundId) {
       introDoneForRound.current = roundId;
-      playLetterSound(round.target.audio, () => {
+      playLetterSound(letterWordAudio(round.target.id), () => {
         if (currentRoundRef.current === roundId) setPhase("playing");
       });
     }
@@ -479,7 +480,7 @@ export default function PondGame() {
             className="targetSound"
             onClick={() => {
               unlockAudio();
-              playLetterSound(target.audio);
+              playLetterSound(letterWordAudio(target.id)); // picture+letter prompt
             }}
             aria-label="play target letter sound"
           >
@@ -532,6 +533,9 @@ export default function PondGame() {
             >
               ▶ खेलो
             </button>
+            <Link href="/" className="overlayLink">
+              🏠 घर
+            </Link>
           </div>
         </div>
       )}
@@ -653,8 +657,8 @@ function LattuIcon() {
 
 // ---------------------------------------------------------------------------
 // PADHAIPAL IMAGE — shown on the final "all done" screen above the link button.
-// Loads /images/padhaipal.png; if that file isn't present yet it falls back to
-// a simple branded badge so the screen is never broken.
+// Loads the shared /images/shared/padhaipal.jpeg; falls back to a simple branded
+// badge if it's missing so the screen is never broken.
 // ---------------------------------------------------------------------------
 function PadhaipalImage() {
   const [failed, setFailed] = useState(false);
@@ -670,7 +674,7 @@ function PadhaipalImage() {
     // eslint-disable-next-line @next/next/no-img-element
     <img
       className="padhaipalImg"
-      src="/images/padhaipal.jpeg"
+      src="/images/shared/padhaipal.jpeg"
       alt="PadhaiPal"
       onError={() => setFailed(true)}
       draggable={false}

@@ -1,3 +1,16 @@
+# 🎮 Hindi Learning Games
+
+Two simple, bright, mobile-first Hindi games for young / low-literacy children,
+built for **PadhaiPal**. No login, no backend.
+
+- **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
+- **🧩 Blocks game** (`/blocks`) — tap the two blocks that spell the pictured word.
+
+Both share the 8 letters **ब स प र त क च ल** and their sounds
+(`public/audio/letters`). See the [Blocks game](#-hindi-blocks-game-blocks) section below.
+
+---
+
 # 🐟 Hindi Fish Game
 
 A simple, bright, mobile-first **Hindi letter recognition** game for young /
@@ -44,10 +57,10 @@ Everything you'll commonly want to tweak is small and commented:
 | What | File |
 | --- | --- |
 | The Hindi letters + picture emoji + look/sound-alike hints | `lib/letters.ts` |
-| Level difficulty (fish count, speed, time, distractors) | `lib/levels.ts` |
-| How a round's fish are chosen + fish colours | `lib/round.ts` |
+| Level difficulty (fish count, speed, time, distractors) | `lib/fish/levels.ts` |
+| How a round's fish are chosen + fish colours | `lib/fish/round.ts` |
 | Audio playback + safe fallback | `lib/audio.ts` |
-| The game screen / fish / overlays | `components/PondGame.tsx`, `components/Fish.tsx` |
+| The game screen / fish / overlays | `components/fish/PondGame.tsx`, `components/fish/Fish.tsx` |
 | Colours, sizes, animations | `app/globals.css` |
 
 ## 🏆 Scoring
@@ -67,14 +80,16 @@ The picture beside the target letter is a big **emoji** (see `emoji` in
 needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन). The one exception is ल (लट्टू),
 drawn as a small SVG `LattuIcon` since no emoji is a real Indian spinning top.
 
-The finish screen shows `public/images/padhaipal.jpeg` (with a branded-badge
+The finish screen shows `public/images/shared/padhaipal.jpeg` (with a branded-badge
 fallback if it isn't present yet).
 
 ## 🔊 Audio
 
-- `public/audio/letters/<id>.mp3` — one spoken letter per letter (`ba`, `sa`,
-  `pa`, `ra`, `ta`, `ka`, `cha`, `la`). Played on the frozen round intro, on
-  "सुनो", and on each correct catch.
+- `public/audio/letters-word/<id>.mp3` — the **picture+letter** recording (the
+  letter and its word, e.g. "ब … बत्तख़"). Played on the frozen round intro and
+  on "सुनो".
+- `public/audio/letters/<id>.mp3` — the **letter-only** sound (shared with the
+  blocks game). Played when a fish is tapped.
 - `public/audio/wrong-baap.mp3` — the soft "baaap" for a wrong tap.
 - `public/audio/clap.mp3` — clapping/cheer when a level is won.
 - `public/audio/wa-wa-wa.mp3` — sad "wa wa wa" when a level is lost.
@@ -87,3 +102,47 @@ they're used automatically. See `public/audio/letters/README.md`.
 ## 🧱 Tech
 
 Next.js (App Router) + React + TypeScript. No database, no auth, no tracking.
+
+---
+
+# 🧩 Hindi Blocks Game
+
+A second game (route **`/blocks`**) for blending letters into words.
+
+A picture (+ spoken word) appears at the top of a grid of **14 letter-blocks**.
+The child taps the **two adjacent blocks** that spell the word:
+
+- ✅ Correct → the pair flashes green, a clap plays, and they vanish; the blocks
+  above **slide straight down** to make new pairs. Then the next picture appears.
+- ❌ Wrong → the two tapped blocks flash red and stay.
+- Tapping any block plays that **letter's** sound; tapping the **picture** replays
+  the word. Clear all 14 blocks (7 words) to win.
+
+## 🧠 Always winnable
+
+Boards are **pre-generated offline and verified**, not made up at runtime:
+
+- `scripts/generate-boards.mjs` builds boards by reverse-construction, then checks
+  that they clear completely with a **unique** adjacent pair at every step (so the
+  child's correct move is never ambiguous).
+- 30 boards are baked into `lib/blocks/boards.ts`; one is chosen at random per game.
+- Every board contains all 8 letters (त appears via **तप**).
+- Re-run the generator if you change the words/rules:
+  `node scripts/generate-boards.mjs > /tmp/boards.json` (then regenerate the data file).
+
+## 🛠️ Where to edit
+
+| What | File |
+| --- | --- |
+| Words (Devanagari, letters, picture emoji, audio) | `lib/blocks/words.ts` |
+| Pre-generated winnable boards | `lib/blocks/boards.ts` (do not hand-edit) |
+| Board generator | `scripts/generate-boards.mjs` |
+| Grid gravity / adjacency rules | `lib/blocks/engine.ts` |
+| Game screen / block tile | `components/blocks/BlocksGame.tsx`, `components/blocks/Block.tsx` |
+
+## 🔊 Audio
+
+- `public/audio/words/<id>.mp3` — the 12 spoken words (bus, cup, sar, ras, bal,
+  chal, sab, kab, sach, par, pak, tap).
+- Letter taps reuse the shared `public/audio/letters/<id>.mp3` sounds.
+- Missing files fall back to a gentle synthesized tone, as in the fish game.

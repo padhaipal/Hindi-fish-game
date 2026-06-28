@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Hindi Fish Game",
+  title: "PadhaiPal Hindi Games",
   description:
-    "Tap the fish with the right Hindi letter! A simple pond game for young learners.",
+    "A collection of simple Hindi learning games for young children — a fish letter game and a blocks word game.",
 };
 
 // Mobile-first viewport: lock zoom so big tap targets stay put on small phones.

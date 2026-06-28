@@ -110,7 +110,7 @@ export const LETTERS: Letter[] = [
     audio: "/audio/letters/la.mp3",
     word: "लट्टू", // spinning top (lattu)
     // No emoji is a real lattu (🪀 is a yo-yo), so this one is drawn as a custom
-    // SVG — see `LattuIcon` in components/PondGame.tsx. Emoji kept only as a
+    // SVG — see `LattuIcon` in components/fish/PondGame.tsx. Emoji kept only as a
     // last-ditch fallback.
     emoji: "🌀",
     lookAlikes: ["sa"],
@@ -126,4 +126,14 @@ const BY_ID: Record<string, Letter> = LETTERS.reduce((acc, l) => {
 
 export function getLetter(id: string): Letter {
   return BY_ID[id] ?? LETTERS[0];
+}
+
+// Two recordings exist per letter:
+//   - `audio` (above) = the LETTER ONLY  (/audio/letters)       — bare sound.
+//   - this            = the PICTURE+LETTER (/audio/letters-word) — letter + its
+//                       word (e.g. "ब … बत्तख़").
+// The fish game plays picture+letter for the intro / सुनो prompt, and letter-only
+// when a fish is tapped. (Blocks game taps use letter-only too.)
+export function letterWordAudio(id: string): string {
+  return `/audio/letters-word/${id}.mp3`;
 }

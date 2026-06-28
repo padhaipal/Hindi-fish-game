@@ -17,7 +17,7 @@
 // animation. Big, finger-friendly tap target.
 // ---------------------------------------------------------------------------
 
-import { FishSpec } from "@/lib/round";
+import { FishSpec } from "@/lib/fish/round";
 
 interface FishProps {
   spec: FishSpec;
@@ -33,7 +33,7 @@ export default function Fish({
   registerGraphic,
   onTap,
 }: FishProps) {
-  // Colour is chosen randomly per fish (see lib/round.ts) so it never hints
+  // Colour is chosen randomly per fish (see lib/fish/round.ts) so it never hints
   // at which letter the fish carries.
   const color = spec.color;
   return (

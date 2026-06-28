@@ -429,3 +429,238 @@ body > div {
   30% { transform: translateY(-14px) scale(1.2); opacity: 1; }
   100% { transform: translateY(-70px) scale(1); opacity: 0; }
 }
+
+/* ===========================================================================
+   HINDI BLOCKS GAME
+   =========================================================================== */
+.blocksApp {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#e9f7ff 0%, #bfe6ff 55%, #93d4f5 100%);
+  overflow: hidden;
+}
+
+/* small link back to the games home */
+.cornerLink {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 8;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  background: #ffffffcc;
+  border-radius: 999px;
+  box-shadow: 0 3px 0 #00000018;
+  text-decoration: none;
+}
+
+/* ---- picture + progress ------------------------------------------------- */
+.blocksTop {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 12px 6px;
+  z-index: 5;
+}
+.pictureCard {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  border: 5px solid #ffd23f;
+  border-radius: 26px;
+  background: #fff;
+  box-shadow: 0 6px 0 #00000020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.pictureCard:active {
+  transform: translateY(3px);
+  box-shadow: 0 3px 0 #00000020;
+}
+.pictureEmoji {
+  font-size: 74px;
+  line-height: 1;
+}
+.pictureHint {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-size: 20px;
+  opacity: 0.7;
+}
+.progressDots {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.progressDots .dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff88;
+  box-shadow: inset 0 0 0 2px #00000010;
+}
+.progressDots .dot.done {
+  background: #37d67a;
+}
+
+/* ---- block grid --------------------------------------------------------- */
+.blocksArea {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 22px;
+}
+.blocksBoard {
+  position: relative;
+}
+
+.block {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: none;
+  padding: 0;
+  border-radius: 14px;
+  background: #c4ccd2;
+  box-shadow: 0 4px 0 #00000026, inset 0 2px 2px #ffffff66;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  will-change: transform;
+  /* slide (transform) when gravity pulls blocks down; colour fades smoothly */
+  transition: transform 0.28s cubic-bezier(0.3, 0.8, 0.4, 1),
+    background-color 0.18s ease, box-shadow 0.18s ease;
+  touch-action: manipulation;
+}
+.blockLetter {
+  font-size: 32px;
+  font-weight: 800;
+  color: #2a3b45;
+  pointer-events: none;
+}
+.block--selected {
+  background: #9fd4ff;
+  box-shadow: 0 4px 0 #00000026, 0 0 0 4px #2f9be0;
+}
+.block--correct {
+  background: #37d67a;
+  animation: blockPop 0.45s ease;
+}
+.block--correct .blockLetter {
+  color: #ffffff;
+}
+.block--wrong {
+  background: #ff5b5b;
+  animation: blockShake 0.4s ease;
+}
+.block--wrong .blockLetter {
+  color: #ffffff;
+}
+@keyframes blockPop {
+  0% { filter: brightness(1); }
+  40% { filter: brightness(1.15); }
+  100% { filter: brightness(1); }
+}
+@keyframes blockShake {
+  0%, 100% { margin-left: 0; }
+  25% { margin-left: -5px; }
+  75% { margin-left: 5px; }
+}
+
+/* link to the other game on a start screen */
+.overlayLink {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f8bbf;
+  text-decoration: none;
+}
+
+/* ===========================================================================
+   HOME (games collection landing)
+   =========================================================================== */
+.home {
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(#aef0ff 0%, #62d0f5 50%, #2bb4ec 100%);
+}
+.homeCard {
+  width: 100%;
+  max-width: 360px;
+  background: #ffffffe6;
+  border-radius: 30px;
+  padding: 26px 22px 30px;
+  text-align: center;
+  box-shadow: 0 10px 0 #00000022;
+}
+.homeLogo {
+  width: 132px;
+  height: 132px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 5px solid #ffd23f;
+  background: #fff;
+}
+.homeTitle {
+  margin: 12px 0 0;
+  font-size: 34px;
+  font-weight: 800;
+  color: #0a3d57;
+}
+.homeSub {
+  margin: 2px 0 20px;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1f8bbf;
+}
+.homeButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gameButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+  text-decoration: none;
+}
+.gameButton .gameEmoji {
+  font-size: 34px;
+}
+.gameButton.gbFish {
+  background: linear-gradient(#39b9f0, #1f8bbf);
+  box-shadow: 0 6px 0 #14688f;
+}
+.gameButton.gbBlocks {
+  background: linear-gradient(#37d67a, #1faa5a);
+  box-shadow: 0 6px 0 #14773f;
+}
+.gameButton:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #14688f;
+}
