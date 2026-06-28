@@ -3,7 +3,7 @@
 Two simple, bright, mobile-first Hindi games for young / low-literacy children,
 built for **PadhaiPal**. No login, no backend.
 
-- **🐟 Fish game** (`/`) — tap the fish carrying the target letter.
+- **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
 - **🧩 Blocks game** (`/blocks`) — tap the two blocks that spell the pictured word.
 
 Both share the 8 letters **ब स प र त क च ल** and their sounds
@@ -57,10 +57,10 @@ Everything you'll commonly want to tweak is small and commented:
 | What | File |
 | --- | --- |
 | The Hindi letters + picture emoji + look/sound-alike hints | `lib/letters.ts` |
-| Level difficulty (fish count, speed, time, distractors) | `lib/levels.ts` |
-| How a round's fish are chosen + fish colours | `lib/round.ts` |
+| Level difficulty (fish count, speed, time, distractors) | `lib/fish/levels.ts` |
+| How a round's fish are chosen + fish colours | `lib/fish/round.ts` |
 | Audio playback + safe fallback | `lib/audio.ts` |
-| The game screen / fish / overlays | `components/PondGame.tsx`, `components/Fish.tsx` |
+| The game screen / fish / overlays | `components/fish/PondGame.tsx`, `components/fish/Fish.tsx` |
 | Colours, sizes, animations | `app/globals.css` |
 
 ## 🏆 Scoring
@@ -80,14 +80,16 @@ The picture beside the target letter is a big **emoji** (see `emoji` in
 needed. e.g. ब → 🦆 (बत्तख़), स → 🧼 (साबुन). The one exception is ल (लट्टू),
 drawn as a small SVG `LattuIcon` since no emoji is a real Indian spinning top.
 
-The finish screen shows `public/images/padhaipal.jpeg` (with a branded-badge
+The finish screen shows `public/images/shared/padhaipal.jpeg` (with a branded-badge
 fallback if it isn't present yet).
 
 ## 🔊 Audio
 
-- `public/audio/letters/<id>.mp3` — one spoken letter per letter (`ba`, `sa`,
-  `pa`, `ra`, `ta`, `ka`, `cha`, `la`). Played on the frozen round intro, on
-  "सुनो", and on each correct catch.
+- `public/audio/letters-word/<id>.mp3` — the **picture+letter** recording (the
+  letter and its word, e.g. "ब … बत्तख़"). Played on the frozen round intro and
+  on "सुनो".
+- `public/audio/letters/<id>.mp3` — the **letter-only** sound (shared with the
+  blocks game). Played when a fish is tapped.
 - `public/audio/wrong-baap.mp3` — the soft "baaap" for a wrong tap.
 - `public/audio/clap.mp3` — clapping/cheer when a level is won.
 - `public/audio/wa-wa-wa.mp3` — sad "wa wa wa" when a level is lost.
@@ -136,7 +138,7 @@ Boards are **pre-generated offline and verified**, not made up at runtime:
 | Pre-generated winnable boards | `lib/blocks/boards.ts` (do not hand-edit) |
 | Board generator | `scripts/generate-boards.mjs` |
 | Grid gravity / adjacency rules | `lib/blocks/engine.ts` |
-| Game screen / block tile | `components/BlocksGame.tsx`, `components/Block.tsx` |
+| Game screen / block tile | `components/blocks/BlocksGame.tsx`, `components/blocks/Block.tsx` |
 
 ## 🔊 Audio
 

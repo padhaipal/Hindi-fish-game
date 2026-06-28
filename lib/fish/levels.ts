@@ -7,7 +7,7 @@
 //
 // Difficulty ramps from 3 fish up to 10 fish. The target letter always appears
 // in HALF the fish (rounded down) — that count is computed from `fishCount` in
-// lib/round.ts, so you only set `fishCount` here.
+// lib/fish/round.ts, so you only set `fishCount` here.
 //
 // Fields you can tweak per level:
 //   - `fishCount`      : total fish in the pond (target fish = floor(fishCount/2)).

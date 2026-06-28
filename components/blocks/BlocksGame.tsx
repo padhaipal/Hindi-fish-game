@@ -145,7 +145,7 @@ export default function BlocksGame() {
   return (
     <div className="blocksApp">
       <Link href="/" className="cornerLink" aria-label="games home">
-        🐟
+        🏠
       </Link>
 
       {/* Picture + spoken word (tap to hear it again) */}

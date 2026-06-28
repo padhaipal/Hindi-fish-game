@@ -6,7 +6,7 @@
 // carry. Kept separate from React so the game logic is easy to read and edit.
 // ---------------------------------------------------------------------------
 
-import { LETTERS, Letter, getLetter } from "./letters";
+import { LETTERS, Letter, getLetter } from "../letters";
 import { DistractorMode, LevelConfig } from "./levels";
 
 export interface FishSpec {
