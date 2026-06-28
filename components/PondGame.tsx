@@ -37,8 +37,9 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 
-// Where the final "पाठ पर जाएं" button sends the child (back to the PadhaiPal app).
-const PADHAIPAL_URL = "https://dashboard.padhaipal.com/r/919565897842";
+// Where the final "पाठ पर जाएं" button sends the child: a WhatsApp chat with the
+// PadhaiPal number (+91 8528097842). No text param = no auto-filled message.
+const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // Must match the .fish width/height in globals.css.
 const FISH = 88;
