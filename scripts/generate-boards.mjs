@@ -71,8 +71,10 @@ function solve(cols) {
 
 function buildBoard() {
   const cols = Array.from({ length: COLS }, () => []);
-  const words = ["tap"]; // always include तप so त appears
-  for (let i = 0; i < PAIRS - 1; i++) words.push(pick(NON_TA));
+  // DISTINCT words only (each word at most once per board) — always incl. तप.
+  const pool = NON_TA.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = ri(i + 1); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  const words = ["tap", ...pool.slice(0, PAIRS - 1)];
   for (let i = words.length - 1; i > 0; i--) { const j = ri(i + 1); [words[i], words[j]] = [words[j], words[i]]; }
   for (const id of words) {
     const [w0, w1] = WORDS[id];
@@ -108,6 +110,7 @@ for (let s = 1; s <= 600 && acc.length < WANT; s++) {
     if (seen.has(k)) continue;
     const order = solve(cols);
     if (!order || order.length !== PAIRS) continue;
+    if (new Set(order).size !== order.length) continue; // each word at most once
     seen.add(k);
     acc.push({ cols, order });
     lastNew = tries;

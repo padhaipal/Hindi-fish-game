@@ -39,8 +39,12 @@ import {
   playWordSound,
   playLetterSound,
   playWinSound,
+  stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+
+// Sends the child back to PadhaiPal on WhatsApp (same as the fish game).
+const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // Layout (keep in sync with .block sizing in globals.css).
 const CELL = 64; // block cell incl. gap
@@ -165,7 +169,8 @@ export default function BlocksGame() {
         setCorrectIds(new Set([selectedId, id]));
         setSelectedId(null);
         setFireworks({ id: fxSeq.current++, ...center(pair.occ) });
-        playWordSound(word.audio);
+        // 0.5s pause between the second letter's sound and the word's sound.
+        window.setTimeout(() => playWordSound(word.audio), 500);
 
         const occ = pair.occ;
         window.setTimeout(() => {
@@ -174,12 +179,9 @@ export default function BlocksGame() {
           setCorrectIds(new Set());
           setFireworks(null);
           if (isEmpty(next)) {
-            if (isLastLevel) {
-              setPhase("won");
-              playWinSound(); // applause — only after the LAST level
-            } else {
-              setPhase("levelComplete");
-            }
+            // Applause at the end of EVERY level (and the final win).
+            setPhase(isLastLevel ? "won" : "levelComplete");
+            playWinSound();
             busyRef.current = false;
           } else {
             // 0.5s pause, new picture appears...
@@ -193,7 +195,7 @@ export default function BlocksGame() {
               }, 500);
             }, 500);
           }
-        }, 700);
+        }, 1200);
       } else {
         // WRONG: red flash for ~0.7s, blocks stay.
         busyRef.current = true;
@@ -241,7 +243,13 @@ export default function BlocksGame() {
             }}
             aria-label={`hear the word ${target.word}`}
           >
-            <span className="pictureEmoji">{target.emoji}</span>
+            {/* kab is two emojis (clock + ?) — shrink so it fits the box */}
+            <span
+              className="pictureEmoji"
+              style={target.id === "kab" ? { fontSize: 74 } : undefined}
+            >
+              {target.emoji}
+            </span>
             <span className="pictureHint">🔊</span>
           </button>
           <div className="progressDots">
@@ -337,6 +345,7 @@ export default function BlocksGame() {
               className="bigButton"
               onClick={() => {
                 unlockAudio();
+                stopWinLoseSounds(); // cut the applause as soon as they move on
                 startLevel(levelIdx + 1);
               }}
             >
@@ -354,16 +363,14 @@ export default function BlocksGame() {
             <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
               सभी स्तर पूरे!
             </div>
-            <button
-              type="button"
+            {/* Back to PadhaiPal on WhatsApp (like the fish game's finish screen). */}
+            <a
               className="bigButton"
-              onClick={() => {
-                unlockAudio();
-                newGame();
-              }}
+              href={PADHAIPAL_URL}
+              onClick={() => stopWinLoseSounds()}
             >
-              🔁 फिर से
-            </button>
+              पाठ पर जाएं
+            </a>
           </div>
         </div>
       )}
