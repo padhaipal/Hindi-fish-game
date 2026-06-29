@@ -1,29 +1,27 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// HINDI BLOCKS GAME
+// HINDI BLOCKS GAME (with levels)
 // ---------------------------------------------------------------------------
-// A picture (+ spoken word) appears at the top of a FULL 5x4 grid of 20 blocks.
-// The child taps the TWO adjacent blocks (side-by-side OR stacked) that spell
+// Five levels of growing grids (3x2 → 5x4), each with its own background colour
+// (see lib/blocks/levels.ts). On each level a picture appears above a FULL grid;
+// the child taps the two adjacent blocks (side-by-side OR stacked) that spell
 // the word:
 //   - Correct -> the pair flashes green, FIREWORKS pop, the word says its name
-//     again, and the blocks vanish (those above slide straight down). After a
-//     short pause the next picture appears, then its word is spoken.
+//     again, and the blocks vanish (those above slide down). After a short pause
+//     the next picture appears, then its word is spoken.
 //   - Wrong -> the two tapped blocks flash red and stay.
 // Tapping a block plays that letter's sound; tapping the picture replays the
-// word. Applause plays only once, at the END (all 10 words cleared = win).
+// word. Clearing a level moves to the next; applause plays once, after the LAST
+// level (the whole game).
 //
-// A quick auto-demo highlights the correct pair on the very first word.
-//
-// Boards are pre-generated + verified winnable (lib/blocks/boards.ts): the word
-// for each step has a single adjacent occurrence, so the correct move is always
-// unambiguous.
+// A quick auto-demo highlights the correct pair on the very first word (level 1).
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Block, { BlockState } from "./Block";
-import { BOARDS } from "@/lib/blocks/boards";
+import { LEVELS } from "@/lib/blocks/levels";
 import { getWord } from "@/lib/blocks/words";
 import {
   Board,
@@ -48,9 +46,8 @@ import {
 const CELL = 64; // block cell incl. gap
 const SIZE = 58; // visible block size
 const INSET = (CELL - SIZE) / 2;
-const ROWS = 4; // full grid height
 
-type Phase = "start" | "playing" | "won";
+type Phase = "start" | "playing" | "levelComplete" | "won";
 
 interface Fireworks {
   id: number;
@@ -58,16 +55,9 @@ interface Fireworks {
   y: number;
 }
 
-// Pixel centre (within the board area) of an occurrence's pair.
-function occCenter(occ: Occ): { x: number; y: number } {
-  const bx = occ.c * CELL + INSET + SIZE / 2;
-  const by = (ROWS - 1 - occ.L) * CELL + INSET + SIZE / 2;
-  if (occ.o === "h") return { x: bx + CELL / 2, y: by };
-  return { x: bx, y: by - CELL / 2 }; // vertical: midpoint up half a cell
-}
-
 export default function BlocksGame() {
   const [phase, setPhase] = useState<Phase>("start");
+  const [levelIdx, setLevelIdx] = useState(0);
   const [order, setOrder] = useState<string[]>([]);
   const [targetIndex, setTargetIndex] = useState(0);
   const [board, setBoard] = useState<Board>([]);
@@ -81,32 +71,52 @@ export default function BlocksGame() {
   const busyRef = useRef(false); // locks taps during a flash/slide
   const demoShownRef = useRef(false); // demo plays only on first open
   const wantDemoRef = useRef(false);
+  const rowsRef = useRef(LEVELS[0].rows); // current level's row count
   const fxSeq = useRef(0);
 
+  const cfg = LEVELS[levelIdx];
   const target = order.length ? getWord(order[targetIndex]) : null;
+  const isLastLevel = levelIdx >= LEVELS.length - 1;
+
+  // Pixel centre (within the board area) of an occurrence's pair.
+  const center = useCallback((occ: Occ): { x: number; y: number } => {
+    const rows = rowsRef.current;
+    const bx = occ.c * CELL + INSET + SIZE / 2;
+    const by = (rows - 1 - occ.L) * CELL + INSET + SIZE / 2;
+    if (occ.o === "h") return { x: bx + CELL / 2, y: by };
+    return { x: bx, y: by - CELL / 2 }; // vertical: midpoint up half a cell
+  }, []);
 
   const clearHint = useCallback(() => {
     setHintIds(new Set());
     setHintPointer(null);
   }, []);
 
-  // ---- start a new game with a random board ------------------------------
-  const newGame = useCallback(() => {
-    const data = BOARDS[Math.floor(Math.random() * BOARDS.length)];
-    setBoard(makeBoard(data.cols));
-    setOrder(data.order);
-    setTargetIndex(0);
-    setSelectedId(null);
-    setCorrectIds(new Set());
-    setWrongIds(new Set());
-    clearHint();
-    setFireworks(null);
-    busyRef.current = false;
-    // show the demo only the very first time the game is opened
-    wantDemoRef.current = !demoShownRef.current;
-    setPhase("playing");
-    playWordSound(getWord(data.order[0]).audio); // speak the first word
-  }, [clearHint]);
+  // ---- start a given level (0-based) with a random board -----------------
+  const startLevel = useCallback(
+    (idx: number) => {
+      const lvl = LEVELS[idx];
+      const data = lvl.boards[Math.floor(Math.random() * lvl.boards.length)];
+      rowsRef.current = lvl.rows;
+      setLevelIdx(idx);
+      setBoard(makeBoard(data.cols));
+      setOrder(data.order);
+      setTargetIndex(0);
+      setSelectedId(null);
+      setCorrectIds(new Set());
+      setWrongIds(new Set());
+      clearHint();
+      setFireworks(null);
+      busyRef.current = false;
+      // demo only on the very first word of level 1, on first open
+      wantDemoRef.current = idx === 0 && !demoShownRef.current;
+      setPhase("playing");
+      playWordSound(getWord(data.order[0]).audio);
+    },
+    [clearHint]
+  );
+
+  const newGame = useCallback(() => startLevel(0), [startLevel]);
 
   // ---- auto-demo: highlight the correct pair on the first word -----------
   useEffect(() => {
@@ -117,8 +127,8 @@ export default function BlocksGame() {
     const occ = occurrences(board, getWord(order[0]).letters)[0];
     if (!occ) return;
     setHintIds(new Set(occBlocks(board, occ)));
-    setHintPointer(occCenter(occ));
-    const t = window.setTimeout(clearHint, 4500); // fades on its own if untouched
+    setHintPointer(center(occ));
+    const t = window.setTimeout(clearHint, 4500);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, targetIndex, board]);
@@ -127,7 +137,7 @@ export default function BlocksGame() {
   const handleTap = useCallback(
     (id: number) => {
       if (phase !== "playing" || busyRef.current) return;
-      clearHint(); // any tap dismisses the demo highlight
+      clearHint();
       const word = getWord(order[targetIndex]);
 
       // Play the tapped letter's sound FIRST — before any green/red flash.
@@ -154,8 +164,8 @@ export default function BlocksGame() {
         busyRef.current = true;
         setCorrectIds(new Set([selectedId, id]));
         setSelectedId(null);
-        setFireworks({ id: fxSeq.current++, ...occCenter(pair.occ) });
-        playWordSound(word.audio); // say the word again (no clap mid-game)
+        setFireworks({ id: fxSeq.current++, ...center(pair.occ) });
+        playWordSound(word.audio);
 
         const occ = pair.occ;
         window.setTimeout(() => {
@@ -164,11 +174,15 @@ export default function BlocksGame() {
           setCorrectIds(new Set());
           setFireworks(null);
           if (isEmpty(next)) {
-            setPhase("won");
-            playWinSound(); // applause — only at the very end
+            if (isLastLevel) {
+              setPhase("won");
+              playWinSound(); // applause — only after the LAST level
+            } else {
+              setPhase("levelComplete");
+            }
             busyRef.current = false;
           } else {
-            // 0.5s pause, then the new picture appears...
+            // 0.5s pause, new picture appears...
             window.setTimeout(() => {
               const nextIndex = targetIndex + 1;
               setTargetIndex(nextIndex);
@@ -191,7 +205,7 @@ export default function BlocksGame() {
         }, 700);
       }
     },
-    [phase, order, targetIndex, selectedId, board, clearHint]
+    [phase, order, targetIndex, selectedId, board, isLastLevel, clearHint, center]
   );
 
   const stateFor = (id: number): BlockState => {
@@ -202,16 +216,21 @@ export default function BlocksGame() {
   };
 
   const boardWidth = board.length * CELL;
-  const solved = targetIndex; // words cleared so far
+  const solved = targetIndex;
 
   return (
-    <div className="blocksApp">
+    <div className="blocksApp" style={{ background: cfg.bg }}>
       <Link href="/" className="cornerLink" aria-label="games home">
         🏠
       </Link>
+      {phase !== "start" && (
+        <div className="blocksLevelPill">
+          स्तर {levelIdx + 1}/{LEVELS.length}
+        </div>
+      )}
 
       {/* Picture + spoken word (tap to hear it again) */}
-      {target && phase !== "start" && (
+      {target && phase === "playing" && (
         <div className="blocksTop">
           <button
             type="button"
@@ -237,7 +256,7 @@ export default function BlocksGame() {
       <div className="blocksArea">
         <div
           className="blocksBoard"
-          style={{ width: boardWidth, height: ROWS * CELL }}
+          style={{ width: boardWidth, height: cfg.rows * CELL }}
         >
           {board.map((col, c) =>
             col.map((blk, L) => (
@@ -246,7 +265,7 @@ export default function BlocksGame() {
                 id={blk.id}
                 letterId={blk.letterId}
                 x={c * CELL + INSET}
-                y={(ROWS - 1 - L) * CELL + INSET}
+                y={(cfg.rows - 1 - L) * CELL + INSET}
                 size={SIZE}
                 state={stateFor(blk.id)}
                 hint={hintIds.has(blk.id)}
@@ -255,7 +274,6 @@ export default function BlocksGame() {
             ))
           )}
 
-          {/* demo pointer */}
           {hintPointer && (
             <span
               className="hintHand"
@@ -265,7 +283,6 @@ export default function BlocksGame() {
             </span>
           )}
 
-          {/* fireworks on a correct answer */}
           {fireworks && (
             <span
               key={fireworks.id}
@@ -307,13 +324,35 @@ export default function BlocksGame() {
         </div>
       )}
 
-      {phase === "won" && (
+      {phase === "levelComplete" && (
         <div className="overlay">
           <div className="overlayCard">
             <div className="overlayEmoji">🎉</div>
             <div className="overlayTitle">शाबाश!</div>
             <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सारे ब्लॉक हट गए!
+              स्तर {levelIdx + 1} पूरा!
+            </div>
+            <button
+              type="button"
+              className="bigButton"
+              onClick={() => {
+                unlockAudio();
+                startLevel(levelIdx + 1);
+              }}
+            >
+              ▶ अगला स्तर
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "won" && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">🏆</div>
+            <div className="overlayTitle">शाबाश!</div>
+            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
+              सभी स्तर पूरे!
             </div>
             <button
               type="button"
