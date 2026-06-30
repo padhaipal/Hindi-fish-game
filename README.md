@@ -241,11 +241,12 @@ next coach as a demo.
 A fifth game (route **`/pondhop`**) for **recognising one target letter
 repeatedly** while following a path across a river.
 
-The far bank (top) shows the **target picture**. A frog crosses by hopping only
-on the stones showing the **target letter**, one row at a time:
+The far bank (top) shows the **target picture**. Stones are **scattered** across
+the water; the **reachable** ones (the next hop) are highlighted with a yellow
+ring. A frog crosses by hopping only on the stones showing the **target letter**:
 
-- ✅ Correct stone → the frog **jumps** to it, its letter sound plays, and the
-  stone turns **green**. Reaching the far bank wins the level.
+- ✅ Correct stone → the frog **hops** to it along an arc, its letter sound
+  plays, and the stone turns **green**. Reaching the far bank wins the level.
 - ❌ Wrong stone → it flashes **red**, the frog **falls in with a splash**, and
   the level **restarts**.
 - A **timer bar** (as in the fish game) must not run out, or the level restarts.
