@@ -31,6 +31,10 @@ export default function Home() {
             <span className="gameEmoji">🚂</span>
             <span>रेल खेल</span>
           </Link>
+          <Link href="/pondhop" className="gameButton gbHop">
+            <span className="gameEmoji">🐸</span>
+            <span>छलांग खेल</span>
+          </Link>
         </nav>
       </div>
     </main>

@@ -13,10 +13,11 @@
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Card, { MemCard } from "./Card";
 import { MEMORY_LEVELS } from "@/lib/memory/levels";
 import { LETTERS, getLetter } from "@/lib/letters";
+import { hasLetterVideo, letterVideoSrc } from "@/lib/letterVideos";
 import {
   playPictureSound,
   playLetterSound,
@@ -32,7 +33,13 @@ const CARD_W = 78;
 const CARD_H = 96;
 const GAP = 10;
 
-type Phase = "start" | "playing" | "levelComplete" | "levelFail" | "allDone";
+type Phase =
+  | "start"
+  | "playing"
+  | "levelVideo" // reward clip for the winning letter (plays instead of applause)
+  | "levelComplete"
+  | "levelFail"
+  | "allDone";
 
 interface Flash {
   ids: number[];
@@ -47,7 +54,12 @@ export default function MemoryGame() {
   const [matchedIds, setMatchedIds] = useState<Set<number>>(new Set());
   const [flash, setFlash] = useState<Flash | null>(null);
   const [movesUsed, setMovesUsed] = useState(0);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [videoStarted, setVideoStarted] = useState(false);
   const busyRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  // Which screen to show after the reward video (level-complete or all-done).
+  const afterVideoRef = useRef<Phase>("levelComplete");
 
   const cfg = MEMORY_LEVELS[levelIdx];
   const movesAllowed = cfg.cols * cfg.rows;
@@ -81,6 +93,7 @@ export default function MemoryGame() {
     setMatchedIds(new Set());
     setFlash(null);
     setMovesUsed(0);
+    setVideoSrc(null);
     busyRef.current = false;
     setPhase("playing");
   }, []);
@@ -89,10 +102,26 @@ export default function MemoryGame() {
 
   // ---- after a turn resolves, see if the level is won or lost ------------
   const resolve = useCallback(
-    (matched: Set<number>, moves: number, total: number, lastLevel: boolean) => {
+    (
+      matched: Set<number>,
+      moves: number,
+      total: number,
+      lastLevel: boolean,
+      lastLetterId: string
+    ) => {
       if (matched.size === total) {
-        playWinSound(); // applause
-        setPhase(lastLevel ? "allDone" : "levelComplete");
+        const after: Phase = lastLevel ? "allDone" : "levelComplete";
+        // Reward: play the winning letter's video (instead of applause) if we
+        // have one; otherwise fall back to the applause sound.
+        if (hasLetterVideo(lastLetterId)) {
+          afterVideoRef.current = after;
+          setVideoStarted(false);
+          setVideoSrc(letterVideoSrc(lastLetterId));
+          setPhase("levelVideo");
+        } else {
+          playWinSound(); // applause
+          setPhase(after);
+        }
       } else if (moves >= movesAllowed) {
         playLoseSound(); // wa wa wa
         setPhase("levelFail");
@@ -100,6 +129,30 @@ export default function MemoryGame() {
     },
     [movesAllowed]
   );
+
+  // Autoplay the reward video; if the browser blocks autoplay-with-sound, the
+  // child can tap the video (or the "आगे" button) to continue.
+  useEffect(() => {
+    if (phase === "levelVideo" && videoRef.current) {
+      videoRef.current.play().catch(() => {
+        /* a tap will start it */
+      });
+    }
+  }, [phase]);
+
+  // Leave the video and move on to the level-complete / all-done screen.
+  const goAfterVideo = useCallback(() => {
+    const v = videoRef.current;
+    if (v) {
+      try {
+        v.pause();
+      } catch {
+        /* ignore */
+      }
+    }
+    setVideoSrc(null);
+    setPhase(afterVideoRef.current);
+  }, []);
 
   // ---- tap a card --------------------------------------------------------
   const handleTap = useCallback(
@@ -138,7 +191,7 @@ export default function MemoryGame() {
             setFlash(null);
             setFlippedIds([]);
             busyRef.current = false;
-            resolve(nm, moves, cards.length, isLastLevel);
+            resolve(nm, moves, cards.length, isLastLevel, a.letterId);
           }, 550);
         }, 500);
       } else {
@@ -148,7 +201,7 @@ export default function MemoryGame() {
             setFlash(null);
             setFlippedIds([]);
             busyRef.current = false;
-            resolve(matchedIds, moves, cards.length, isLastLevel);
+            resolve(matchedIds, moves, cards.length, isLastLevel, "");
           }, 750);
         }, 450);
       }
@@ -221,6 +274,31 @@ export default function MemoryGame() {
               }}
             >
               ▶ खेलो
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "levelVideo" && videoSrc && (
+        <div className="overlay">
+          <div className="videoCard">
+            <div className="letterVideoWrap" onClick={() => videoRef.current?.play().catch(() => {})}>
+              <video
+                ref={videoRef}
+                className="letterVideo"
+                src={videoSrc}
+                playsInline
+                autoPlay
+                preload="auto"
+                onPlay={() => setVideoStarted(true)}
+                onEnded={goAfterVideo}
+              />
+              {/* shown until the clip is actually playing (e.g. if the browser
+                  blocks autoplay-with-sound) — tap to start it */}
+              {!videoStarted && <span className="letterVideoPlay">▶</span>}
+            </div>
+            <button type="button" className="bigButton" onClick={goAfterVideo}>
+              आगे
             </button>
           </div>
         </div>
