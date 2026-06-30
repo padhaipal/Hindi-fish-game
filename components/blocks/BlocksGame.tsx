@@ -363,12 +363,10 @@ export default function BlocksGame() {
             <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
               सभी स्तर पूरे!
             </div>
-            {/* Back to PadhaiPal on WhatsApp (like the fish game's finish screen). */}
-            <a
-              className="bigButton"
-              href={PADHAIPAL_URL}
-              onClick={() => stopWinLoseSounds()}
-            >
+            {/* Back to PadhaiPal on WhatsApp (like the fish game's finish screen).
+                NB: we deliberately do NOT stop the applause here, so it keeps
+                playing through the redirect. */}
+            <a className="bigButton" href={PADHAIPAL_URL}>
               पाठ पर जाएं
             </a>
           </div>
