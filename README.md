@@ -201,20 +201,23 @@ letter — an unlimited supply). The child **drags** the coaches onto the track:
 - When the last coach is placed, the **train chugs off** and the word is **blended
   aloud**. Tapping the picture replays the spoken word.
 
-A session is `SESSION_LENGTH` (5) random words; finishing links back to PadhaiPal
-on WhatsApp. The first word gently pulses the correct next coach as a demo.
+A session **ramps by word length** — two 2-letter, two 3-letter, then two
+4-letter words (see `buildSession` in `lib/wordtrain/words.ts`) — and finishing
+links back to PadhaiPal on WhatsApp. The first word gently pulses the correct
+next coach as a demo.
 
 ## 🛠️ Where to edit / audio
 
 | What | File |
 | --- | --- |
-| Word list (reuses the Blocks words) + session length | `lib/wordtrain/words.ts` |
+| Word list (2-letter reuse Blocks; 3- & 4-letter) + session ramp | `lib/wordtrain/words.ts` |
 | Game screen / drag-and-drop / train | `components/wordtrain/WordTrainGame.tsx` |
 | Coach colours, track + rail, coach sizes | `app/globals.css` (Word Train section) |
 
-- Spoken words reuse `public/audio/words/<id>.mp3`; letter "clicks" reuse the
-  shared `public/audio/letters/<id>.mp3` sounds. Missing files fall back to a
+- Spoken words live at `public/audio/words/<id>.mp3` — the 2-letter words reuse
+  the Blocks recordings; the 3-letter (बरस, पलक, सबक, रबर) and 4-letter (कसरत,
+  सरकस) words have their own. Letter "clicks" reuse the shared
+  `public/audio/letters/<id>.mp3` sounds. Missing files fall back to a
   synthesized tone, as in the other games.
-- It currently uses the 12 **two-letter** words. Longer 3- and 4-letter words
-  (e.g. कसरत) can be added to `lib/wordtrain/words.ts` once their audio + picture
-  are recorded — the game already handles any word length.
+- To add more words, drop a spoken-word mp3 in `public/audio/words` and add an
+  entry to `lib/wordtrain/words.ts` — the game already handles any word length.

@@ -17,7 +17,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TRAIN_WORDS, TrainWord, SESSION_LENGTH } from "@/lib/wordtrain/words";
+import { buildSession, TrainWord } from "@/lib/wordtrain/words";
 import { LETTERS, getLetter } from "@/lib/letters";
 import {
   playLetterSound,
@@ -42,16 +42,6 @@ const COACH_COLOR: Record<string, string> = {
 };
 
 type Phase = "start" | "playing" | "done";
-
-// Pick `n` distinct random words for one session.
-function pickSession(n: number): TrainWord[] {
-  const pool = [...TRAIN_WORDS];
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [pool[i], pool[j]] = [pool[j], pool[i]];
-  }
-  return pool.slice(0, Math.min(n, pool.length));
-}
 
 export default function WordTrainGame() {
   const [phase, setPhase] = useState<Phase>("start");
@@ -100,7 +90,7 @@ export default function WordTrainGame() {
 
   const startGame = useCallback(() => {
     clearTimers();
-    const sess = pickSession(SESSION_LENGTH);
+    const sess = buildSession();
     setSession(sess);
     setPhase("playing");
     loadWord(sess, 0);
