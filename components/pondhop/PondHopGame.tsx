@@ -4,14 +4,15 @@
 // POND HOP GAME
 // ---------------------------------------------------------------------------
 // A frog crosses a river by hopping ONLY on stones showing the target letter.
-// The far bank (top) shows the target picture. The child taps the correct stone
-// in the current row to hop forward:
-//   - correct -> the frog jumps to it, its sound is spoken, the stone turns
-//     green (hopped). Reaching the far bank wins the level.
-//   - wrong   -> the stone turns red, the frog falls in with a splash, and the
-//     level restarts.
-// A timer bar (as in the fish game) must not run out before you cross, or the
-// level restarts. Levels use more & smaller stones; finishing links to PadhaiPal.
+// The far bank (top) shows the target picture. Stones are scattered across the
+// water; the child taps one of the highlighted "reachable" stones (the next row
+// up) to make the frog HOP to it along an arc:
+//   - correct -> the frog jumps across, its sound is spoken, the stone turns
+//     green. Reaching the far bank wins the level.
+//   - wrong   -> the frog leaps at the stone, it turns red, and the frog falls
+//     in with a splash, so the level restarts.
+// A timer bar (as in the fish game) must not run out, or the level restarts.
+// Levels use more & smaller stones; finishing links to PadhaiPal.
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";
@@ -31,6 +32,11 @@ import {
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
+// Where the frog stands before its first hop (% of the water area).
+const START_POS = { x: 50, y: 95 };
+// Hop animation length — keep the win/lose timing in step with this.
+const HOP_MS = 480;
+
 type Phase = "start" | "intro" | "playing" | "levelComplete" | "lost" | "allDone";
 
 export default function PondHopGame() {
@@ -39,7 +45,9 @@ export default function PondHopGame() {
   const [target, setTarget] = useState<Letter | null>(null);
   const [board, setBoard] = useState<HopStone[][]>([]);
   const [pos, setPos] = useState(-1); // index of the last row hopped onto (-1 = near bank)
-  const [frogStoneId, setFrogStoneId] = useState<number | null>(null);
+  const [frog, setFrog] = useState(START_POS); // frog position (% of water)
+  const [hopCount, setHopCount] = useState(0); // bumps each hop to retrigger the arc
+  const [frogFell, setFrogFell] = useState(false);
   const [redStoneId, setRedStoneId] = useState<number | null>(null);
   const [splashId, setSplashId] = useState<number | null>(null);
   const [roundId, setRoundId] = useState(0);
@@ -51,11 +59,22 @@ export default function PondHopGame() {
   const busyRef = useRef(false);
   const introRef = useRef(-1);
   const letterOrderRef = useRef<string[]>([]);
+  const timers = useRef<number[]>([]);
+
+  const clearTimers = () => {
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+  };
+  const later = (fn: () => void, ms: number) => {
+    timers.current.push(window.setTimeout(fn, ms));
+  };
+  useEffect(() => () => clearTimers(), []);
 
   const isLastLevel = level >= TOTAL_HOP_LEVELS;
 
   // ---- start (or restart) a level ----------------------------------------
   const startLevel = useCallback((levelNumber: number) => {
+    clearTimers();
     const cfg = HOP_LEVELS[levelNumber - 1];
     const targetId = letterOrderRef.current[(levelNumber - 1) % letterOrderRef.current.length];
     const tgt = getLetter(targetId);
@@ -70,7 +89,9 @@ export default function PondHopGame() {
     setTarget(tgt);
     setBoard(rows);
     setPos(-1);
-    setFrogStoneId(null);
+    setFrog(START_POS);
+    setHopCount(0);
+    setFrogFell(false);
     setRedStoneId(null);
     setSplashId(null);
     setPhase("intro"); // frozen; the intro sound unfreezes into "playing"
@@ -98,7 +119,6 @@ export default function PondHopGame() {
       introRef.current = roundId;
       const rid = roundId;
       playLetterSound(letterWordAudio(target.id), () => {
-        // Only unfreeze if we're still on the same round.
         setPhase((p) => (p === "intro" && rid === roundId ? "playing" : p));
       });
     }
@@ -142,36 +162,42 @@ export default function PondHopGame() {
     (rowIndex: number, stone: HopStone) => {
       if (phase !== "playing" || busyRef.current || roundOverRef.current) return;
       const activeRow = pos + 1;
-      if (rowIndex !== activeRow) return; // only the current row is hoppable
+      if (rowIndex !== activeRow) return; // only the reachable (next) row is hoppable
       unlockAudio();
 
+      // The frog hops to whichever stone was tapped (right or wrong).
+      setFrog({ x: stone.x, y: stone.y });
+      setHopCount((h) => h + 1);
+
       if (stone.isTarget) {
-        // CORRECT: hop forward, speak the letter, turn the stone green.
+        // CORRECT: speak the letter, the stone turns green, advance.
         playLetterSound(getLetter(stone.letterId).audio);
-        setFrogStoneId(stone.id);
         const newPos = pos + 1;
         setPos(newPos);
 
         if (newPos >= board.length - 1) {
-          // Reached the far bank -> the level is won.
+          // Reached the far bank -> the level is won (after the hop lands).
           roundOverRef.current = true;
           busyRef.current = true;
-          window.setTimeout(() => {
+          later(() => {
             playWinSound(); // applause
             setPhase(isLastLevel ? "allDone" : "levelComplete");
-          }, 550);
+          }, HOP_MS + 250);
         }
       } else {
-        // WRONG: red stone, splash, fall in -> restart the level.
+        // WRONG: the frog leaps at the stone, it turns red, the frog falls in.
         roundOverRef.current = true;
         busyRef.current = true;
         setRedStoneId(stone.id);
-        setSplashId(stone.id);
-        playWrongSound(); // the "splash"
-        window.setTimeout(() => {
+        later(() => {
+          setSplashId(stone.id);
+          setFrogFell(true);
+          playWrongSound(); // the "splash"
+        }, HOP_MS - 40);
+        later(() => {
           playLoseSound(); // sad "wa wa wa"
           setPhase("lost");
-        }, 750);
+        }, HOP_MS + 450);
       }
     },
     [phase, pos, board, isLastLevel]
@@ -199,7 +225,7 @@ export default function PondHopGame() {
         </div>
       )}
 
-      {/* The river: far bank (target) at top, rows of stones, near bank at bottom */}
+      {/* The river: far bank (target) at top, scattered stones, near bank below */}
       {phase !== "start" && target && (
         <div className="hopRiver">
           {/* Far bank — the side we're crossing TO — shows the target picture. */}
@@ -223,62 +249,62 @@ export default function PondHopGame() {
             </button>
           </div>
 
-          {/* Stone rows. column-reverse: row 0 (first hop) sits at the bottom. */}
-          <div className="hopRows">
-            {board.map((row, rowIndex) => {
-              const isActiveRow = rowIndex === activeRow && playing;
-              const rowState =
-                rowIndex < activeRow ? "past" : isActiveRow ? "active" : "ahead";
-              return (
-                <div key={rowIndex} className={`hopRow ${rowState}`}>
-                  {row.map((stone) => {
-                    const hopped = stone.isTarget && rowIndex <= pos;
-                    const isRed = stone.id === redStoneId;
-                    const hasFrog = stone.id === frogStoneId;
-                    const cls = [
-                      "hopStone",
-                      rowState,
-                      hopped ? "hopped" : "",
-                      isRed ? "wrong" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                    return (
-                      <button
-                        key={stone.id}
-                        type="button"
-                        className={cls}
-                        style={{ width: cfg.stoneSize, height: cfg.stoneSize }}
-                        disabled={rowState !== "active"}
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          handleStone(rowIndex, stone);
-                        }}
-                        aria-label={`stone ${getLetter(stone.letterId).char}`}
-                      >
-                        <span className="hopStoneChar">{getLetter(stone.letterId).char}</span>
-                        {hasFrog && (
-                          <span className="hopFrog" key={`frog-${pos}`}>
-                            🐸
-                          </span>
-                        )}
-                        {stone.id === splashId && <span className="hopSplash">💦</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              );
-            })}
-          </div>
+          {/* Water — stones + frog are positioned by % within here. */}
+          <div className="hopWater">
+            {board.map((row, rowIndex) =>
+              row.map((stone) => {
+                const reachable = rowIndex === activeRow && playing;
+                const hopped = stone.isTarget && rowIndex <= pos;
+                const isRed = stone.id === redStoneId;
+                const cls = [
+                  "hopStone",
+                  reachable ? "reachable" : rowIndex <= pos ? "past" : "ahead",
+                  hopped ? "hopped" : "",
+                  isRed ? "wrong" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <button
+                    key={stone.id}
+                    type="button"
+                    className={cls}
+                    style={{
+                      left: `${stone.x}%`,
+                      top: `${stone.y}%`,
+                      width: cfg.stoneSize,
+                      height: cfg.stoneSize,
+                    }}
+                    disabled={!reachable}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      handleStone(rowIndex, stone);
+                    }}
+                    aria-label={`stone ${getLetter(stone.letterId).char}`}
+                  >
+                    <span className="hopStoneChar">{getLetter(stone.letterId).char}</span>
+                    {stone.id === splashId && <span className="hopSplash">💦</span>}
+                  </button>
+                );
+              })
+            )}
 
-          {/* Near bank — where the frog starts. */}
-          <div className="hopBank hopNear">
-            {frogStoneId === null && (
-              <span className="hopFrog hopFrogStart" key={`frog-start-${roundId}`}>
-                🐸
-              </span>
+            {/* The frog — a single element that hops along an arc between stones. */}
+            {!frogFell && (
+              <div
+                className="hopFrog"
+                key={`frog-${roundId}`}
+                style={{ left: `${frog.x}%`, top: `${frog.y}%` }}
+              >
+                <span className="hopFrogBody" key={hopCount}>
+                  🐸
+                </span>
+              </div>
             )}
           </div>
+
+          {/* Near bank — the grassy start. */}
+          <div className="hopBank hopNear" />
         </div>
       )}
 

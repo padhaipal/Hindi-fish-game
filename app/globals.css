@@ -1206,30 +1206,18 @@ body > div {
   font-size: 16px;
 }
 
-/* the stone rows. column-reverse so row 0 (first hop) is at the bottom. */
-.hopRows {
+/* the water — the coordinate space stones + frog are positioned within (%) */
+.hopWater {
+  position: relative;
   flex: 1 1 auto;
   width: 100%;
-  display: flex;
-  flex-direction: column-reverse;
-  justify-content: space-around;
-  align-items: center;
-  gap: 6px;
   min-height: 0;
 }
-.hopRow {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 14px;
-}
-.hopRow.ahead {
-  opacity: 0.55;
-}
 
-/* a stone */
+/* a stone — positioned absolutely by its % (x, y), centred on that point */
 .hopStone {
-  position: relative;
+  position: absolute;
+  transform: translate(-50%, -50%);
   border: none;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #c7cdd4 0%, #9aa3ad 60%, #79828d 100%);
@@ -1240,79 +1228,86 @@ body > div {
   cursor: pointer;
   touch-action: manipulation;
   padding: 0;
+  opacity: 0.5; /* far/idle stones sit well back */
+  transition: opacity 0.25s ease;
+}
+.hopStone.past {
+  opacity: 0.85;
 }
 .hopStone:disabled {
   cursor: default;
 }
-.hopStone.active {
+/* reachable stones (the frog's next hop) are bright, ringed + glowing + tappable */
+.hopStone.reachable {
+  opacity: 1;
   animation: hopStonePulse 1.1s ease-in-out infinite;
 }
 @keyframes hopStonePulse {
-  0%, 100% { box-shadow: 0 4px 0 #00000033, inset 0 3px 5px #ffffff55, 0 0 0 0 #fff6; }
-  50% { box-shadow: 0 4px 0 #00000033, inset 0 3px 5px #ffffff55, 0 0 0 6px #ffffff66; }
+  0%, 100% { box-shadow: 0 4px 0 #00000033, inset 0 3px 5px #ffffff55, 0 0 0 3px #ffd23fdd; }
+  50% { box-shadow: 0 4px 0 #00000033, inset 0 3px 5px #ffffff55, 0 0 0 9px #ffd23f66; }
 }
 .hopStoneChar {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   color: #18313f;
 }
 /* hopped (passed) target stones turn green */
 .hopStone.hopped {
   background: radial-gradient(circle at 35% 30%, #6ee08a 0%, #34c062 60%, #1ea24c 100%);
-  animation: none;
 }
 .hopStone.hopped .hopStoneChar {
   color: #ffffff;
 }
-/* wrong stone flashes red */
+/* wrong stone flashes red (keeps its centring transform) */
 .hopStone.wrong {
   background: radial-gradient(circle at 35% 30%, #ff8a8a 0%, #f25b5b 60%, #e23b3b 100%);
-  animation: hopShake 0.4s ease;
+  opacity: 1;
+  animation: hopStoneWrong 0.4s ease;
 }
 .hopStone.wrong .hopStoneChar {
   color: #fff;
 }
-@keyframes hopShake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-5px); }
-  75% { transform: translateX(5px); }
+@keyframes hopStoneWrong {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.14); }
 }
 
-/* the frog sits on top of its stone and hops when it lands */
+/* the frog — one element that GLIDES (left/top) between stones while its body
+   lifts in an arc, so it really "hops" from stone to stone */
 .hopFrog {
   position: absolute;
-  top: -22px;
-  left: 50%;
+  transform: translate(-50%, -62%);
+  z-index: 6;
+  pointer-events: none;
+  transition: left 0.48s cubic-bezier(0.45, 0, 0.45, 1),
+    top 0.48s cubic-bezier(0.45, 0, 0.45, 1);
+}
+.hopFrogBody {
+  display: inline-block;
   font-size: 34px;
   line-height: 1;
-  transform: translateX(-50%);
-  pointer-events: none;
   filter: drop-shadow(0 3px 2px #00000033);
-  animation: hopJump 0.42s ease;
+  animation: hopArc 0.48s ease;
 }
-.hopFrogStart {
-  position: static;
-  transform: none;
-  animation: none;
-}
-@keyframes hopJump {
-  0% { transform: translateX(-50%) translateY(14px) scale(0.9); }
-  45% { transform: translateX(-50%) translateY(-20px) scale(1.12); }
-  100% { transform: translateX(-50%) translateY(0) scale(1); }
+@keyframes hopArc {
+  0% { transform: translateY(0) scale(0.95); }
+  45% { transform: translateY(-34px) scale(1.12); }
+  100% { transform: translateY(0) scale(1); }
 }
 
 /* splash when the frog falls in on a wrong tap */
 .hopSplash {
   position: absolute;
-  top: -10px;
+  top: -6px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 34px;
+  font-size: 38px;
   pointer-events: none;
-  animation: hopSplash 0.7s ease forwards;
+  z-index: 7;
+  animation: hopSplash 0.8s ease forwards;
 }
 @keyframes hopSplash {
   0% { transform: translateX(-50%) scale(0.4); opacity: 0; }
   35% { transform: translateX(-50%) scale(1.2); opacity: 1; }
-  100% { transform: translateX(-50%) scale(1.4) translateY(6px); opacity: 0; }
+  100% { transform: translateX(-50%) scale(1.5) translateY(8px); opacity: 0; }
 }
