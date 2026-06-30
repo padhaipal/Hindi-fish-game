@@ -193,7 +193,8 @@ in the right order**.
 A picture (+ spoken word) appears at the top; the written word is **not** shown.
 A train **track** displays one shadow "coach" per letter (so the child sees how
 long the word is), and the eight letter **coaches** sit at the bottom (one per
-letter — an unlimited supply). The child **drags** the coaches onto the track:
+letter — an unlimited supply). The child **drags** a coach onto the track **or
+just taps it** — either way it lands in the next slot:
 
 - ✅ Correct next letter → the coach **clicks into place** beside the engine and
   says its sound.
