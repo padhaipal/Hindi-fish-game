@@ -23,6 +23,10 @@ export default function Home() {
             <span className="gameEmoji">🧩</span>
             <span>ब्लॉक खेल</span>
           </Link>
+          <Link href="/memory" className="gameButton gbMemory">
+            <span className="gameEmoji">🧠</span>
+            <span>याद खेल</span>
+          </Link>
         </nav>
       </div>
     </main>

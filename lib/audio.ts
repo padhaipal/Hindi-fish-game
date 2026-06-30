@@ -34,7 +34,7 @@ function getAudioContext(): AudioContext | null {
 
 // The kinds of feedback the game can play. Each has a real audio file, and the
 // fallback tone below is shaped to match its mood if that file is missing.
-type SoundKind = "correct" | "wrong" | "win" | "lose";
+type SoundKind = "correct" | "wrong" | "win" | "lose" | "bing";
 
 // Play one note: a frequency glide from `f0` to `f1` over `dur` seconds,
 // starting at `at` seconds from now.
@@ -81,6 +81,10 @@ function playFallbackTone(kind: SoundKind): void {
       playNote(ctx, 523, 523, 0.0, 0.14, "triangle", 0.22);
       playNote(ctx, 659, 659, 0.13, 0.14, "triangle", 0.22);
       playNote(ctx, 784, 880, 0.26, 0.22, "triangle", 0.24);
+    } else if (kind === "bing") {
+      // a bright two-note "bing!" for a correct match
+      playNote(ctx, 988, 988, 0.0, 0.1, "sine", 0.22);
+      playNote(ctx, 1319, 1319, 0.1, 0.18, "sine", 0.24);
     } else {
       // "wa wa wa" — three descending wobbly tones.
       playNote(ctx, 392, 330, 0.0, 0.22, "sawtooth", 0.18);
@@ -183,6 +187,17 @@ export function playEndgameSound(): void {
 // Spoken word for the Blocks game (e.g. /audio/words/bus.mp3).
 export function playWordSound(src: string): void {
   playSound(src, "correct");
+}
+
+// Memory game: the picture's word (e.g. "batakh") — trimmed from the fish game's
+// picture+letter recording.
+export function playPictureSound(letterId: string): void {
+  playSound(`/audio/pictures/${letterId}.mp3`, "correct");
+}
+
+// Memory game: a bright "bing!" when two cards match.
+export function playBingSound(): void {
+  playSound("/audio/bing.mp3", "bing");
 }
 
 // Stop a specific sound file if it is currently playing.

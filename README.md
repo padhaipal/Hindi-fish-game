@@ -1,13 +1,14 @@
 # 🎮 Hindi Learning Games
 
-Two simple, bright, mobile-first Hindi games for young / low-literacy children,
+Three simple, bright, mobile-first Hindi games for young / low-literacy children,
 built for **PadhaiPal**. No login, no backend.
 
 - **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
 - **🧩 Blocks game** (`/blocks`) — tap the two blocks that spell the pictured word.
+- **🧠 Memory game** (`/memory`) — match each picture card with its letter card.
 
-Both share the 8 letters **ब स प र त क च ल** and their sounds
-(`public/audio/letters`). See the [Blocks game](#-hindi-blocks-game-blocks) section below.
+All three share the 8 letters **ब स प र त क च ल** and their sounds
+(`public/audio/letters`).
 
 ---
 
@@ -146,3 +147,36 @@ Boards are **pre-generated offline and verified**, not made up at runtime:
   chal, sab, kab, sach, par, pak, tap).
 - Letter taps reuse the shared `public/audio/letters/<id>.mp3` sounds.
 - Missing files fall back to a gentle synthesized tone, as in the fish game.
+
+---
+
+# 🧠 Hindi Memory Game
+
+A third game (route **`/memory`**): a concentration game matching **picture**
+cards with **letter** cards.
+
+- Tap a card → it flips and its sound plays: a picture plays the **word**
+  ("batakh"), a letter plays the **letter** ("ba").
+- **Match** (a picture + its letter) → flash green, a **"bing!"**, the pair
+  disappears. **No match** → flash red, both flip back.
+- A **moves bar** across the top (coloured like the fish timer, but counting
+  moves not time) gives `cols × rows` moves (= 2× the pairs — generous). Clear
+  the board in time → **applause** + next level. Run out → **"wa wa wa"** and you
+  retry the same level.
+- 4 levels of growing grids, each a different background colour:
+  3×2 (6 cards) → 4×2 → 4×3 → 4×4 (16 cards, all 8 letters). The final screen
+  links back to PadhaiPal on WhatsApp.
+
+## 🛠️ Where to edit / audio
+
+| What | File |
+| --- | --- |
+| Level grids + background colours | `lib/memory/levels.ts` |
+| Game screen / card | `components/memory/MemoryGame.tsx`, `components/memory/Card.tsx` |
+
+- `public/audio/pictures/<id>.mp3` — the picture **word** for each letter,
+  auto-trimmed from the fish game's picture+letter recordings (the trailing
+  letter removed). Letter taps reuse `public/audio/letters/<id>.mp3`.
+- The match **"bing"** has no file yet, so a short synthesized chime plays
+  (`playBingSound` in `lib/audio.ts`); drop in `public/audio/bing.mp3` to use a
+  real one.
