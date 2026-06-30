@@ -19,6 +19,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildSession, TrainWord } from "@/lib/wordtrain/words";
 import { LETTERS, getLetter } from "@/lib/letters";
+import EraserIcon from "@/components/shared/EraserIcon";
 import {
   playLetterSound,
   playWordSound,
@@ -43,6 +44,38 @@ const COACH_COLOR: Record<string, string> = {
 
 type Phase = "start" | "playing" | "done";
 
+// The top picture for a word. Most words are a plain emoji, but a couple need
+// help reading clearly: रबर uses a drawn Indian eraser, and पलक adds an arrow
+// pointing at the eyelid (so the eye emoji isn't mistaken for "eye").
+function WordPicture({ word }: { word: TrainWord }) {
+  if (word.id === "rabar") return <EraserIcon size={104} />;
+  if (word.id === "palak") {
+    return (
+      <span className="palakPic">
+        <span className="palakEye">👁️</span>
+        <svg className="palakArrow" viewBox="0 0 100 100" aria-hidden="true">
+          <path
+            d="M86 14 L52 41"
+            stroke="#e23b3b"
+            strokeWidth="7"
+            strokeLinecap="round"
+            fill="none"
+          />
+          <path d="M52 41 L66 38 L60 52 Z" fill="#e23b3b" />
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span
+      className="pictureEmoji trainEmoji"
+      style={word.id === "kab" ? { fontSize: 60 } : undefined}
+    >
+      {word.emoji}
+    </span>
+  );
+}
+
 export default function WordTrainGame() {
   const [phase, setPhase] = useState<Phase>("start");
   const [session, setSession] = useState<TrainWord[]>([]);
@@ -55,7 +88,12 @@ export default function WordTrainGame() {
   const [drag, setDrag] = useState<{ letterId: string; x: number; y: number } | null>(
     null
   );
-  const dragRef = useRef<{ letterId: string; pointerId: number } | null>(null);
+  const dragRef = useRef<{
+    letterId: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false); // lock input while a word is resolving
   const timers = useRef<number[]>([]);
@@ -154,7 +192,12 @@ export default function WordTrainGame() {
       } catch {
         /* ignore */
       }
-      dragRef.current = { letterId, pointerId: e.pointerId };
+      dragRef.current = {
+        letterId,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+      };
       setDrag({ letterId, x: e.clientX, y: e.clientY });
     },
     [phase, moving]
@@ -173,7 +216,9 @@ export default function WordTrainGame() {
       dragRef.current = null;
       setDrag(null);
 
-      // Dropped over the track? (a generous hit area for little fingers)
+      // Two ways to play, both land the coach in the next slot:
+      //   1) DRAG it over the track (a generous hit area for little fingers), or
+      //   2) just TAP the coach (released roughly where it was pressed).
       const r = trackRef.current?.getBoundingClientRect();
       const over =
         !!r &&
@@ -181,7 +226,9 @@ export default function WordTrainGame() {
         e.clientX <= r.right + 24 &&
         e.clientY >= r.top - 60 &&
         e.clientY <= r.bottom + 40;
-      if (over) tryPlace(d.letterId);
+      const moved = Math.hypot(e.clientX - d.startX, e.clientY - d.startY);
+      const isTap = moved < 12;
+      if (over || isTap) tryPlace(d.letterId);
     },
     [tryPlace]
   );
@@ -212,12 +259,7 @@ export default function WordTrainGame() {
             onClick={replay}
             aria-label="सुनो"
           >
-            <span
-              className="pictureEmoji trainEmoji"
-              style={word.id === "kab" ? { fontSize: 60 } : undefined}
-            >
-              {word.emoji}
-            </span>
+            <WordPicture word={word} />
             <span className="pictureHint">🔊</span>
           </button>
         </div>
