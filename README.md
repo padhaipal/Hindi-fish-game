@@ -1,6 +1,6 @@
 # 🎮 Hindi Learning Games
 
-Four simple, bright, mobile-first Hindi games for young / low-literacy children,
+Five simple, bright, mobile-first Hindi games for young / low-literacy children,
 built for **PadhaiPal**. No login, no backend.
 
 - **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
@@ -8,8 +8,10 @@ built for **PadhaiPal**. No login, no backend.
 - **🧠 Memory game** (`/memory`) — match each picture card with its letter card.
 - **🚂 Word Train game** (`/wordtrain`) — drag the letter coaches onto the track,
   in order, to spell the pictured word.
+- **🐸 Pond Hop game** (`/pondhop`) — hop across the river on the stones showing
+  the target letter, before the timer runs out.
 
-All four share the 8 letters **ब स प र त क च ल** and their sounds
+All five share the 8 letters **ब स प र त क च ल** and their sounds
 (`public/audio/letters`).
 
 ---
@@ -163,11 +165,19 @@ cards with **letter** cards.
   disappears. **No match** → flash red, both flip back.
 - A **moves bar** across the top (coloured like the fish timer, but counting
   moves not time) gives `cols × rows` moves (= 2× the pairs — generous). Clear
-  the board in time → **applause** + next level. Run out → **"wa wa wa"** and you
-  retry the same level.
+  the board in time → **reward video** (see below) + next level. Run out →
+  **"wa wa wa"** and you retry the same level.
 - 4 levels of growing grids, each a different background colour:
   3×2 (6 cards) → 4×2 → 4×3 → 4×4 (16 cards, all 8 letters). The final screen
   links back to PadhaiPal on WhatsApp.
+
+### 🎬 Reward video
+When a level is **won**, instead of applause we play a short clip for the **last
+matched letter** (e.g. a duck forming ब) — to make the picture↔letter link more
+memorable. Clips live in `public/videos/<letterId>.mp4` and the available ids are
+listed in `lib/letterVideos.ts` (all 8 letters). A letter with **no** clip would
+fall back to the applause sound, so nothing breaks. The child can tap the video
+or **आगे** to continue.
 
 ## 🛠️ Where to edit / audio
 
@@ -175,6 +185,7 @@ cards with **letter** cards.
 | --- | --- |
 | Level grids + background colours | `lib/memory/levels.ts` |
 | Game screen / card | `components/memory/MemoryGame.tsx`, `components/memory/Card.tsx` |
+| Which letters have a reward video | `lib/letterVideos.ts` |
 
 - `public/audio/pictures/<id>.mp3` — the picture **word** for each letter,
   auto-trimmed from the fish game's picture+letter recordings (the trailing
@@ -222,3 +233,37 @@ next coach as a demo.
   synthesized tone, as in the other games.
 - To add more words, drop a spoken-word mp3 in `public/audio/words` and add an
   entry to `lib/wordtrain/words.ts` — the game already handles any word length.
+
+---
+
+# 🐸 Hindi Pond Hop Game
+
+A fifth game (route **`/pondhop`**) for **recognising one target letter
+repeatedly** while following a path across a river.
+
+The far bank (top) shows the **target picture**. A frog crosses by hopping only
+on the stones showing the **target letter**, one row at a time:
+
+- ✅ Correct stone → the frog **jumps** to it, its letter sound plays, and the
+  stone turns **green**. Reaching the far bank wins the level.
+- ❌ Wrong stone → it flashes **red**, the frog **falls in with a splash**, and
+  the level **restarts**.
+- A **timer bar** (as in the fish game) must not run out, or the level restarts.
+- Tapping the far-bank picture replays the prompt.
+
+Five levels use **more & smaller stones** — 8 stones / 3 hops, then 12 / 4,
+16 / 5, 20 / 6, 24 / 7 — each level a different water tint and a different
+target letter (random order per game). Applause plays at the end of each level;
+the final screen links back to PadhaiPal on WhatsApp.
+
+## 🛠️ Where to edit
+
+| What | File |
+| --- | --- |
+| Stones / targets / time / size per level | `lib/pondhop/levels.ts` |
+| Row layout + distractor letters | `lib/pondhop/board.ts` |
+| Game screen / frog / stones | `components/pondhop/PondHopGame.tsx` |
+
+- Letter sounds reuse `public/audio/letters/<id>.mp3`; the intro prompt reuses
+  the picture+letter recording (`public/audio/letters-word/<id>.mp3`), as in the
+  fish game.
