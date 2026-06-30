@@ -27,6 +27,10 @@ export default function Home() {
             <span className="gameEmoji">🧠</span>
             <span>याद खेल</span>
           </Link>
+          <Link href="/wordtrain" className="gameButton gbTrain">
+            <span className="gameEmoji">🚂</span>
+            <span>रेल खेल</span>
+          </Link>
         </nav>
       </div>
     </main>
