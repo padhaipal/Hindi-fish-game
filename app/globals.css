@@ -741,3 +741,135 @@ body > div {
   color: #0a3d57;
   box-shadow: 0 3px 0 #00000018;
 }
+
+/* third game button on the home menu */
+.gameButton.gbMemory {
+  background: linear-gradient(#b07cff, #7c3fe0);
+  box-shadow: 0 6px 0 #5a2bb0;
+}
+
+/* ===========================================================================
+   HINDI MEMORY GAME
+   =========================================================================== */
+.memoryApp {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* moves bar */
+.memMovesTop {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 4px 64px; /* leave room for the corner home link */
+  z-index: 5;
+}
+.memMovesLabel {
+  font-size: 15px;
+  font-weight: 800;
+  color: #0a3d57;
+}
+.memMovesWrap {
+  flex: 1 1 auto;
+  margin: 0 4px 0 0;
+  max-width: 240px;
+}
+
+/* card grid */
+.memArea {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+.memBoard {
+  display: grid;
+  justify-content: center;
+}
+
+/* cards */
+.memCard {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  perspective: 700px;
+  touch-action: manipulation;
+}
+.memInner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.34s ease;
+}
+.memInner.up {
+  transform: rotateY(180deg);
+}
+.memFace {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 0 #00000026;
+  overflow: hidden;
+}
+.memBack {
+  background: linear-gradient(#62c7f2, #2f9be0);
+  color: #ffffffcc;
+  font-size: 38px;
+  font-weight: 800;
+}
+.memFront {
+  background: #fff;
+  transform: rotateY(180deg);
+}
+.memPic {
+  font-size: 42px;
+  line-height: 1;
+}
+.memChar {
+  font-size: 44px;
+  font-weight: 800;
+  color: #0a3d57;
+}
+
+/* match / mismatch flashes (front is what's showing when up) */
+.memCard.flash-green .memFront {
+  background: #37d67a;
+}
+.memCard.flash-green .memChar {
+  color: #fff;
+}
+.memCard.flash-red .memFront {
+  background: #ff5b5b;
+}
+.memCard.flash-red .memChar {
+  color: #fff;
+}
+
+/* matched -> stay green and fade away (slot kept so the grid doesn't shift) */
+.memCard.matched .memFront {
+  background: #37d67a;
+}
+.memCard.matched .memChar {
+  color: #fff;
+}
+.memCard.matched .memInner {
+  animation: memMatch 0.45s ease forwards;
+}
+@keyframes memMatch {
+  0% { opacity: 1; }
+  100% { opacity: 0; transform: rotateY(180deg) scale(0.6); }
+}
