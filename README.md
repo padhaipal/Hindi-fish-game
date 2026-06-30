@@ -1,13 +1,15 @@
 # 🎮 Hindi Learning Games
 
-Three simple, bright, mobile-first Hindi games for young / low-literacy children,
+Four simple, bright, mobile-first Hindi games for young / low-literacy children,
 built for **PadhaiPal**. No login, no backend.
 
 - **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
 - **🧩 Blocks game** (`/blocks`) — tap the two blocks that spell the pictured word.
 - **🧠 Memory game** (`/memory`) — match each picture card with its letter card.
+- **🚂 Word Train game** (`/wordtrain`) — drag the letter coaches onto the track,
+  in order, to spell the pictured word.
 
-All three share the 8 letters **ब स प र त क च ल** and their sounds
+All four share the 8 letters **ब स प र त क च ल** and their sounds
 (`public/audio/letters`).
 
 ---
@@ -180,3 +182,42 @@ cards with **letter** cards.
 - The match **"bing"** has no file yet, so a short synthesized chime plays
   (`playBingSound` in `lib/audio.ts`); drop in `public/audio/bing.mp3` to use a
   real one.
+
+---
+
+# 🚂 Hindi Word Train Game
+
+A fourth game (route **`/wordtrain`**) for **blending letters into a whole word,
+in the right order**.
+
+A picture (+ spoken word) appears at the top; the written word is **not** shown.
+A train **track** displays one shadow "coach" per letter (so the child sees how
+long the word is), and the eight letter **coaches** sit at the bottom (one per
+letter — an unlimited supply). The child **drags** the coaches onto the track:
+
+- ✅ Correct next letter → the coach **clicks into place** beside the engine and
+  says its sound.
+- ❌ Wrong letter → it **drops back** to the bottom and the slot shakes red.
+- When the last coach is placed, the **train chugs off** and the word is **blended
+  aloud**. Tapping the picture replays the spoken word.
+
+A session **ramps by word length** — two 2-letter, two 3-letter, then two
+4-letter words (see `buildSession` in `lib/wordtrain/words.ts`) — and finishing
+links back to PadhaiPal on WhatsApp. The first word gently pulses the correct
+next coach as a demo.
+
+## 🛠️ Where to edit / audio
+
+| What | File |
+| --- | --- |
+| Word list (2-letter reuse Blocks; 3- & 4-letter) + session ramp | `lib/wordtrain/words.ts` |
+| Game screen / drag-and-drop / train | `components/wordtrain/WordTrainGame.tsx` |
+| Coach colours, track + rail, coach sizes | `app/globals.css` (Word Train section) |
+
+- Spoken words live at `public/audio/words/<id>.mp3` — the 2-letter words reuse
+  the Blocks recordings; the 3-letter (बरस, पलक, सबक, रबर) and 4-letter (कसरत,
+  सरकस) words have their own. Letter "clicks" reuse the shared
+  `public/audio/letters/<id>.mp3` sounds. Missing files fall back to a
+  synthesized tone, as in the other games.
+- To add more words, drop a spoken-word mp3 in `public/audio/words` and add an
+  entry to `lib/wordtrain/words.ts` — the game already handles any word length.
