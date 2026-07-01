@@ -120,6 +120,70 @@ export function classify(
     .sort((a, b) => a.d - b.d);
 }
 
+// ---------------------------------------------------------------------------
+// ONLINE recognition — Google Input Tools handwriting API.
+// ---------------------------------------------------------------------------
+// Sends the raw ink strokes and gets back Devanagari candidates. This handles
+// ANY handwriting (not just our 12 words). It's a best-effort call: if it fails
+// for any reason (offline, CORS, timeout, error) we return null and the caller
+// falls back to the on-device recogniser above.
+
+export interface Stroke {
+  xs: number[];
+  ys: number[];
+  ts: number[];
+}
+
+export async function recognizeOnline(
+  strokes: Stroke[],
+  w: number,
+  h: number,
+  timeoutMs = 2500,
+  lang = "hi"
+): Promise<string[] | null> {
+  if (typeof fetch === "undefined") return null;
+  const ink = strokes.filter((s) => s.xs.length > 0).map((s) => [s.xs, s.ys, s.ts]);
+  if (ink.length === 0) return null;
+  const body = {
+    options: "enable_pre_space",
+    requests: [
+      {
+        writing_guide: { writing_area_width: w, writing_area_height: h },
+        ink,
+        language: lang,
+      },
+    ],
+  };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(
+      `https://inputtools.google.com/request?itc=${lang}-t-i0-handwrit&app=padhaipal`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || data[0] !== "SUCCESS") return null;
+    const cands = data?.[1]?.[0]?.[1];
+    return Array.isArray(cands) ? cands.filter((c) => typeof c === "string") : null;
+  } catch {
+    return null; // any failure -> caller uses the on-device fallback
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Does any of the top candidates match the target word?
+export function matchesCandidate(cands: string[], target: string, topN = 6): boolean {
+  const t = target.replace(/\s+/g, "");
+  return cands.slice(0, topN).some((c) => c && c.replace(/\s+/g, "") === t);
+}
+
 // Build a feature template for each candidate word by rendering it to a canvas.
 export function buildWordTemplates(
   words: string[],

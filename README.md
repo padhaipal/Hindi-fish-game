@@ -303,12 +303,20 @@ levels alike (the reference is simply hidden). Thresholds live at the top of
 `components/lekhan/Slate.tsx` (`OFF_MAX`, `COVER`, `GRID`) and are easy to tune.
 
 **Word levels (L4/L5)** go further: instead of only checking the trace, they
-**recognise which word was written** and accept it only if it's the target. Each
-of the 12 words is rendered to a canvas and reduced to a small, bounding-box
--normalised, blurred ink-density feature; the child's ink is reduced the same way
-and the nearest word wins (`lib/lekhan/recognize.ts`). It's a closed-vocabulary
-recogniser that runs entirely **on-device — no network, nothing sent anywhere** —
-so writing a different or garbled word genuinely fails.
+**recognise which word was written** and accept it only if it's the target.
+Recognition is two-tier (`lib/lekhan/recognize.ts`):
+
+1. **Online first** — the raw ink strokes are sent to Google's Input Tools
+   handwriting API (`inputtools.google.com`), which returns Devanagari
+   candidates; we accept if the target is among the top matches. This handles
+   any handwriting, not just our 12 words.
+2. **On-device fallback** — if that call fails for any reason (offline, blocked,
+   CORS, timeout), we fall back to a local closed-vocabulary recogniser: each of
+   the 12 words is rendered to a canvas and reduced to a small, bounding-box
+   -normalised, blurred ink-density feature, and the nearest word wins.
+
+Either way, writing a different or garbled word genuinely fails, and the game
+never breaks — the worst case is the fully-offline fallback.
 
 ## 🛠️ Where to edit
 

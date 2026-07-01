@@ -21,7 +21,10 @@ import {
   featurize,
   classify,
   buildWordTemplates,
+  recognizeOnline,
+  matchesCandidate,
   WordTemplate,
+  Stroke,
 } from "@/lib/lekhan/recognize";
 
 interface SlateProps {
@@ -53,6 +56,8 @@ export default function Slate({
   const accOn = useRef<Uint8Array | null>(null); // 1 where drawing is allowed
   const drawnPts = useRef<{ x: number; y: number }[]>([]);
   const drawnCells = useRef<Set<number>>(new Set());
+  const strokes = useRef<Stroke[]>([]); // raw ink for the online recogniser
+  const runSeq = useRef(0); // invalidates an in-flight async judgement
   const drawingRef = useRef(false);
   const lastPt = useRef<{ x: number; y: number } | null>(null);
   const doneRef = useRef(false);
@@ -83,7 +88,9 @@ export default function Slate({
     }
     drawnPts.current = [];
     drawnCells.current = new Set();
+    strokes.current = [];
     lastPt.current = null;
+    runSeq.current++; // cancel any in-flight recognition
   }, []);
 
   // ---- (re)build the reference whenever the target/size changes -----------
@@ -177,25 +184,43 @@ export default function Slate({
     }, 480);
   }, [wipe]);
 
+  // On-device recognition (the fallback): nearest of the candidate words.
+  const matchesOnDevice = useCallback(() => {
+    const c = canvasRef.current;
+    if (!c || !templates.current) return false;
+    const img = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+    const f = featurize((i) => img[i * 4 + 3], c.width, c.height, 30);
+    if (!f || f.count < 40) return null; // too little ink yet — wait
+    const ranked = classify(f.vec, templates.current);
+    const ti = ranked.findIndex((r) => r.word === text);
+    // Accept if the target is the best match, or a very close second (near tie).
+    return ti === 0 || (ti === 1 && ranked[1].d - ranked[0].d < ranked[0].d * 0.12);
+  }, [text]);
+
   const validate = useCallback(() => {
     if (doneRef.current) return;
 
-    // WORD LEVELS: recognise which word was written; accept only if it's the
-    // target. (Reads the drawn ink straight off the canvas.)
+    // WORD LEVELS: recognise the written word. Try the online recogniser first
+    // (handles any handwriting); on any failure, fall back to on-device.
     if (recognizeAgainst && templates.current) {
-      const c = canvasRef.current;
-      if (!c) return;
-      const img = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
-      const f = featurize((i) => img[i * 4 + 3], c.width, c.height, 30);
-      if (!f || f.count < 40) return; // too little ink yet — wait for more
-      const ranked = classify(f.vec, templates.current);
-      const ti = ranked.findIndex((r) => r.word === text);
-      // Accept if the target is the best match, or a very close second (a near
-      // tie) — so a correct-but-rough attempt isn't rejected on a hair.
-      const accept =
-        ti === 0 || (ti === 1 && ranked[1].d - ranked[0].d < ranked[0].d * 0.12);
-      if (accept) succeed();
-      else reject();
+      const myRun = ++runSeq.current;
+      recognizeOnline(strokes.current, width, height)
+        .then((cands) => {
+          if (myRun !== runSeq.current || doneRef.current) return; // superseded
+          let accepted: boolean | null;
+          if (cands) accepted = matchesCandidate(cands, text);
+          else accepted = matchesOnDevice(); // offline / blocked -> fallback
+          if (accepted === null) return; // not enough ink yet — wait
+          if (accepted) succeed();
+          else reject();
+        })
+        .catch(() => {
+          if (myRun !== runSeq.current || doneRef.current) return;
+          const accepted = matchesOnDevice();
+          if (accepted === null) return;
+          if (accepted) succeed();
+          else reject();
+        });
       return;
     }
 
@@ -225,7 +250,7 @@ export default function Slate({
     }
     // else: accurate but not finished — wait quietly for more strokes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, recognizeAgainst, succeed, reject, width, height, OFF_MAX]);
+  }, [text, recognizeAgainst, succeed, reject, matchesOnDevice, width, height, OFF_MAX]);
 
   // ---- drawing ------------------------------------------------------------
   const toXY = (e: React.PointerEvent) => {
@@ -238,16 +263,28 @@ export default function Slate({
       drawnCells.current.add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
     }
   };
+  // append a point to the current ink stroke (for the online recogniser)
+  const pushInk = (x: number, y: number) => {
+    const s = strokes.current[strokes.current.length - 1];
+    if (s) {
+      s.xs.push(Math.round(x));
+      s.ys.push(Math.round(y));
+      s.ts.push(Math.round(performance.now()));
+    }
+  };
 
   const onDown = (e: React.PointerEvent) => {
     if (doneRef.current || flash) return;
     e.preventDefault();
     clearSettle(); // they're carrying on — cancel any pending judgement
+    runSeq.current++; // invalidate any in-flight recognition
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     pointerId.current = e.pointerId;
     drawingRef.current = true;
     const p = toXY(e);
     lastPt.current = p;
+    strokes.current.push({ xs: [], ys: [], ts: [] });
+    pushInk(p.x, p.y);
     addPoint(p.x, p.y);
     const ctx = canvasRef.current!.getContext("2d")!;
     ctx.strokeStyle = "#fdf3d0";
@@ -266,6 +303,7 @@ export default function Slate({
     if (last) ctx.moveTo(last.x, last.y);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
+    pushInk(p.x, p.y);
     if (last) {
       const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 3));
       for (let i = 1; i <= steps; i++) {
