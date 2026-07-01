@@ -15,13 +15,13 @@ export default function Home() {
         <p className="homeSub">हिंदी खेल</p>
 
         <nav className="homeButtons">
-          <Link href="/fish" className="gameButton gbFish">
-            <span className="gameEmoji">🐟</span>
-            <span>मछली खेल</span>
+          <Link href="/pondhop" className="gameButton gbHop">
+            <span className="gameEmoji">🐸</span>
+            <span>छलांग खेल</span>
           </Link>
-          <Link href="/blocks" className="gameButton gbBlocks">
-            <span className="gameEmoji">🧩</span>
-            <span>ब्लॉक खेल</span>
+          <Link href="/fish" className="gameButton gbFish">
+            <span className="gameEmoji">🐠</span>
+            <span>मछली खेल</span>
           </Link>
           <Link href="/memory" className="gameButton gbMemory">
             <span className="gameEmoji">🧠</span>
@@ -31,9 +31,9 @@ export default function Home() {
             <span className="gameEmoji">🚂</span>
             <span>रेल खेल</span>
           </Link>
-          <Link href="/pondhop" className="gameButton gbHop">
-            <span className="gameEmoji">🐸</span>
-            <span>छलांग खेल</span>
+          <Link href="/blocks" className="gameButton gbBlocks">
+            <span className="gameEmoji">🧩</span>
+            <span>ब्लॉक खेल</span>
           </Link>
         </nav>
       </div>
