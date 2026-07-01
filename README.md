@@ -302,6 +302,14 @@ The same reference works for the dotted-trace level and the blank / from-memory
 levels alike (the reference is simply hidden). Thresholds live at the top of
 `components/lekhan/Slate.tsx` (`OFF_MAX`, `COVER`, `GRID`) and are easy to tune.
 
+**Word levels (L4/L5)** go further: instead of only checking the trace, they
+**recognise which word was written** and accept it only if it's the target. Each
+of the 12 words is rendered to a canvas and reduced to a small, bounding-box
+-normalised, blurred ink-density feature; the child's ink is reduced the same way
+and the nearest word wins (`lib/lekhan/recognize.ts`). It's a closed-vocabulary
+recogniser that runs entirely **on-device — no network, nothing sent anywhere** —
+so writing a different or garbled word genuinely fails.
+
 ## 🛠️ Where to edit
 
 | What | File |

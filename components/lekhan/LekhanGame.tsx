@@ -28,6 +28,10 @@ import {
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
+// The closed vocabulary for the word levels — the drawing is recognised against
+// these and only accepted if the nearest match is the target word.
+const WORD_CANDIDATES = BLOCK_WORDS.map((w) => w.word);
+
 type Phase = "start" | "playing" | "levelComplete" | "allDone";
 
 interface Item {
@@ -151,9 +155,9 @@ export default function LekhanGame() {
               aria-label="सुनो"
             >
               {item.isLa ? (
-                <LattuIcon size={62} />
+                <LattuIcon size={84} />
               ) : (
-                <span className="lekhanEmoji" style={item.kab ? { fontSize: 48 } : undefined}>
+                <span className="lekhanEmoji" style={item.kab ? { fontSize: 66 } : undefined}>
                   {item.emoji}
                 </span>
               )}
@@ -176,6 +180,7 @@ export default function LekhanGame() {
               width={slateW}
               height={slateH}
               onComplete={onComplete}
+              recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : undefined}
             />
           </div>
         </>

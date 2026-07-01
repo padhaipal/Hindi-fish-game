@@ -16,6 +16,13 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fitFont,
+  featurize,
+  classify,
+  buildWordTemplates,
+  WordTemplate,
+} from "@/lib/lekhan/recognize";
 
 interface SlateProps {
   text: string; // the letter or word to write
@@ -23,15 +30,26 @@ interface SlateProps {
   width: number;
   height: number;
   onComplete: () => void; // called once the target is written well enough
+  // When set (the word levels), the drawing is RECOGNISED against these words
+  // and only accepted if the nearest match is `text`.
+  recognizeAgainst?: string[];
 }
 
 const GRID = 14; // coverage grid (cells per axis)
 const COVER = 0.66; // complete once this fraction of the glyph is covered
 const SETTLE_MS = 2000; // pause after lifting the finger before we judge
 
-export default function Slate({ text, showGuide, width, height, onComplete }: SlateProps) {
+export default function Slate({
+  text,
+  showGuide,
+  width,
+  height,
+  onComplete,
+  recognizeAgainst,
+}: SlateProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const targetCells = useRef<Set<number>>(new Set());
+  const templates = useRef<WordTemplate[] | null>(null);
   const accOn = useRef<Uint8Array | null>(null); // 1 where drawing is allowed
   const drawnPts = useRef<{ x: number; y: number }[]>([]);
   const drawnCells = useRef<Set<number>>(new Set());
@@ -121,6 +139,11 @@ export default function Slate({ text, showGuide, width, height, onComplete }: Sl
     for (let i = 0; i < width * height; i++) mask[i] = grown[i * 4 + 3] > 40 ? 1 : 0;
     accOn.current = mask;
 
+    // word levels: build the recognition templates for the candidate words
+    templates.current = recognizeAgainst
+      ? buildWordTemplates(recognizeAgainst, fitFont, width, height)
+      : null;
+
     wipe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, width, height]);
@@ -141,8 +164,41 @@ export default function Slate({ text, showGuide, width, height, onComplete }: Sl
     return false;
   };
 
+  const succeed = useCallback(() => {
+    doneRef.current = true;
+    setFlash("green");
+    window.setTimeout(() => onComplete(), 620);
+  }, [onComplete]);
+  const reject = useCallback(() => {
+    setFlash("red");
+    window.setTimeout(() => {
+      wipe();
+      setFlash(null);
+    }, 480);
+  }, [wipe]);
+
   const validate = useCallback(() => {
     if (doneRef.current) return;
+
+    // WORD LEVELS: recognise which word was written; accept only if it's the
+    // target. (Reads the drawn ink straight off the canvas.)
+    if (recognizeAgainst && templates.current) {
+      const c = canvasRef.current;
+      if (!c) return;
+      const img = c.getContext("2d")!.getImageData(0, 0, c.width, c.height).data;
+      const f = featurize((i) => img[i * 4 + 3], c.width, c.height, 30);
+      if (!f || f.count < 40) return; // too little ink yet — wait for more
+      const ranked = classify(f.vec, templates.current);
+      const ti = ranked.findIndex((r) => r.word === text);
+      // Accept if the target is the best match, or a very close second (a near
+      // tie) — so a correct-but-rough attempt isn't rejected on a hair.
+      const accept =
+        ti === 0 || (ti === 1 && ranked[1].d - ranked[0].d < ranked[0].d * 0.12);
+      if (accept) succeed();
+      else reject();
+      return;
+    }
+
     const pts = drawnPts.current;
     const mask = accOn.current;
     if (pts.length < 4 || !mask) return;
@@ -155,11 +211,7 @@ export default function Slate({ text, showGuide, width, height, onComplete }: Sl
       if (xi < 0 || yi < 0 || xi >= width || yi >= height || !mask[yi * width + xi]) off++;
     }
     if (off / pts.length > OFF_MAX) {
-      setFlash("red");
-      window.setTimeout(() => {
-        wipe();
-        setFlash(null);
-      }, 480);
+      reject();
       return;
     }
 
@@ -169,13 +221,11 @@ export default function Slate({ text, showGuide, width, height, onComplete }: Sl
       if (nearDrawn(c)) cov++;
     });
     if (targetCells.current.size > 0 && cov / targetCells.current.size >= COVER) {
-      doneRef.current = true;
-      setFlash("green");
-      window.setTimeout(() => onComplete(), 620);
+      succeed();
     }
     // else: accurate but not finished — wait quietly for more strokes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onComplete, wipe, width, height, OFF_MAX]);
+  }, [text, recognizeAgainst, succeed, reject, width, height, OFF_MAX]);
 
   // ---- drawing ------------------------------------------------------------
   const toXY = (e: React.PointerEvent) => {
@@ -273,14 +323,4 @@ export default function Slate({ text, showGuide, width, height, onComplete }: Sl
       </button>
     </div>
   );
-}
-
-// fit the biggest bold font that leaves a little margin in the slate
-function fitFont(ctx: CanvasRenderingContext2D, text: string, w: number, h: number): number {
-  let fs = h * 0.72;
-  ctx.font = `700 ${fs}px sans-serif`;
-  const measured = ctx.measureText(text).width;
-  const maxW = w * 0.82;
-  if (measured > maxW) fs = (fs * maxW) / measured;
-  return Math.round(fs);
 }
