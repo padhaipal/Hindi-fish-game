@@ -1,6 +1,6 @@
 # 🎮 Hindi Learning Games
 
-Five simple, bright, mobile-first Hindi games for young / low-literacy children,
+Six simple, bright, mobile-first Hindi games for young / low-literacy children,
 built for **PadhaiPal**. No login, no backend.
 
 - **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
@@ -10,8 +10,10 @@ built for **PadhaiPal**. No login, no backend.
   in order, to spell the pictured word.
 - **🐸 Pond Hop game** (`/pondhop`) — hop across the river on the stones showing
   the target letter, before the timer runs out.
+- **✍️ Lekhan game** (`/lekhan`) — trace / write the letters (then 2-letter words)
+  on a slate.
 
-All five share the 8 letters **ब स प र त क च ल** and their sounds
+All six share the 8 letters **ब स प र त क च ल** and their sounds
 (`public/audio/letters`).
 
 ---
@@ -268,3 +270,46 @@ the final screen links back to PadhaiPal on WhatsApp.
 - Letter sounds reuse `public/audio/letters/<id>.mp3`; the intro prompt reuses
   the picture+letter recording (`public/audio/letters-word/<id>.mp3`), as in the
   fish game.
+
+---
+
+# ✍️ Hindi Lekhan (Writing) Game
+
+A sixth game (route **`/lekhan`**) for **writing** the letters, then 2-letter
+words, by finger on a slate.
+
+A picture (and, on some levels, the letter/word) shows at the top and its sound
+plays. The child draws on a chalkboard **slate**; each level finishes after 5
+items, with applause, then the next level. The order is randomised.
+
+- **L1** — the letter shows at the top and appears as a **dotted guide** on the
+  slate to trace.
+- **L2** — the letter still shows at the top, but the slate is **blank** (write it).
+- **L3** — only the **picture** shows (the sound plays); recall & write the letter.
+- **L4** — **word mode**: a picture + its 2-letter word on a rectangular slate.
+- **L5** — word mode with only the **picture**; recall & write the word.
+
+### How the writing is checked
+No hand-authored letter paths are needed: the target text is rendered to an
+offscreen canvas (using the font) to get a reference **ink mask** on a coarse
+grid. When the child lifts their finger:
+
+- if too much of what they drew is **off** the glyph → the slate flashes **red**,
+  wipes, and they start again (the "traced more than X px away" rule);
+- once enough of the glyph is **covered** → it flashes **green** and completes.
+
+The same reference works for the dotted-trace level and the blank / from-memory
+levels alike (the reference is simply hidden). Thresholds live at the top of
+`components/lekhan/Slate.tsx` (`OFF_MAX`, `COVER`, `GRID`) and are easy to tune.
+
+## 🛠️ Where to edit
+
+| What | File |
+| --- | --- |
+| Level modes / slate shape / item count / colours | `lib/lekhan/levels.ts` |
+| Slate: drawing + validation + dotted guide | `components/lekhan/Slate.tsx` |
+| Game screen / prompt / sequence | `components/lekhan/LekhanGame.tsx` |
+
+- The prompt sound reuses the picture+letter recording
+  (`public/audio/letters-word/<id>.mp3`) for letters and the word recording
+  (`public/audio/words/<id>.mp3`) for words.
