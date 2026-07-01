@@ -598,9 +598,10 @@ body > div {
   height: 100dvh;
   width: 100%;
   display: flex;
-  align-items: center;
+  align-items: safe center; /* centre when it fits, scroll from the top when it doesn't */
   justify-content: center;
-  padding: 24px;
+  padding: 16px;
+  overflow-y: auto;
   background: linear-gradient(#aef0ff 0%, #62d0f5 50%, #2bb4ec 100%);
 }
 .homeCard {
@@ -608,49 +609,49 @@ body > div {
   max-width: 360px;
   background: #ffffffe6;
   border-radius: 30px;
-  padding: 26px 22px 30px;
+  padding: 18px 20px 22px;
   text-align: center;
   box-shadow: 0 10px 0 #00000022;
 }
 .homeLogo {
-  width: 132px;
-  height: 132px;
+  width: 92px;
+  height: 92px;
   object-fit: cover;
   border-radius: 50%;
   border: 5px solid #ffd23f;
   background: #fff;
 }
 .homeTitle {
-  margin: 12px 0 0;
-  font-size: 34px;
+  margin: 8px 0 0;
+  font-size: 28px;
   font-weight: 800;
   color: #0a3d57;
 }
 .homeSub {
-  margin: 2px 0 20px;
-  font-size: 20px;
+  margin: 2px 0 14px;
+  font-size: 18px;
   font-weight: 700;
   color: #1f8bbf;
 }
 .homeButtons {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 .gameButton {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 18px 20px;
-  border-radius: 22px;
-  font-size: 26px;
+  gap: 10px;
+  padding: 13px 18px;
+  border-radius: 18px;
+  font-size: 22px;
   font-weight: 800;
   color: #fff;
   text-decoration: none;
 }
 .gameButton .gameEmoji {
-  font-size: 34px;
+  font-size: 28px;
 }
 .gameButton.gbFish {
   background: linear-gradient(#39b9f0, #1f8bbf);
