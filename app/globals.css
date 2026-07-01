@@ -657,8 +657,9 @@ body > div {
   box-shadow: 0 6px 0 #14688f;
 }
 .gameButton.gbBlocks {
-  background: linear-gradient(#37d67a, #1faa5a);
-  box-shadow: 0 6px 0 #14773f;
+  background: linear-gradient(#ffd54a, #f0b400);
+  box-shadow: 0 6px 0 #b98700;
+  color: #6b4a00; /* dark text — yellow needs the contrast */
 }
 .gameButton:active {
   transform: translateY(4px);
