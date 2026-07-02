@@ -282,8 +282,12 @@ A picture (and, on some levels, the letter/word) shows at the top and its sound
 plays. The child draws on a chalkboard **slate**; each level finishes after 5
 items, with applause, then the next level. The order is randomised.
 
-- **L1** — the letter shows at the top and appears as a **dotted guide** on the
-  slate to trace.
+- **L1** — the letter shows at the top and is traced on the slate **one stroke
+  at a time, in order**: the accurate font glyph is split into regions (body →
+  vertical stem → top headline) and only the **current** stroke is highlighted in
+  red (with a step number + direction arrow); finished strokes turn green,
+  upcoming ones stay faint. Straying outside the current stroke flashes red and
+  wipes that attempt, so the child learns the correct stroke order.
 - **L2** — the letter still shows at the top, but the slate is **blank** (write it).
 - **L3** — only the **picture** shows (the sound plays); recall & write the letter.
 - **L4** — **word mode**: a picture + its 2-letter word on a rectangular slate.
@@ -323,7 +327,9 @@ never breaks — the worst case is the fully-offline fallback.
 | What | File |
 | --- | --- |
 | Level modes / slate shape / item count / colours | `lib/lekhan/levels.ts` |
-| Slate: drawing + validation + dotted guide | `components/lekhan/Slate.tsx` |
+| Trace level (L1): stroke-order guide + per-stroke check | `components/lekhan/GuidedSlate.tsx` |
+| How each letter splits into ordered strokes | `lib/lekhan/regions.ts` |
+| Slate (L2–L5): drawing + validation | `components/lekhan/Slate.tsx` |
 | Game screen / prompt / sequence | `components/lekhan/LekhanGame.tsx` |
 
 - The prompt sound reuses the picture+letter recording
