@@ -3,51 +3,51 @@
 // ---------------------------------------------------------------------------
 // GUIDED SLATE — the trace level (L1).
 // ---------------------------------------------------------------------------
-// The letter is shown as the accurate font glyph, split into ordered regions
-// (body → stem → headline). Only the CURRENT region is highlighted in red (with
-// a step number + direction arrow); finished regions turn green; upcoming ones
-// stay faint. The child traces the highlighted region:
-//   - stray outside it        -> the slate flashes red and that attempt is wiped
-//   - cover it well enough     -> it turns green and the next region lights up
-// Finish the last region -> the letter is complete. This teaches stroke order.
+// The accurate font glyph is split into its natural pen strokes (see
+// lib/lekhan/strokes.ts): every glyph pixel is coloured by the stroke it belongs
+// to. Colour theme:  red = current stroke,  light grey = future strokes,
+// green = completed strokes. The current stroke also shows a step number + a
+// direction arrow. The child traces the red stroke:
+//   - stray outside it     -> flash red, wipe that attempt, try again
+//   - cover it well enough  -> it turns green and the next stroke lights up
+// Finishing the last stroke completes the letter. This teaches stroke order.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fitFont } from "@/lib/lekhan/recognize";
-import {
-  regionOrder,
-  regionOfCell,
-  LETTER_STEM,
-  HEADLINE_MAXY,
-  RegionKey,
-} from "@/lib/lekhan/regions";
+import { LETTER_STROKES, segmentStroke, Stroke } from "@/lib/lekhan/strokes";
 
 interface Props {
-  text: string; // the letter (glyph)
-  letterId: string; // id for stem lookup
+  text: string;
+  letterId: string;
   width: number;
   height: number;
   onComplete: () => void;
 }
 
 const GRID = 16;
-const OFF_MAX = 0.28; // stray budget while tracing the current region
-const COVER = 0.66; // how much of the region must be covered to finish it
+const OFF_MAX = 0.3; // stray budget while tracing the current stroke
+const COVER = 0.62; // how much of the stroke must be covered to finish it
 
-interface Box {
+const CUR: [number, number, number] = [255, 82, 82]; // red
+const DONE: [number, number, number] = [90, 210, 140]; // green
+const FUT: [number, number, number] = [206, 212, 208]; // light grey
+
+interface Start {
   x: number;
   y: number;
-  w: number;
-  h: number;
-  fs: number;
+  dx: number;
+  dy: number;
 }
 
 export default function GuidedSlate({ text, letterId, width, height, onComplete }: Props) {
   const guideRef = useRef<HTMLCanvasElement>(null);
   const inkRef = useRef<HTMLCanvasElement>(null);
-  const order = useRef<RegionKey[]>([]);
-  const regionCells = useRef<Set<number>[]>([]);
-  const box = useRef<Box | null>(null);
+  const glyphA = useRef<Uint8ClampedArray | null>(null); // glyph alpha
+  const strokeIdx = useRef<Int16Array | null>(null); // stroke per pixel (-1 = none)
+  const strokeCells = useRef<Set<number>[]>([]);
+  const starts = useRef<Start[]>([]);
+  const nStrokes = useRef(0);
   const drawnCells = useRef<Set<number>>(new Set());
   const drawing = useRef(false);
   const lastPt = useRef<{ x: number; y: number } | null>(null);
@@ -60,41 +60,30 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
   const ch = height / GRID;
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 
-  // ---- draw the guide (regions coloured by state) ------------------------
+  // paint the glyph, each pixel coloured by its stroke's state
   const drawGuide = useCallback(
     (cur: number) => {
       const c = guideRef.current;
-      const b = box.current;
-      if (!c || !b) return;
+      const a = glyphA.current;
+      const idx = strokeIdx.current;
+      if (!c || !a || !idx) return;
       const ctx = c.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      ctx.font = `700 ${b.fs}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const cx = width / 2;
-      const cy = height / 2;
-      const barY = b.y + HEADLINE_MAXY * b.h;
-      const stem = LETTER_STEM[letterId];
-      const rectFor = (key: RegionKey) => {
-        if (key === "headline") return [b.x - 3, b.y - 3, b.w + 6, HEADLINE_MAXY * b.h + 3];
-        if (key === "stem" && stem)
-          return [b.x + stem[0] * b.w, barY, (stem[1] - stem[0]) * b.w, b.h - HEADLINE_MAXY * b.h + 4];
-        return [b.x - 3, barY, b.w + 6, b.h - HEADLINE_MAXY * b.h + 4]; // body
-      };
-      order.current.forEach((key, idx) => {
-        const color = idx < cur ? "#63e29a" : idx === cur ? "#ff5b5b" : "rgba(255,255,255,0.16)";
-        const [rx, ry, rw, rh] = rectFor(key);
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(rx, ry, rw, rh);
-        ctx.clip();
-        ctx.fillStyle = color;
-        ctx.fillText(text, cx, cy);
-        ctx.restore();
-      });
+      const out = ctx.createImageData(width, height);
+      const d = out.data;
+      for (let i = 0; i < a.length; i++) {
+        const al = a[i];
+        const s = idx[i];
+        if (al > 8 && s >= 0) {
+          const col = s < cur ? DONE : s === cur ? CUR : FUT;
+          d[i * 4] = col[0];
+          d[i * 4 + 1] = col[1];
+          d[i * 4 + 2] = col[2];
+          d[i * 4 + 3] = al;
+        }
+      }
+      ctx.putImageData(out, 0, 0);
     },
-    [dpr, width, height, letterId, text]
+    [width, height]
   );
 
   const wipeInk = useCallback(() => {
@@ -104,7 +93,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     lastPt.current = null;
   }, []);
 
-  // ---- build regions when the letter/size changes ------------------------
+  // ---- build strokes when the letter/size changes ------------------------
   useEffect(() => {
     doneRef.current = false;
     setFlash(null);
@@ -112,17 +101,20 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const g = guideRef.current;
     const ink = inkRef.current;
     if (!g || !ink) return;
-    for (const c of [g, ink]) {
-      c.width = Math.round(width * dpr);
-      c.height = Math.round(height * dpr);
-      const cx = c.getContext("2d")!;
-      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cx.clearRect(0, 0, width, height);
-      cx.lineJoin = "round";
-      cx.lineCap = "round";
-    }
+    g.width = width; // guide at 1x (ImageData); ink stays crisp at dpr
+    g.height = height;
+    ink.width = Math.round(width * dpr);
+    ink.height = Math.round(height * dpr);
+    const ictx = ink.getContext("2d")!;
+    ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ictx.clearRect(0, 0, width, height);
+    ictx.lineJoin = "round";
+    ictx.lineCap = "round";
 
-    // render glyph offscreen -> bbox + region cells
+    const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
+    nStrokes.current = strokes.length;
+
+    // render glyph -> alpha + bbox
     const off = document.createElement("canvas");
     off.width = width;
     off.height = height;
@@ -139,37 +131,54 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     let miny = 1e9;
     let maxx = -1;
     let maxy = -1;
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++)
         if (data[(y * width + x) * 4 + 3] > 80) {
           if (x < minx) minx = x;
           if (x > maxx) maxx = x;
           if (y < miny) miny = y;
           if (y > maxy) maxy = y;
         }
-      }
-    }
-    const b: Box = { x: minx, y: miny, w: Math.max(1, maxx - minx), h: Math.max(1, maxy - miny), fs };
-    box.current = b;
+    const bw = Math.max(1, maxx - minx);
+    const bh = Math.max(1, maxy - miny);
 
-    const ord = regionOrder(letterId);
-    const sets: Record<RegionKey, Set<number>> = {
-      body: new Set(),
-      stem: new Set(),
-      headline: new Set(),
-    };
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
-        if (data[(y * width + x) * 4 + 3] > 80) {
-          const nx = (x - b.x) / b.w;
-          const ny = (y - b.y) / b.h;
-          const key = regionOfCell(nx, ny, letterId);
-          sets[key].add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
+    const alpha = new Uint8ClampedArray(width * height);
+    const idx = new Int16Array(width * height).fill(-1);
+    const sets: Set<number>[] = strokes.map(() => new Set<number>());
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const p = y * width + x;
+        const al = data[p * 4 + 3];
+        alpha[p] = al;
+        if (al > 80) {
+          const nx = ((x - minx) / bw) * 100;
+          const ny = ((y - miny) / bh) * 100;
+          const s = segmentStroke(nx, ny, strokes);
+          idx[p] = s;
+          sets[s].add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
+        } else if (al > 8) {
+          // antialiased edge — colour it by the nearest inked neighbour later;
+          // cheap approx: assign to nearest stroke too
+          const nx = ((x - minx) / bw) * 100;
+          const ny = ((y - miny) / bh) * 100;
+          idx[p] = segmentStroke(nx, ny, strokes);
         }
       }
     }
-    order.current = ord.filter((k) => sets[k].size > 0);
-    regionCells.current = order.current.map((k) => sets[k]);
+    glyphA.current = alpha;
+    strokeIdx.current = idx;
+    strokeCells.current = sets;
+    starts.current = strokes.map((st) => {
+      const [x0, y0] = st[0];
+      const [x1, y1] = st[Math.min(1, st.length - 1)];
+      const sx = minx + (x0 / 100) * bw;
+      const sy = miny + (y0 / 100) * bh;
+      const ex = minx + (x1 / 100) * bw;
+      const ey = miny + (y1 / 100) * bh;
+      const len = Math.hypot(ex - sx, ey - sy) || 1;
+      return { x: sx, y: sy, dx: (ex - sx) / len, dy: (ey - sy) / len };
+    });
+
     drawnCells.current = new Set();
     lastPt.current = null;
     drawGuide(0);
@@ -191,7 +200,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
 
   const judge = useCallback(() => {
     if (doneRef.current) return;
-    const region = regionCells.current[current];
+    const region = strokeCells.current[current];
     const drawn = drawnCells.current;
     if (!region || drawn.size < 2) return;
 
@@ -211,12 +220,11 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     region.forEach((c) => {
       if (nearSet(c, drawn)) cov++;
     });
-    if (cov / region.size < COVER) return; // on track but not finished — keep going
+    if (region.size > 0 && cov / region.size < COVER) return; // keep tracing
 
-    // region done
     wipeInk();
     const next = current + 1;
-    if (next >= order.current.length) {
+    if (next >= nStrokes.current) {
       doneRef.current = true;
       drawGuide(next);
       setFlash("green");
@@ -247,7 +255,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     lastPt.current = p;
     mark(p.x, p.y);
     const ctx = inkRef.current!.getContext("2d")!;
-    ctx.strokeStyle = "#fdf3d0";
+    ctx.strokeStyle = "#fffbe8";
     ctx.lineWidth = Math.max(8, width * 0.03);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
@@ -278,19 +286,8 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     judge();
   };
 
-  // ---- current-region badge + arrow --------------------------------------
-  const badge = (() => {
-    const b = box.current;
-    if (!b || current >= order.current.length) return null;
-    const key = order.current[current];
-    const barY = b.y + HEADLINE_MAXY * b.h;
-    const stem = LETTER_STEM[letterId];
-    if (key === "headline")
-      return { n: current + 1, x: b.x, y: b.y + (HEADLINE_MAXY * b.h) / 2, dir: "right" as const };
-    if (key === "stem" && stem)
-      return { n: current + 1, x: b.x + ((stem[0] + stem[1]) / 2) * b.w, y: barY, dir: "down" as const };
-    return { n: current + 1, x: b.x + 6, y: barY + 8, dir: "dot" as const };
-  })();
+  const st = current < starts.current.length ? starts.current[current] : null;
+  const arrowLen = Math.min(width, height) * 0.18;
 
   return (
     <div
@@ -298,7 +295,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       style={{ width, height }}
       data-text={text}
       data-step={current}
-      data-steps={order.current.length}
+      data-steps={nStrokes.current}
     >
       <canvas ref={guideRef} className="slateCanvas" style={{ width, height, zIndex: 0 }} />
       <canvas
@@ -310,22 +307,25 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
         onPointerUp={onUp}
         onPointerCancel={onUp}
       />
-      {badge && (
+      {st && !doneRef.current && (
         <svg className="slateGuide" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ zIndex: 2 }}>
-          {badge.dir === "right" && (
-            <line x1={badge.x} y1={badge.y} x2={badge.x + Math.min(60, box.current!.w * 0.4)} y2={badge.y} stroke="#ffd23f" strokeWidth={4} markerEnd="url(#ah)" />
-          )}
-          {badge.dir === "down" && (
-            <line x1={badge.x} y1={badge.y} x2={badge.x} y2={badge.y + Math.min(60, box.current!.h * 0.4)} stroke="#ffd23f" strokeWidth={4} markerEnd="url(#ah)" />
-          )}
           <defs>
-            <marker id="ah" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
+            <marker id="gah" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
               <path d="M0 0 L9 4.5 L0 9 Z" fill="#ffd23f" />
             </marker>
           </defs>
-          <circle cx={badge.x} cy={badge.y} r={13} fill="#ffd23f" stroke="#fff" strokeWidth={2} />
-          <text x={badge.x} y={badge.y + 5} textAnchor="middle" fontSize={16} fontWeight={800} fill="#7a5200">
-            {badge.n}
+          <line
+            x1={st.x + st.dx * 15}
+            y1={st.y + st.dy * 15}
+            x2={st.x + st.dx * arrowLen}
+            y2={st.y + st.dy * arrowLen}
+            stroke="#ffd23f"
+            strokeWidth={4}
+            markerEnd="url(#gah)"
+          />
+          <circle cx={st.x} cy={st.y} r={13} fill="#ffd23f" stroke="#fff" strokeWidth={2} />
+          <text x={st.x} y={st.y + 5} textAnchor="middle" fontSize={16} fontWeight={800} fill="#7a5200">
+            {current + 1}
           </text>
         </svg>
       )}
