@@ -282,14 +282,12 @@ A picture (and, on some levels, the letter/word) shows at the top and its sound
 plays. The child draws on a chalkboard **slate**; each level finishes after 5
 items, with applause, then the next level. The order is randomised.
 
-- **L1** — the accurate **font glyph** is shown and traced **one stroke at a
-  time, in order**. Every glyph pixel is assigned to a stroke (nearest of the
-  per-letter centrelines in `lib/lekhan/strokes.ts`) and then a majority-smoothing
-  pass **tidies the boundaries** into clean regions. Colours: **red = current
-  stroke, light grey = upcoming, green = completed**, with a step number +
-  direction arrow on the current one. Straying off the current stroke flashes red
-  and wipes the attempt; covering it advances to the next — so the child learns
-  the correct stroke order and direction.
+- **L1** — a piece of **chalk animates along the letter's strokes** (in order,
+  see `lib/lekhan/strokes.ts`) leaving a **dotted line** — showing the shape,
+  order and direction. The child then **runs a finger over the dotted line and it
+  fills in solid white**. White can only appear on the letter's path (a band
+  around the strokes), so stray marks don't show. When enough of the letter has
+  been made white, it's complete.
 - **L2** — the letter still shows at the top, but the slate is **blank** (write it).
 - **L3** — only the **picture** shows (the sound plays); recall & write the letter.
 - **L4** — **word mode**: a picture + its 2-letter word on a rectangular slate.
@@ -329,8 +327,8 @@ never breaks — the worst case is the fully-offline fallback.
 | What | File |
 | --- | --- |
 | Level modes / slate shape / item count / colours | `lib/lekhan/levels.ts` |
-| Trace level (L1): stroke segmentation + per-stroke check | `components/lekhan/GuidedSlate.tsx` |
-| Per-letter stroke centrelines + order (tune here) | `lib/lekhan/strokes.ts` |
+| Trace level (L1): chalk demo + dotted line + white reveal | `components/lekhan/GuidedSlate.tsx` |
+| Per-letter stroke paths + order (tune the shapes here) | `lib/lekhan/strokes.ts` |
 | Slate (L2–L5): drawing + validation | `components/lekhan/Slate.tsx` |
 | Game screen / prompt / sequence | `components/lekhan/LekhanGame.tsx` |
 
