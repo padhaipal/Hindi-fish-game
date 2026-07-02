@@ -149,15 +149,7 @@ export default function LekhanGame() {
         <>
           {/* Top: the picture, and (when the level shows it) the letter/word */}
           <div className="lekhanTop">
-            <button
-              type="button"
-              className="lekhanPrompt"
-              onClick={() => {
-                unlockAudio();
-                item.play();
-              }}
-              aria-label="सुनो"
-            >
+            <div className="lekhanPrompt">
               {item.isLa ? (
                 <LattuIcon size={84} />
               ) : (
@@ -166,7 +158,17 @@ export default function LekhanGame() {
                 </span>
               )}
               {cfg.showGlyph && <span className="lekhanGlyph">{item.glyph}</span>}
-              <span className="lekhanHint">🔊</span>
+            </div>
+            <button
+              type="button"
+              className="soundBtn"
+              onClick={() => {
+                unlockAudio();
+                item.play();
+              }}
+              aria-label="सुनो"
+            >
+              🔊 सुनो
             </button>
             <div className="lekhanProgress">
               {seq.map((_, i) => (
