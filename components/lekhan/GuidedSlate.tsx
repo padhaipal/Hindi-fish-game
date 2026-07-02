@@ -3,18 +3,19 @@
 // ---------------------------------------------------------------------------
 // GUIDED SLATE — the trace level (L1).
 // ---------------------------------------------------------------------------
-// The letter is drawn from its own ordered pen strokes (lib/lekhan/strokes.ts,
-// traced from the PadhaiPal stroke-order charts) as smooth thick round strokes.
-// One stroke is highlighted at a time:  red = current,  light grey = upcoming,
-// green = completed. The current stroke shows a step number + direction arrow.
-// The child traces the red stroke:
-//   - stray off it        -> flash red, wipe the attempt, try again
-//   - cover it enough      -> it turns green and the next stroke lights up
-// Finishing the last stroke completes the letter. Teaches stroke order.
+// The accurate font glyph is split into its natural pen strokes (see
+// lib/lekhan/strokes.ts): every glyph pixel is coloured by the stroke it belongs
+// to. Colour theme:  red = current stroke,  light grey = future strokes,
+// green = completed strokes. The current stroke also shows a step number + a
+// direction arrow. The child traces the red stroke:
+//   - stray outside it     -> flash red, wipe that attempt, try again
+//   - cover it well enough  -> it turns green and the next stroke lights up
+// Finishing the last stroke completes the letter. This teaches stroke order.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LETTER_STROKES, distToPolyline, Stroke } from "@/lib/lekhan/strokes";
+import { fitFont } from "@/lib/lekhan/recognize";
+import { LETTER_STROKES, segmentStroke, Stroke } from "@/lib/lekhan/strokes";
 
 interface Props {
   text: string;
@@ -24,96 +25,77 @@ interface Props {
   onComplete: () => void;
 }
 
-type Pt = [number, number];
-
+const GRID = 16;
 const OFF_MAX = 0.3; // stray budget while tracing the current stroke
-const COVER = 0.6; // fraction of the stroke that must be covered to finish it
-const CUR = "#ff5b5b"; // red
-const DONE = "#63e29a"; // green
-const FUT = "#cdd5cf"; // light grey
+const COVER = 0.62; // how much of the stroke must be covered to finish it
 
-// smooth path (quadratic through segment midpoints) for a px polyline
-function pathFor(poly: Pt[]): Path2D {
-  const p = new Path2D();
-  if (!poly.length) return p;
-  p.moveTo(poly[0][0], poly[0][1]);
-  if (poly.length === 2) {
-    p.lineTo(poly[1][0], poly[1][1]);
-    return p;
-  }
-  for (let i = 1; i < poly.length - 1; i++) {
-    const mx = (poly[i][0] + poly[i + 1][0]) / 2;
-    const my = (poly[i][1] + poly[i + 1][1]) / 2;
-    p.quadraticCurveTo(poly[i][0], poly[i][1], mx, my);
-  }
-  p.lineTo(poly[poly.length - 1][0], poly[poly.length - 1][1]);
-  return p;
-}
+const CUR: [number, number, number] = [255, 82, 82]; // red
+const DONE: [number, number, number] = [90, 210, 140]; // green
+const FUT: [number, number, number] = [206, 212, 208]; // light grey
 
-// sample points evenly-ish along a polyline (for coverage checks)
-function samplePolyline(poly: Pt[], step: number): Pt[] {
-  if (poly.length === 1) return [poly[0]];
-  const out: Pt[] = [];
-  for (let i = 0; i < poly.length - 1; i++) {
-    const [ax, ay] = poly[i];
-    const [bx, by] = poly[i + 1];
-    const len = Math.hypot(bx - ax, by - ay);
-    const n = Math.max(1, Math.round(len / step));
-    for (let k = 0; k < n; k++) out.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n]);
-  }
-  out.push(poly[poly.length - 1]);
-  return out;
+interface Start {
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
 }
 
 export default function GuidedSlate({ text, letterId, width, height, onComplete }: Props) {
   const guideRef = useRef<HTMLCanvasElement>(null);
   const inkRef = useRef<HTMLCanvasElement>(null);
-  const strokesPx = useRef<Pt[][]>([]); // each stroke's polyline in px
-  const samples = useRef<Pt[][]>([]); // sampled centreline points per stroke
-  const drawnPts = useRef<Pt[]>([]); // child's points for the current attempt
+  const glyphA = useRef<Uint8ClampedArray | null>(null); // glyph alpha
+  const strokeIdx = useRef<Int16Array | null>(null); // stroke per pixel (-1 = none)
+  const strokeCells = useRef<Set<number>[]>([]);
+  const starts = useRef<Start[]>([]);
+  const nStrokes = useRef(0);
+  const drawnCells = useRef<Set<number>>(new Set());
   const drawing = useRef(false);
-  const lastPt = useRef<Pt | null>(null);
+  const lastPt = useRef<{ x: number; y: number } | null>(null);
   const pointerId = useRef<number | null>(null);
   const doneRef = useRef(false);
   const [current, setCurrent] = useState(0);
   const [flash, setFlash] = useState<null | "red" | "green">(null);
+  const [, setTick] = useState(0); // force a re-render after the build effect
 
+  const cw = width / GRID;
+  const ch = height / GRID;
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-  const W = Math.max(10, Math.min(width, height) * 0.085); // stroke width
-  const tol = W * 1.15; // how far off the centreline still counts as "on"
 
+  // paint the glyph (at device resolution, so it's crisp), each pixel coloured
+  // by the state of the stroke it belongs to
   const drawGuide = useCallback(
     (cur: number) => {
       const c = guideRef.current;
-      if (!c) return;
+      const a = glyphA.current;
+      const idx = strokeIdx.current;
+      if (!c || !a || !idx) return;
       const ctx = c.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = W;
-      const strokes = strokesPx.current;
-      // draw done + upcoming first, current last (so it sits on top)
-      strokes.forEach((poly, i) => {
-        if (i === cur) return;
-        ctx.strokeStyle = i < cur ? DONE : FUT;
-        ctx.stroke(pathFor(poly));
-      });
-      if (cur < strokes.length) {
-        ctx.strokeStyle = CUR;
-        ctx.stroke(pathFor(strokes[cur]));
+      const out = ctx.createImageData(c.width, c.height);
+      const d = out.data;
+      for (let i = 0; i < a.length; i++) {
+        const al = a[i];
+        const s = idx[i];
+        if (al > 8 && s >= 0) {
+          const col = s < cur ? DONE : s === cur ? CUR : FUT;
+          d[i * 4] = col[0];
+          d[i * 4 + 1] = col[1];
+          d[i * 4 + 2] = col[2];
+          d[i * 4 + 3] = al;
+        }
       }
+      ctx.putImageData(out, 0, 0);
     },
-    [dpr, width, height, W]
+    []
   );
 
   const wipeInk = useCallback(() => {
     const c = inkRef.current;
     if (c) c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
-    drawnPts.current = [];
+    drawnCells.current = new Set();
     lastPt.current = null;
   }, []);
 
+  // ---- build strokes when the letter/size changes ------------------------
   useEffect(() => {
     doneRef.current = false;
     setFlash(null);
@@ -123,33 +105,150 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     if (!g || !ink) return;
     const DW = Math.round(width * dpr);
     const DH = Math.round(height * dpr);
-    for (const c of [g, ink]) {
-      c.width = DW;
-      c.height = DH;
-      const cx = c.getContext("2d")!;
-      cx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      cx.clearRect(0, 0, width, height);
-      cx.lineJoin = "round";
-      cx.lineCap = "round";
-    }
+    g.width = DW; // guide + ink both at device resolution -> crisp
+    g.height = DH;
+    ink.width = DW;
+    ink.height = DH;
+    const ictx = ink.getContext("2d")!;
+    ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ictx.clearRect(0, 0, width, height);
+    ictx.lineJoin = "round";
+    ictx.lineCap = "round";
+
     const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
-    strokesPx.current = strokes.map((st) => st.map(([x, y]) => [(x / 100) * width, (y / 100) * height] as Pt));
-    samples.current = strokesPx.current.map((poly) => samplePolyline(poly, tol * 0.7));
-    drawnPts.current = [];
+    nStrokes.current = strokes.length;
+
+    // render glyph at device resolution -> alpha + bbox (all in device px)
+    const off = document.createElement("canvas");
+    off.width = DW;
+    off.height = DH;
+    const octx = off.getContext("2d")!;
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const fs = fitFont(octx, text, width, height);
+    octx.font = `700 ${fs}px sans-serif`;
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.fillStyle = "#000";
+    octx.fillText(text, width / 2, height / 2);
+    const data = octx.getImageData(0, 0, DW, DH).data;
+
+    let minx = 1e9;
+    let miny = 1e9;
+    let maxx = -1;
+    let maxy = -1;
+    for (let y = 0; y < DH; y++)
+      for (let x = 0; x < DW; x++)
+        if (data[(y * DW + x) * 4 + 3] > 80) {
+          if (x < minx) minx = x;
+          if (x > maxx) maxx = x;
+          if (y < miny) miny = y;
+          if (y > maxy) maxy = y;
+        }
+    const bw = Math.max(1, maxx - minx);
+    const bh = Math.max(1, maxy - miny);
+
+    const alpha = new Uint8ClampedArray(DW * DH);
+    const idx = new Int16Array(DW * DH).fill(-1);
+    for (let y = 0; y < DH; y++) {
+      for (let x = 0; x < DW; x++) {
+        const p = y * DW + x;
+        const al = data[p * 4 + 3];
+        alpha[p] = al;
+        if (al > 8) {
+          const nx = ((x - minx) / bw) * 100;
+          const ny = ((y - miny) / bh) * 100;
+          idx[p] = segmentStroke(nx, ny, strokes);
+        }
+      }
+    }
+
+    // TIDY the boundaries: replace each glyph pixel's stroke with the majority
+    // stroke in a small neighbourhood. Nearest-centreline assignment alone gives
+    // ragged/speckled edges between strokes; this smooths them into clean ones.
+    const R = Math.max(2, Math.round(width * 0.02 * dpr));
+    const smooth = idx.slice();
+    const counts = new Int32Array(strokes.length);
+    for (let y = 0; y < DH; y++) {
+      for (let x = 0; x < DW; x++) {
+        const p = y * DW + x;
+        if (idx[p] < 0) continue;
+        counts.fill(0);
+        for (let dy = -R; dy <= R; dy += 2) {
+          const yy = y + dy;
+          if (yy < 0 || yy >= DH) continue;
+          for (let dx = -R; dx <= R; dx += 2) {
+            const xx = x + dx;
+            if (xx < 0 || xx >= DW) continue;
+            const s = idx[yy * DW + xx];
+            if (s >= 0) counts[s]++;
+          }
+        }
+        let best = idx[p];
+        let bestC = -1;
+        for (let s = 0; s < counts.length; s++)
+          if (counts[s] > bestC) {
+            bestC = counts[s];
+            best = s;
+          }
+        smooth[p] = best;
+      }
+    }
+
+    // validation cells (CSS coords, from the tidied labels)
+    const sets: Set<number>[] = strokes.map(() => new Set<number>());
+    for (let y = 0; y < DH; y++)
+      for (let x = 0; x < DW; x++) {
+        const p = y * DW + x;
+        if (alpha[p] > 80 && smooth[p] >= 0) {
+          sets[smooth[p]].add(Math.floor(y / dpr / ch) * GRID + Math.floor(x / dpr / cw));
+        }
+      }
+    glyphA.current = alpha;
+    strokeIdx.current = smooth;
+    strokeCells.current = sets;
+    // badge starts in CSS px (bbox is device px -> divide by dpr)
+    starts.current = strokes.map((st) => {
+      const [x0, y0] = st[0];
+      const [x1, y1] = st[Math.min(1, st.length - 1)];
+      const sx = (minx + (x0 / 100) * bw) / dpr;
+      const sy = (miny + (y0 / 100) * bh) / dpr;
+      const ex = (minx + (x1 / 100) * bw) / dpr;
+      const ey = (miny + (y1 / 100) * bh) / dpr;
+      const len = Math.hypot(ex - sx, ey - sy) || 1;
+      return { x: sx, y: sy, dx: (ex - sx) / len, dy: (ey - sy) / len };
+    });
+
+    drawnCells.current = new Set();
     lastPt.current = null;
     drawGuide(0);
+    setTick((t) => t + 1); // re-render so the step badge/arrow reads fresh starts
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, letterId, width, height]);
 
+  const nearSet = (cell: number, set: Set<number>) => {
+    const r = Math.floor(cell / GRID);
+    const col = cell % GRID;
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) {
+        const rr = r + dr;
+        const cc = col + dc;
+        if (rr < 0 || cc < 0 || rr >= GRID || cc >= GRID) continue;
+        if (set.has(rr * GRID + cc)) return true;
+      }
+    return false;
+  };
+
   const judge = useCallback(() => {
     if (doneRef.current) return;
-    const poly = strokesPx.current[current];
-    const pts = drawnPts.current;
-    if (!poly || pts.length < 2) return;
+    const region = strokeCells.current[current];
+    const drawn = drawnCells.current;
+    if (!region || drawn.size < 2) return;
 
     let off = 0;
-    for (const p of pts) if (distToPolyline(p[0], p[1], poly) > tol) off++;
-    if (off / pts.length > OFF_MAX) {
+    drawn.forEach((c) => {
+      if (!nearSet(c, region)) off++;
+    });
+    if (off / drawn.size > OFF_MAX) {
       setFlash("red");
       window.setTimeout(() => {
         wipeInk();
@@ -157,23 +256,15 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       }, 450);
       return;
     }
-    const samp = samples.current[current];
     let cov = 0;
-    for (const s of samp) {
-      let near = false;
-      for (const p of pts) {
-        if (Math.hypot(p[0] - s[0], p[1] - s[1]) <= tol) {
-          near = true;
-          break;
-        }
-      }
-      if (near) cov++;
-    }
-    if (samp.length > 0 && cov / samp.length < COVER) return; // keep tracing
+    region.forEach((c) => {
+      if (nearSet(c, drawn)) cov++;
+    });
+    if (region.size > 0 && cov / region.size < COVER) return; // keep tracing
 
     wipeInk();
     const next = current + 1;
-    if (next >= strokesPx.current.length) {
+    if (next >= nStrokes.current) {
       doneRef.current = true;
       drawGuide(next);
       setFlash("green");
@@ -183,11 +274,16 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       drawGuide(next);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, tol, wipeInk, drawGuide, onComplete]);
+  }, [current, wipeInk, drawGuide, onComplete]);
 
-  const toXY = (e: React.PointerEvent): Pt => {
+  // ---- drawing ------------------------------------------------------------
+  const toXY = (e: React.PointerEvent) => {
     const r = inkRef.current!.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const mark = (x: number, y: number) => {
+    if (x >= 0 && y >= 0 && x < width && y < height)
+      drawnCells.current.add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
   };
   const onDown = (e: React.PointerEvent) => {
     if (doneRef.current || flash) return;
@@ -197,13 +293,13 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     drawing.current = true;
     const p = toXY(e);
     lastPt.current = p;
-    drawnPts.current.push(p);
+    mark(p.x, p.y);
     const ctx = inkRef.current!.getContext("2d")!;
     ctx.strokeStyle = "#fffbe8";
     ctx.lineWidth = Math.max(8, width * 0.03);
     ctx.beginPath();
-    ctx.moveTo(p[0], p[1]);
-    ctx.lineTo(p[0] + 0.1, p[1] + 0.1);
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + 0.1, p.y + 0.1);
     ctx.stroke();
   };
   const onMove = (e: React.PointerEvent) => {
@@ -212,13 +308,13 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const last = lastPt.current;
     const ctx = inkRef.current!.getContext("2d")!;
     ctx.beginPath();
-    if (last) ctx.moveTo(last[0], last[1]);
-    ctx.lineTo(p[0], p[1]);
+    if (last) ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
     ctx.stroke();
     if (last) {
-      const steps = Math.max(1, Math.ceil(Math.hypot(p[0] - last[0], p[1] - last[1]) / 4));
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 3));
       for (let i = 1; i <= steps; i++)
-        drawnPts.current.push([last[0] + ((p[0] - last[0]) * i) / steps, last[1] + ((p[1] - last[1]) * i) / steps]);
+        mark(last.x + ((p.x - last.x) * i) / steps, last.y + ((p.y - last.y) * i) / steps);
     }
     lastPt.current = p;
   };
@@ -230,17 +326,8 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     judge();
   };
 
-  // number badge + direction arrow for the current stroke
-  const cur = strokesPx.current[current];
-  const badge = cur && !doneRef.current
-    ? (() => {
-        const [sx, sy] = cur[0];
-        const [nx, ny] = cur[Math.min(1, cur.length - 1)];
-        const len = Math.hypot(nx - sx, ny - sy) || 1;
-        return { sx, sy, dx: (nx - sx) / len, dy: (ny - sy) / len };
-      })()
-    : null;
-  const arrowLen = Math.min(width, height) * 0.16;
+  const st = current < starts.current.length ? starts.current[current] : null;
+  const arrowLen = Math.min(width, height) * 0.18;
 
   return (
     <div
@@ -248,7 +335,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       style={{ width, height }}
       data-text={text}
       data-step={current}
-      data-steps={strokesPx.current.length}
+      data-steps={nStrokes.current}
     >
       <canvas ref={guideRef} className="slateCanvas" style={{ width, height, zIndex: 0 }} />
       <canvas
@@ -260,7 +347,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
         onPointerUp={onUp}
         onPointerCancel={onUp}
       />
-      {badge && (
+      {st && !doneRef.current && (
         <svg className="slateGuide" width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ zIndex: 2 }}>
           <defs>
             <marker id="gah" markerWidth="9" markerHeight="9" refX="6" refY="4.5" orient="auto">
@@ -268,16 +355,16 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
             </marker>
           </defs>
           <line
-            x1={badge.sx + badge.dx * (W * 0.6)}
-            y1={badge.sy + badge.dy * (W * 0.6)}
-            x2={badge.sx + badge.dx * arrowLen}
-            y2={badge.sy + badge.dy * arrowLen}
+            x1={st.x + st.dx * 15}
+            y1={st.y + st.dy * 15}
+            x2={st.x + st.dx * arrowLen}
+            y2={st.y + st.dy * arrowLen}
             stroke="#ffd23f"
             strokeWidth={4}
             markerEnd="url(#gah)"
           />
-          <circle cx={badge.sx} cy={badge.sy} r={13} fill="#ffd23f" stroke="#fff" strokeWidth={2} />
-          <text x={badge.sx} y={badge.sy + 5} textAnchor="middle" fontSize={16} fontWeight={800} fill="#7a5200">
+          <circle cx={st.x} cy={st.y} r={13} fill="#ffd23f" stroke="#fff" strokeWidth={2} />
+          <text x={st.x} y={st.y + 5} textAnchor="middle" fontSize={16} fontWeight={800} fill="#7a5200">
             {current + 1}
           </text>
         </svg>
