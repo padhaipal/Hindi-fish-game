@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Slate from "./Slate";
+import GuidedSlate from "./GuidedSlate";
 import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
@@ -36,6 +37,7 @@ type Phase = "start" | "playing" | "levelComplete" | "allDone";
 
 interface Item {
   write: string; // text to write on the slate
+  id: string; // letter id (letter mode) — for stroke regions; "" for words
   emoji: string; // picture
   glyph: string; // the letter / word shown at top (when visible)
   isLa: boolean; // draw the lattu SVG instead of an emoji
@@ -58,6 +60,7 @@ function buildSequence(mode: "letter" | "word", items: number): Item[] {
       const l = getLetter(id);
       return {
         write: l.char,
+        id,
         emoji: l.emoji,
         glyph: l.char,
         isLa: id === "la",
@@ -69,6 +72,7 @@ function buildSequence(mode: "letter" | "word", items: number): Item[] {
   const ws = shuffle([...BLOCK_WORDS]).slice(0, items);
   return ws.map((w) => ({
     write: w.word,
+    id: "",
     emoji: w.emoji,
     glyph: w.word,
     isLa: false,
@@ -173,15 +177,26 @@ export default function LekhanGame() {
 
           {/* The slate */}
           <div className="lekhanSlateWrap">
-            <Slate
-              key={`${level}-${itemIdx}`}
-              text={item.write}
-              showGuide={cfg.showGuide}
-              width={slateW}
-              height={slateH}
-              onComplete={onComplete}
-              recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : undefined}
-            />
+            {cfg.showGuide ? (
+              <GuidedSlate
+                key={`${level}-${itemIdx}`}
+                text={item.write}
+                letterId={item.id}
+                width={slateW}
+                height={slateH}
+                onComplete={onComplete}
+              />
+            ) : (
+              <Slate
+                key={`${level}-${itemIdx}`}
+                text={item.write}
+                showGuide={false}
+                width={slateW}
+                height={slateH}
+                onComplete={onComplete}
+                recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : undefined}
+              />
+            )}
           </div>
         </>
       )}
