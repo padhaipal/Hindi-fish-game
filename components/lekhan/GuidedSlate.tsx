@@ -60,7 +60,8 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
   const ch = height / GRID;
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 
-  // paint the glyph, each pixel coloured by its stroke's state
+  // paint the glyph (at device resolution, so it's crisp), each pixel coloured
+  // by the state of the stroke it belongs to
   const drawGuide = useCallback(
     (cur: number) => {
       const c = guideRef.current;
@@ -68,7 +69,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       const idx = strokeIdx.current;
       if (!c || !a || !idx) return;
       const ctx = c.getContext("2d")!;
-      const out = ctx.createImageData(width, height);
+      const out = ctx.createImageData(c.width, c.height);
       const d = out.data;
       for (let i = 0; i < a.length; i++) {
         const al = a[i];
@@ -83,7 +84,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       }
       ctx.putImageData(out, 0, 0);
     },
-    [width, height]
+    []
   );
 
   const wipeInk = useCallback(() => {
@@ -101,10 +102,12 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const g = guideRef.current;
     const ink = inkRef.current;
     if (!g || !ink) return;
-    g.width = width; // guide at 1x (ImageData); ink stays crisp at dpr
-    g.height = height;
-    ink.width = Math.round(width * dpr);
-    ink.height = Math.round(height * dpr);
+    const DW = Math.round(width * dpr);
+    const DH = Math.round(height * dpr);
+    g.width = DW; // guide + ink both at device resolution -> crisp
+    g.height = DH;
+    ink.width = DW;
+    ink.height = DH;
     const ictx = ink.getContext("2d")!;
     ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ictx.clearRect(0, 0, width, height);
@@ -114,26 +117,27 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
     nStrokes.current = strokes.length;
 
-    // render glyph -> alpha + bbox
+    // render glyph at device resolution -> alpha + bbox (all in device px)
     const off = document.createElement("canvas");
-    off.width = width;
-    off.height = height;
+    off.width = DW;
+    off.height = DH;
     const octx = off.getContext("2d")!;
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const fs = fitFont(octx, text, width, height);
     octx.font = `700 ${fs}px sans-serif`;
     octx.textAlign = "center";
     octx.textBaseline = "middle";
     octx.fillStyle = "#000";
     octx.fillText(text, width / 2, height / 2);
-    const data = octx.getImageData(0, 0, width, height).data;
+    const data = octx.getImageData(0, 0, DW, DH).data;
 
     let minx = 1e9;
     let miny = 1e9;
     let maxx = -1;
     let maxy = -1;
-    for (let y = 0; y < height; y++)
-      for (let x = 0; x < width; x++)
-        if (data[(y * width + x) * 4 + 3] > 80) {
+    for (let y = 0; y < DH; y++)
+      for (let x = 0; x < DW; x++)
+        if (data[(y * DW + x) * 4 + 3] > 80) {
           if (x < minx) minx = x;
           if (x > maxx) maxx = x;
           if (y < miny) miny = y;
@@ -142,39 +146,39 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const bw = Math.max(1, maxx - minx);
     const bh = Math.max(1, maxy - miny);
 
-    const alpha = new Uint8ClampedArray(width * height);
-    const idx = new Int16Array(width * height).fill(-1);
+    const alpha = new Uint8ClampedArray(DW * DH);
+    const idx = new Int16Array(DW * DH).fill(-1);
     const sets: Set<number>[] = strokes.map(() => new Set<number>());
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const p = y * width + x;
+    for (let y = 0; y < DH; y++) {
+      for (let x = 0; x < DW; x++) {
+        const p = y * DW + x;
         const al = data[p * 4 + 3];
         alpha[p] = al;
-        if (al > 80) {
+        if (al > 8) {
           const nx = ((x - minx) / bw) * 100;
           const ny = ((y - miny) / bh) * 100;
           const s = segmentStroke(nx, ny, strokes);
           idx[p] = s;
-          sets[s].add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
-        } else if (al > 8) {
-          // antialiased edge — colour it by the nearest inked neighbour later;
-          // cheap approx: assign to nearest stroke too
-          const nx = ((x - minx) / bw) * 100;
-          const ny = ((y - miny) / bh) * 100;
-          idx[p] = segmentStroke(nx, ny, strokes);
+          if (al > 80) {
+            // validation cells use CSS coords (matching pointer coords)
+            const cssx = x / dpr;
+            const cssy = y / dpr;
+            sets[s].add(Math.floor(cssy / ch) * GRID + Math.floor(cssx / cw));
+          }
         }
       }
     }
     glyphA.current = alpha;
     strokeIdx.current = idx;
     strokeCells.current = sets;
+    // badge starts in CSS px (bbox is device px -> divide by dpr)
     starts.current = strokes.map((st) => {
       const [x0, y0] = st[0];
       const [x1, y1] = st[Math.min(1, st.length - 1)];
-      const sx = minx + (x0 / 100) * bw;
-      const sy = miny + (y0 / 100) * bh;
-      const ex = minx + (x1 / 100) * bw;
-      const ey = miny + (y1 / 100) * bh;
+      const sx = (minx + (x0 / 100) * bw) / dpr;
+      const sy = (miny + (y0 / 100) * bh) / dpr;
+      const ex = (minx + (x1 / 100) * bw) / dpr;
+      const ey = (miny + (y1 / 100) * bh) / dpr;
       const len = Math.hypot(ex - sx, ey - sy) || 1;
       return { x: sx, y: sy, dx: (ex - sx) / len, dy: (ey - sy) / len };
     });
