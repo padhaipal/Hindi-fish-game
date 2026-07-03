@@ -27,6 +27,7 @@ import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/fish/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/fish/levels";
 import { getLetter, letterWordAudio, Letter, LETTERS } from "@/lib/letters";
+import LetterPicture from "@/components/shared/LetterPicture";
 import {
   playLetterSound,
   playWrongSound,
@@ -616,38 +617,8 @@ export default function PondGame() {
 function WordPicture({ letter }: { letter: Letter }) {
   return (
     <div className="wordPic" aria-label={letter.word}>
-      {letter.id === "la" ? (
-        <LattuIcon />
-      ) : (
-        <span className="wordEmoji">{letter.emoji}</span>
-      )}
+      <LetterPicture letter={letter} size={78} className="wordEmoji" />
     </div>
-  );
-}
-
-// A traditional Indian lattu (wooden spinning top): striped wooden body with a
-// pointed metal tip and the lower cone wound with cream string.
-function LattuIcon() {
-  return (
-    <svg viewBox="0 0 100 100" width="78" height="78" aria-hidden="true">
-      <defs>
-        <clipPath id="lattuBody">
-          <path d="M50 18 C 28 20 20 36 22 50 C 24 66 38 80 50 87 C 62 80 76 66 78 50 C 80 36 72 20 50 18 Z" />
-        </clipPath>
-      </defs>
-      {/* top knob */}
-      <rect x="45" y="9" width="10" height="13" rx="4" fill="#7a4a22" />
-      {/* striped body */}
-      <g clipPath="url(#lattuBody)">
-        <rect x="0" y="0" width="100" height="100" fill="#d2772b" />
-        <rect x="0" y="30" width="100" height="8" fill="#f2b134" />
-        <rect x="0" y="42" width="100" height="6" fill="#7a1f1f" />
-        <rect x="0" y="56" width="100" height="24" fill="#f3ead7" />
-      </g>
-      {/* metal tip */}
-      <path d="M44 76 L50 96 L56 76 Z" fill="#9aa0a6" />
-      <path d="M47 82 L50 96 L53 82 Z" fill="#6b7075" />
-    </svg>
   );
 }
 

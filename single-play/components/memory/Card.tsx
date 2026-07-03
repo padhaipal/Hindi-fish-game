@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { getLetter } from "@/lib/letters";
-import LattuIcon from "@/components/shared/LattuIcon";
+import LetterPicture from "@/components/shared/LetterPicture";
 
 export interface MemCard {
   id: number;
@@ -50,10 +50,8 @@ export default function Card({ card, flipped, matched, flash, w, h, onTap }: Car
         <span className="memFace memFront">
           {card.kind === "letter" ? (
             <span className="memChar">{getLetter(card.letterId).char}</span>
-          ) : card.letterId === "la" ? (
-            <LattuIcon size={Math.round(w * 0.66)} />
           ) : (
-            <span className="memPic">{getLetter(card.letterId).emoji}</span>
+            <LetterPicture letter={getLetter(card.letterId)} size={Math.round(w * 0.66)} className="memPic" />
           )}
         </span>
       </span>

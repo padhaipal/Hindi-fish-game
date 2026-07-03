@@ -16,7 +16,7 @@ import GuidedSlate from "./GuidedSlate";
 import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
-import LattuIcon from "@/components/shared/LattuIcon";
+import LetterPicture from "@/components/shared/LetterPicture";
 import {
   playLetterSound,
   playWordSound,
@@ -146,8 +146,8 @@ export default function LekhanGame() {
           {/* Top: the picture, and (when the level shows it) the letter/word */}
           <div className="lekhanTop">
             <div className="lekhanPrompt">
-              {item.isLa ? (
-                <LattuIcon size={84} />
+              {item.id ? (
+                <LetterPicture letter={getLetter(item.id)} size={84} className="lekhanEmoji" />
               ) : (
                 <span className="lekhanEmoji" style={item.kab ? { fontSize: 66 } : undefined}>
                   {item.emoji}

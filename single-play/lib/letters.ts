@@ -21,7 +21,7 @@
 // /audio/letters-word/<id>.mp3 (see `letterWordAudio`).
 // ---------------------------------------------------------------------------
 
-export type IconKey = "lattu" | "handcart" | "damroo" | "rope";
+export type IconKey = "lattu" | "handcart" | "damroo" | "rope" | "thermos" | "anaar";
 
 export interface Letter {
   id: string;
@@ -59,6 +59,7 @@ function L(
 
 export const LETTERS: Letter[] = [
   // ---- vowels (स्वर) ----
+  L("a", "अ", "a", "अनार", "🔴", { icon: "anaar" }), // pomegranate
   L("aa", "आ", "aa", "आम", "🥭"), // mango
   L("ii", "ई", "ii", "ईंट", "🧱"), // brick
   L("u", "उ", "u", "उल्लू", "🦉"), // owl
@@ -80,7 +81,8 @@ export const LETTERS: Letter[] = [
   L("tta", "ट", "tta", "टमाटर", "🍅", { soundAlikes: ["ttha"] }), // tomato
   L("ttha", "ठ", "ttha", "ठेला", "🛒", { icon: "handcart", soundAlikes: ["tta"] }), // handcart
   L("dda", "ड", "dda", "डमरू", "🥁", { icon: "damroo" }), // damroo (drum)
-  L("ta", "त", "ta", "तरबूज", "🍉", { soundAlikes: ["da"] }), // watermelon
+  L("ta", "त", "ta", "तरबूज", "🍉", { soundAlikes: ["tha", "da"] }), // watermelon
+  L("tha", "थ", "tha", "थर्मस", "🧴", { icon: "thermos", soundAlikes: ["ta"] }), // thermos
   L("da", "द", "da", "दरवाज़ा", "🚪", { soundAlikes: ["dha", "ta"] }), // door
   L("dha", "ध", "dha", "धनुष", "🏹", { soundAlikes: ["da"] }), // bow
   L("na", "न", "na", "नल", "🚰"), // tap

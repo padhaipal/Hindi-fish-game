@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { HOP_LEVELS, TOTAL_HOP_LEVELS } from "@/lib/pondhop/levels";
 import { buildHopBoard, HopStone } from "@/lib/pondhop/board";
 import { LETTERS, getLetter, letterWordAudio, Letter } from "@/lib/letters";
-import LattuIcon from "@/components/shared/LattuIcon";
+import LetterPicture from "@/components/shared/LetterPicture";
 import {
   playLetterSound,
   playWrongSound,
@@ -227,11 +227,7 @@ export default function PondHopGame() {
           {/* Far bank — the side we're crossing TO — shows the target picture. */}
           <div className="hopBank hopFar">
             <div className="hopTargetCard">
-              {target.id === "la" ? (
-                <LattuIcon size={46} />
-              ) : (
-                <span className="hopTargetEmoji">{target.emoji}</span>
-              )}
+              <LetterPicture letter={target} size={46} className="hopTargetEmoji" />
               <span className="hopTargetChar">{target.char}</span>
             </div>
             <button
