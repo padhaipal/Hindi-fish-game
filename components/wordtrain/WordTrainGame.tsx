@@ -165,7 +165,9 @@ export default function WordTrainGame() {
       busyRef.current = true;
       later(() => {
         setMoving(true);
-        playWordSound(word.audio); // blend the word
+        // As the train pulls out, play the natural blended word (not the
+        // spelled-out teaching version used for the picture / सुनो prompt).
+        playWordSound(word.audio.replace("/words/", "/words/whole/"));
       }, 700);
 
       // Then advance to the next word (or finish the session).

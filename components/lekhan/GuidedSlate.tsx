@@ -9,6 +9,11 @@
 // grey dots. The child traces the current stroke; when enough of it is covered
 // its dots turn solid white and the next stroke starts shimmering. No colour
 // coding — just white (active/done) vs light grey (not yet).
+//
+// The child's OWN chalk marks stay on the slate: each completed stroke is
+// committed to a separate canvas so it remains visible as they build the whole
+// letter. Only a strayed (rejected) attempt is wiped; the committed strokes
+// stay. The ↺ button clears everything and restarts the letter.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -29,7 +34,8 @@ const COVER = 0.6;
 
 export default function GuidedSlate({ text, letterId, width, height, onComplete }: Props) {
   const guideRef = useRef<HTMLCanvasElement>(null);
-  const inkRef = useRef<HTMLCanvasElement>(null);
+  const commitRef = useRef<HTMLCanvasElement>(null); // completed strokes (stay visible)
+  const inkRef = useRef<HTMLCanvasElement>(null); // the current stroke being drawn
   const dots = useRef<{ x: number; y: number; s: number; o: number }[]>([]); // device px
   const strokeCells = useRef<Set<number>[]>([]);
   const nStrokes = useRef(0);
@@ -48,12 +54,39 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
   const dotR = Math.max(2.2, width * 0.011) * dpr;
 
+  // clear just the CURRENT stroke (the in-progress attempt)
   const wipeInk = useCallback(() => {
     const c = inkRef.current;
     if (c) c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
     drawnCells.current = new Set();
     lastPt.current = null;
   }, []);
+
+  // stamp the current stroke onto the committed layer so it stays visible,
+  // then clear the current-stroke layer for the next stroke
+  const commitCurrent = useCallback(() => {
+    const commit = commitRef.current;
+    const ink = inkRef.current;
+    if (commit && ink) {
+      const cx = commit.getContext("2d")!;
+      cx.save();
+      cx.setTransform(1, 0, 0, 1, 0, 0);
+      cx.drawImage(ink, 0, 0);
+      cx.restore();
+    }
+    wipeInk();
+  }, [wipeInk]);
+
+  // ↺ — wipe everything and start the letter over
+  const resetAll = useCallback(() => {
+    const commit = commitRef.current;
+    if (commit) commit.getContext("2d")!.clearRect(0, 0, commit.width, commit.height);
+    wipeInk();
+    doneRef.current = false;
+    currentRef.current = 0;
+    setCurrent(0);
+    setFlash(null);
+  }, [wipeInk]);
 
   useEffect(() => {
     doneRef.current = false;
@@ -62,10 +95,11 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     setFlash(null);
     const g = guideRef.current;
     const ink = inkRef.current;
-    if (!g || !ink) return;
+    const commit = commitRef.current;
+    if (!g || !ink || !commit) return;
     const DW = Math.round(width * dpr);
     const DH = Math.round(height * dpr);
-    for (const c of [g, ink]) {
+    for (const c of [g, commit, ink]) {
       c.width = DW;
       c.height = DH;
     }
@@ -74,6 +108,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     ictx.clearRect(0, 0, width, height);
     ictx.lineJoin = "round";
     ictx.lineCap = "round";
+    commit.getContext("2d")!.clearRect(0, 0, DW, DH); // fresh committed layer
 
     const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
     nStrokes.current = strokes.length;
@@ -215,7 +250,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       if (nearSet(c, drawn)) cov++;
     });
     if (region.size > 0 && cov / region.size < COVER) return;
-    wipeInk();
+    commitCurrent(); // keep this stroke's chalk on the slate
     const next = currentRef.current + 1;
     currentRef.current = next;
     setCurrent(next);
@@ -225,7 +260,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       window.setTimeout(() => onComplete(), 600);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wipeInk, onComplete]);
+  }, [wipeInk, commitCurrent, onComplete]);
 
   const toXY = (e: React.PointerEvent) => {
     const r = inkRef.current!.getBoundingClientRect();
@@ -285,16 +320,17 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       data-steps={nStrokes.current}
     >
       <canvas ref={guideRef} className="slateCanvas" style={{ width, height, zIndex: 0 }} />
+      <canvas ref={commitRef} className="slateCanvas" style={{ width, height, zIndex: 1 }} />
       <canvas
         ref={inkRef}
         className="slateCanvas"
-        style={{ width, height, zIndex: 1 }}
+        style={{ width, height, zIndex: 2 }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerCancel={onUp}
       />
-      <button type="button" className="slateClear" onClick={wipeInk} aria-label="फिर से">
+      <button type="button" className="slateClear" onClick={resetAll} aria-label="फिर से">
         ↺
       </button>
     </div>

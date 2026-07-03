@@ -170,7 +170,9 @@ export default function BlocksGame() {
         setSelectedId(null);
         setFireworks({ id: fxSeq.current++, ...center(pair.occ) });
         // 0.5s pause between the second letter's sound and the word's sound.
-        window.setTimeout(() => playWordSound(word.audio), 500);
+        // Once it's built, play the natural blended word (not the spelled-out
+        // teaching version used for the सुनो prompt).
+        window.setTimeout(() => playWordSound(word.audio.replace("/words/", "/words/whole/")), 500);
 
         const occ = pair.occ;
         window.setTimeout(() => {
