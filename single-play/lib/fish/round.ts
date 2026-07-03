@@ -7,7 +7,8 @@
 // ---------------------------------------------------------------------------
 
 import { LETTERS, Letter, getLetter } from "../letters";
-import { DistractorMode, LevelConfig } from "./levels";
+import { LevelConfig } from "./levels";
+import { nonConfusableChoices } from "../families";
 
 export interface FishSpec {
   id: number; // unique id for React keys
@@ -37,34 +38,6 @@ function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Build the pool of distractor letter-ids based on the level's distractor mode.
-// We always exclude the target letter from the distractor pool.
-function buildDistractorPool(target: Letter, mode: DistractorMode): string[] {
-  const allOthers = LETTERS.filter((l) => l.id !== target.id).map((l) => l.id);
-
-  let preferred: string[] = [];
-  if (mode === "lookAlike") {
-    preferred = target.lookAlikes.filter((id) => id !== target.id);
-  } else if (mode === "soundAlike") {
-    preferred = target.soundAlikes.filter((id) => id !== target.id);
-  } else if (mode === "mixed") {
-    preferred = [...target.lookAlikes, ...target.soundAlikes].filter(
-      (id) => id !== target.id
-    );
-  }
-
-  // De-duplicate the preferred list.
-  preferred = Array.from(new Set(preferred));
-
-  // For tricky modes we weight the pool toward the preferred (tricky) letters
-  // but still include some plain "other" letters so there is variety.
-  if (preferred.length > 0) {
-    return [...preferred, ...preferred, ...allOthers];
-  }
-  // "easy" mode (or no preferred letters): just use clearly-different letters.
-  return allOthers;
-}
-
 // Create the full plan of fish for one round. The target letter is chosen by
 // the caller (each level gets a fixed letter), not at random.
 export function buildRound(
@@ -76,7 +49,11 @@ export function buildRound(
   const targetCount = Math.max(1, Math.floor(level.fishCount / 2));
   const distractorCount = level.fishCount - targetCount;
 
-  const distractorPool = buildDistractorPool(target, level.distractorMode);
+  // Distractors are never in the target's confusable family, and no two share a
+  // family — so no two letters on screen are easy to mix up. If we need more
+  // distractors than there are distinct families, distinct letters simply repeat.
+  const allOthers = LETTERS.filter((l) => l.id !== target.id).map((l) => l.id);
+  const choices = nonConfusableChoices(allOthers, [target.id]);
 
   const fish: FishSpec[] = [];
   let nextId = fishIdStart;
@@ -94,8 +71,7 @@ export function buildRound(
 
   // Distractor fish.
   for (let i = 0; i < distractorCount; i++) {
-    const letterId = pick(distractorPool);
-    const letter = getLetter(letterId);
+    const letter = getLetter(choices[i % choices.length]);
     fish.push({
       id: nextId++,
       letterId: letter.id,

@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { buildSession, TrainWord } from "@/lib/wordtrain/words";
 import { LETTERS, getLetter } from "@/lib/letters";
+import { nonConfusableChoices } from "@/lib/families";
 import EraserIcon from "@/components/shared/EraserIcon";
 import {
   playLetterSound,
@@ -40,6 +41,32 @@ const COACH_COLOR: Record<string, string> = {
   cha: "#ff6b4a",
   la: "#0ca6a0",
 };
+const PALETTE = [
+  "#e8568f", "#3a9bd9", "#f0883c", "#8b5cf6", "#23b56b", "#d99b00",
+  "#ff6b4a", "#0ca6a0", "#5b8def", "#c0504d", "#7cb342", "#ab47bc",
+];
+function coachColor(id: string): string {
+  if (COACH_COLOR[id]) return COACH_COLOR[id];
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
+
+// The coach tray for a word: its own letters plus distractors that are never
+// confusable with the word's letters (or with each other), so the child can't
+// grab a look/sound-alike by mistake. Shuffled for display.
+function buildTray(word: TrainWord): string[] {
+  const wordLetters = Array.from(new Set(word.letters));
+  const pool = LETTERS.map((l) => l.id).filter((id) => !wordLetters.includes(id));
+  const distractors = nonConfusableChoices(pool, word.letters);
+  const size = Math.max(9, wordLetters.length + 4);
+  const tray = [...wordLetters, ...distractors].slice(0, size);
+  for (let i = tray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tray[i], tray[j]] = [tray[j], tray[i]];
+  }
+  return tray;
+}
 
 type Phase = "start" | "playing" | "done";
 
@@ -82,6 +109,7 @@ export default function WordTrainGame() {
   const [placed, setPlaced] = useState<string[]>([]); // letter ids on the track
   const [moving, setMoving] = useState(false); // train chugging off after a win
   const [wrongSlot, setWrongSlot] = useState(false); // shake the next slot red
+  const [tray, setTray] = useState<string[]>([]); // the coach letters for this word
 
   // Floating "ghost" coach that follows the finger while dragging.
   const [drag, setDrag] = useState<{ letterId: string; x: number; y: number } | null>(
@@ -118,6 +146,7 @@ export default function WordTrainGame() {
     setWrongSlot(false);
     busyRef.current = true; // locked during the intro
     const w = sess[idx];
+    setTray(buildTray(w));
     // small cadence: picture shows, brief pause, then the word is spoken.
     later(() => {
       playWordSound(w.audio);
@@ -301,7 +330,8 @@ export default function WordTrainGame() {
       {/* ---- The eight letter coaches at the bottom (drag source) ---- */}
       {phase === "playing" && (
         <div className="coachTray">
-          {LETTERS.map((l) => {
+          {tray.map((lid) => {
+            const l = getLetter(lid);
             const dragging = drag?.letterId === l.id;
             const cls = [
               "trayCoach",
@@ -315,7 +345,7 @@ export default function WordTrainGame() {
                 key={l.id}
                 type="button"
                 className={cls}
-                style={{ background: COACH_COLOR[l.id] }}
+                style={{ background: coachColor(l.id) }}
                 aria-label={`coach ${l.char}`}
                 onPointerDown={(e) => onCoachDown(e, l.id)}
                 onPointerMove={onCoachMove}

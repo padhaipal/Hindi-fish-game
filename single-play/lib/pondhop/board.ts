@@ -9,6 +9,7 @@
 // ---------------------------------------------------------------------------
 
 import { LETTERS } from "@/lib/letters";
+import { nonConfusableChoices } from "@/lib/families";
 import { HopLevel } from "./levels";
 
 export interface HopStone {
@@ -40,11 +41,20 @@ export function buildHopBoard(targetId: string, cfg: HopLevel): HopStone[][] {
   const rem = cfg.stones % cfg.targets;
   const others = LETTERS.map((l) => l.id).filter((id) => id !== targetId);
 
+  // A board-wide bag of distractor letters: none in the target's confusable
+  // family and no two sharing a family, so the whole river never shows two
+  // letters that are easy to mix up. (Distinct letters repeat if we run out.)
+  const totalDistractors = Math.max(0, cfg.stones - cfg.targets);
+  const choices = nonConfusableChoices(others, [targetId]);
+  const bag = shuffle(
+    Array.from({ length: totalDistractors }, (_, i) => choices[i % Math.max(1, choices.length)])
+  );
+
   let sid = 0;
   const rows: HopStone[][] = [];
   for (let r = 0; r < cfg.targets; r++) {
     const size = base + (r < rem ? 1 : 0);
-    const distractors = shuffle([...others]).slice(0, Math.max(0, size - 1));
+    const distractors = bag.splice(0, Math.max(0, size - 1));
     const letters = shuffle([
       targetId,
       ...distractors,
