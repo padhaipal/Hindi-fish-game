@@ -236,6 +236,26 @@ export const LETTER_STROKES: Record<string, Stroke[]> = {
     [[52, 27], [44, 41]],
     [[28, 37], [72, 37]],
   ],
+  // ई : curved body, right stem with top hook, headline
+  ii: [
+    [[36, 55], [33, 45], [44, 41], [53, 48], [49, 59], [39, 60], [45, 70], [57, 71]],
+    [[62, 41], [66, 37], [66, 62]],
+    [[30, 37], [70, 37]],
+  ],
+  // ऋ : curl body, bottom hook tail, headline
+  ri: [
+    [[44, 42], [53, 41], [55, 51], [45, 56], [39, 63]],
+    [[39, 63], [47, 71], [40, 82]],
+    [[30, 37], [62, 37]],
+  ],
+  // औ : अ body, inner stem, au-matra (top-right), headline
+  au: [
+    [[40, 46], [30, 41], [24, 53], [31, 64], [42, 62], [45, 54]],
+    [[45, 59], [60, 59]],
+    [[62, 37], [62, 80]],
+    [[74, 22], [82, 32], [76, 40]],
+    [[22, 37], [82, 37]],
+  ],
 };
 
 // distance from point (px,py) to a polyline (all in the same coordinate space)
