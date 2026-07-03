@@ -230,22 +230,24 @@ export default function PondHopGame() {
         <div className="hopRiver">
           {/* Far bank — the side we're crossing TO — shows the target picture. */}
           <div className="hopBank hopFar">
-            <button
-              type="button"
-              className="hopTargetCard"
-              onClick={() => {
-                unlockAudio();
-                playLetterSound(letterWordAudio(target.id));
-              }}
-              aria-label="सुनो"
-            >
+            <div className="hopTargetCard">
               {target.id === "la" ? (
                 <LattuIcon size={46} />
               ) : (
                 <span className="hopTargetEmoji">{target.emoji}</span>
               )}
               <span className="hopTargetChar">{target.char}</span>
-              <span className="hopTargetHint">🔊</span>
+            </div>
+            <button
+              type="button"
+              className="soundBtn soundBtn--compact"
+              onClick={() => {
+                unlockAudio();
+                playLetterSound(letterWordAudio(target.id));
+              }}
+              aria-label="सुनो"
+            >
+              🔊 सुनो
             </button>
           </div>
 

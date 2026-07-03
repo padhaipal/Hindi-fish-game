@@ -250,7 +250,17 @@ export default function BlocksGame() {
             >
               {target.emoji}
             </span>
-            <span className="pictureHint">🔊</span>
+          </button>
+          <button
+            type="button"
+            className="soundBtn"
+            onClick={() => {
+              unlockAudio();
+              playWordSound(target.audio);
+            }}
+            aria-label="सुनो"
+          >
+            🔊 सुनो
           </button>
           <div className="progressDots">
             {order.map((_, i) => (

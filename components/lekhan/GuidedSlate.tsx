@@ -3,15 +3,17 @@
 // ---------------------------------------------------------------------------
 // GUIDED SLATE — the trace level (L1).
 // ---------------------------------------------------------------------------
-// A piece of chalk animates along the letter's strokes (in order) leaving a
-// DOTTED line behind — showing the shape, order and direction. Then the child
-// runs a finger over the dotted line and it fills in solid WHITE. White can only
-// appear ON the letter's path (a band around the strokes), so stray marks don't
-// show. When enough of the letter has been made white, it's complete.
+// The accurate font glyph is shown as DOTTED OUTLINES, split into its strokes.
+// The current stroke's dots are fluorescent white and shimmer/march (in the
+// writing direction) to show where to trace next; all other strokes are light
+// grey dots. The child traces the current stroke; when enough of it is covered
+// its dots turn solid white and the next stroke starts shimmering. No colour
+// coding — just white (active/done) vs light grey (not yet).
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LETTER_STROKES, Stroke } from "@/lib/lekhan/strokes";
+import { fitFont } from "@/lib/lekhan/recognize";
+import { LETTER_STROKES, segmentStroke, Stroke } from "@/lib/lekhan/strokes";
 
 interface Props {
   text: string;
@@ -21,98 +23,42 @@ interface Props {
   onComplete: () => void;
 }
 
-type Pt = [number, number];
-
-const COVER = 0.72; // fraction of the letter path that must be whitened
-const DEMO_MS = 1900; // chalk demonstration length
-
-// smooth path (quadratic through midpoints) for a px polyline
-function pathFor(poly: Pt[]): Path2D {
-  const p = new Path2D();
-  if (!poly.length) return p;
-  p.moveTo(poly[0][0], poly[0][1]);
-  if (poly.length === 2) {
-    p.lineTo(poly[1][0], poly[1][1]);
-    return p;
-  }
-  for (let i = 1; i < poly.length - 1; i++) {
-    const mx = (poly[i][0] + poly[i + 1][0]) / 2;
-    const my = (poly[i][1] + poly[i + 1][1]) / 2;
-    p.quadraticCurveTo(poly[i][0], poly[i][1], mx, my);
-  }
-  p.lineTo(poly[poly.length - 1][0], poly[poly.length - 1][1]);
-  return p;
-}
-
-function samplePolyline(poly: Pt[], step: number): Pt[] {
-  if (poly.length === 1) return [poly[0]];
-  const out: Pt[] = [];
-  for (let i = 0; i < poly.length - 1; i++) {
-    const [ax, ay] = poly[i];
-    const [bx, by] = poly[i + 1];
-    const len = Math.hypot(bx - ax, by - ay);
-    const n = Math.max(1, Math.round(len / step));
-    for (let k = 0; k < n; k++) out.push([ax + ((bx - ax) * k) / n, ay + ((by - ay) * k) / n]);
-  }
-  out.push(poly[poly.length - 1]);
-  return out;
-}
+const GRID = 16;
+const OFF_MAX = 0.32;
+const COVER = 0.6;
 
 export default function GuidedSlate({ text, letterId, width, height, onComplete }: Props) {
-  const guideRef = useRef<HTMLCanvasElement>(null); // dotted line + chalk demo
-  const inkRef = useRef<HTMLCanvasElement>(null); // white reveal + pointer
-  const maskRef = useRef<HTMLCanvasElement | null>(null); // band the white is clipped to
-  const strokesPx = useRef<Pt[][]>([]);
-  const demoPts = useRef<Pt[]>([]); // concatenated points for the chalk demo
-  const coverPts = useRef<Pt[]>([]); // sampled path points for coverage
-  const coveredRef = useRef<boolean[]>([]);
+  const guideRef = useRef<HTMLCanvasElement>(null);
+  const inkRef = useRef<HTMLCanvasElement>(null);
+  const dots = useRef<{ x: number; y: number; s: number; o: number }[]>([]); // device px
+  const strokeCells = useRef<Set<number>[]>([]);
+  const nStrokes = useRef(0);
+  const currentRef = useRef(0);
+  const drawnCells = useRef<Set<number>>(new Set());
   const drawing = useRef(false);
-  const lastPt = useRef<Pt | null>(null);
+  const lastPt = useRef<{ x: number; y: number } | null>(null);
   const pointerId = useRef<number | null>(null);
   const doneRef = useRef(false);
-  const demoRef = useRef(true); // demo still playing
   const rafRef = useRef(0);
+  const [current, setCurrent] = useState(0);
   const [flash, setFlash] = useState<null | "green">(null);
 
+  const cw = width / GRID;
+  const ch = height / GRID;
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-  const W = Math.max(10, Math.min(width, height) * 0.1); // white line width
-  const tol = W * 0.95;
+  const dotR = Math.max(2.2, width * 0.011) * dpr;
 
-  // draw the dotted guide line (all strokes), optionally with the chalk head
-  const drawGuide = useCallback(
-    (chalk?: Pt) => {
-      const c = guideRef.current;
-      if (!c) return;
-      const ctx = c.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.strokeStyle = "rgba(255,255,255,0.4)";
-      ctx.lineWidth = Math.max(3, W * 0.42);
-      ctx.setLineDash([2, W * 0.42]);
-      for (const poly of strokesPx.current) ctx.stroke(pathFor(poly));
-      ctx.setLineDash([]);
-      if (chalk) {
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(chalk[0], chalk[1], W * 0.42, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    },
-    [dpr, width, height, W]
-  );
-
-  const stopDemo = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = 0;
-    demoRef.current = false;
-    drawGuide();
-  }, [drawGuide]);
+  const wipeInk = useCallback(() => {
+    const c = inkRef.current;
+    if (c) c.getContext("2d")!.clearRect(0, 0, c.width, c.height);
+    drawnCells.current = new Set();
+    lastPt.current = null;
+  }, []);
 
   useEffect(() => {
     doneRef.current = false;
-    demoRef.current = true;
+    currentRef.current = 0;
+    setCurrent(0);
     setFlash(null);
     const g = guideRef.current;
     const ink = inkRef.current;
@@ -123,111 +69,203 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       c.width = DW;
       c.height = DH;
     }
-    const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
-    strokesPx.current = strokes.map((st) => st.map(([x, y]) => [(x / 100) * width, (y / 100) * height] as Pt));
-
-    // clip band the white reveal is limited to (strokes stroked thick)
-    const mask = document.createElement("canvas");
-    mask.width = DW;
-    mask.height = DH;
-    const mctx = mask.getContext("2d")!;
-    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    mctx.lineCap = "round";
-    mctx.lineJoin = "round";
-    mctx.strokeStyle = "#fff";
-    mctx.lineWidth = W * 1.35;
-    for (const poly of strokesPx.current) mctx.stroke(pathFor(poly));
-    maskRef.current = mask;
-
-    // demo + coverage sample points
-    demoPts.current = strokesPx.current.flatMap((poly) => samplePolyline(poly, W * 0.5));
-    coverPts.current = strokesPx.current.flatMap((poly) => samplePolyline(poly, tol * 0.8));
-    coveredRef.current = coverPts.current.map(() => false);
-
     const ictx = ink.getContext("2d")!;
     ictx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ictx.clearRect(0, 0, width, height);
+    ictx.lineJoin = "round";
+    ictx.lineCap = "round";
 
-    // run the chalk demo
-    const pts = demoPts.current;
-    let start = 0;
-    const step = (t: number) => {
-      if (!start) start = t;
-      const f = Math.min(1, (t - start) / DEMO_MS);
-      const idx = Math.min(pts.length - 1, Math.floor(f * (pts.length - 1)));
-      drawGuide(pts[idx]);
-      if (f < 1 && demoRef.current) rafRef.current = requestAnimationFrame(step);
-      else stopDemo();
+    const strokes: Stroke[] = LETTER_STROKES[letterId] || [[[20, 50], [80, 50]]];
+    nStrokes.current = strokes.length;
+
+    // render glyph (device res) -> alpha + bbox
+    const off = document.createElement("canvas");
+    off.width = DW;
+    off.height = DH;
+    const octx = off.getContext("2d")!;
+    octx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const fs = fitFont(octx, text, width, height);
+    octx.font = `700 ${fs}px sans-serif`;
+    octx.textAlign = "center";
+    octx.textBaseline = "middle";
+    octx.fillStyle = "#000";
+    octx.fillText(text, width / 2, height / 2);
+    const data = octx.getImageData(0, 0, DW, DH).data;
+    const A = (x: number, y: number) => (x < 0 || y < 0 || x >= DW || y >= DH ? 0 : data[(y * DW + x) * 4 + 3]);
+
+    let minx = 1e9, miny = 1e9, maxx = -1, maxy = -1;
+    for (let y = 0; y < DH; y++)
+      for (let x = 0; x < DW; x++)
+        if (data[(y * DW + x) * 4 + 3] > 80) {
+          if (x < minx) minx = x;
+          if (x > maxx) maxx = x;
+          if (y < miny) miny = y;
+          if (y > maxy) maxy = y;
+        }
+    const bw = Math.max(1, maxx - minx);
+    const bh = Math.max(1, maxy - miny);
+
+    // sampled centrelines (device px) -> for ordering dots along the stroke
+    const cl = strokes.map((st) =>
+      st.map(([x, y]) => [minx + (x / 100) * bw, miny + (y / 100) * bh] as [number, number])
+    );
+    const orderOf = (px: number, py: number, si: number) => {
+      const poly = cl[si];
+      let best = 0, bestD = Infinity, acc = 0, total = 0, at = 0;
+      for (let i = 0; i < poly.length - 1; i++) total += Math.hypot(poly[i + 1][0] - poly[i][0], poly[i + 1][1] - poly[i][1]);
+      total = total || 1;
+      for (let i = 0; i < poly.length - 1; i++) {
+        const [ax, ay] = poly[i], [bx, by] = poly[i + 1];
+        const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1;
+        let t = ((px - ax) * dx + (py - ay) * dy) / l2;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+        const segLen = Math.hypot(dx, dy);
+        if (d < bestD) { bestD = d; best = acc + t * segLen; }
+        acc += segLen;
+      }
+      at = best;
+      return at / total;
     };
-    drawGuide();
-    rafRef.current = requestAnimationFrame(step);
+
+    // edge dots: glyph pixels bordering the background, deduped on a small grid
+    const spacing = Math.max(6, Math.round(width * 0.026)) * dpr;
+    const seen = new Set<number>();
+    const list: { x: number; y: number; s: number; o: number }[] = [];
+    const sets: Set<number>[] = strokes.map(() => new Set<number>());
+    for (let y = 0; y < DH; y++) {
+      for (let x = 0; x < DW; x++) {
+        const al = data[(y * DW + x) * 4 + 3];
+        if (al <= 80) continue;
+        const nx = ((x - minx) / bw) * 100;
+        const ny = ((y - miny) / bh) * 100;
+        const s = segmentStroke(nx, ny, strokes);
+        sets[s].add(Math.floor(y / dpr / ch) * GRID + Math.floor(x / dpr / cw)); // validation cell
+        // edge?
+        if (A(x - 2, y) > 80 && A(x + 2, y) > 80 && A(x, y - 2) > 80 && A(x, y + 2) > 80) continue;
+        const key = Math.floor(y / spacing) * 4000 + Math.floor(x / spacing);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        list.push({ x, y, s, o: orderOf(x, y, s) });
+      }
+    }
+    dots.current = list;
+    strokeCells.current = sets;
+    drawnCells.current = new Set();
+    lastPt.current = null;
+
+    // animation loop
+    const gctx = g.getContext("2d")!;
+    const loop = (t: number) => {
+      gctx.setTransform(1, 0, 0, 1, 0, 0);
+      gctx.clearRect(0, 0, DW, DH);
+      const cur = currentRef.current;
+      for (const d of dots.current) {
+        let color: string, r = dotR;
+        if (d.s < cur) {
+          color = "rgba(255,255,255,0.95)"; // done
+        } else if (d.s === cur && !doneRef.current) {
+          const wave = 0.5 + 0.5 * Math.sin(d.o * Math.PI * 5 - t * 0.007);
+          color = `rgba(214,255,224,${0.35 + 0.65 * wave})`; // fluorescent white, marching
+          r = dotR * 1.25;
+        } else {
+          color = "rgba(206,212,208,0.5)"; // light grey
+        }
+        gctx.fillStyle = color;
+        gctx.beginPath();
+        gctx.arc(d.x, d.y, r, 0, Math.PI * 2);
+        gctx.fill();
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, letterId, width, height]);
 
-  // whiten under the finger, clipped to the letter band
-  const paint = (a: Pt, b: Pt) => {
-    const c = inkRef.current!;
-    const ctx = c.getContext("2d")!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = W;
-    ctx.beginPath();
-    ctx.moveTo(a[0], a[1]);
-    ctx.lineTo(b[0], b[1]);
-    ctx.stroke();
-    // clip everything drawn so far to the band
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = "destination-in";
-    if (maskRef.current) ctx.drawImage(maskRef.current, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
+  const nearSet = (cell: number, set: Set<number>) => {
+    const r = Math.floor(cell / GRID);
+    const col = cell % GRID;
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) {
+        const rr = r + dr, cc = col + dc;
+        if (rr < 0 || cc < 0 || rr >= GRID || cc >= GRID) continue;
+        if (set.has(rr * GRID + cc)) return true;
+      }
+    return false;
   };
 
-  const cover = (p: Pt) => {
-    const cp = coverPts.current;
-    const cov = coveredRef.current;
-    for (let i = 0; i < cp.length; i++)
-      if (!cov[i] && Math.hypot(cp[i][0] - p[0], cp[i][1] - p[1]) <= tol) cov[i] = true;
-  };
-
-  const checkDone = () => {
+  const judge = useCallback(() => {
     if (doneRef.current) return;
-    const cov = coveredRef.current;
-    const n = cov.length || 1;
-    const c = cov.reduce((s, v) => s + (v ? 1 : 0), 0);
-    if (c / n >= COVER) {
+    const region = strokeCells.current[currentRef.current];
+    const drawn = drawnCells.current;
+    if (!region || drawn.size < 2) return;
+    let off = 0;
+    drawn.forEach((c) => {
+      if (!nearSet(c, region)) off++;
+    });
+    if (off / drawn.size > OFF_MAX) {
+      wipeInk();
+      return; // strayed — just clear the attempt, no red
+    }
+    let cov = 0;
+    region.forEach((c) => {
+      if (nearSet(c, drawn)) cov++;
+    });
+    if (region.size > 0 && cov / region.size < COVER) return;
+    wipeInk();
+    const next = currentRef.current + 1;
+    currentRef.current = next;
+    setCurrent(next);
+    if (next >= nStrokes.current) {
       doneRef.current = true;
       setFlash("green");
-      window.setTimeout(() => onComplete(), 550);
+      window.setTimeout(() => onComplete(), 600);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wipeInk, onComplete]);
 
-  const toXY = (e: React.PointerEvent): Pt => {
+  const toXY = (e: React.PointerEvent) => {
     const r = inkRef.current!.getBoundingClientRect();
-    return [e.clientX - r.left, e.clientY - r.top];
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const mark = (x: number, y: number) => {
+    if (x >= 0 && y >= 0 && x < width && y < height)
+      drawnCells.current.add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
   };
   const onDown = (e: React.PointerEvent) => {
     if (doneRef.current) return;
     e.preventDefault();
-    if (demoRef.current) stopDemo(); // start tracing -> end the demo
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     pointerId.current = e.pointerId;
     drawing.current = true;
     const p = toXY(e);
     lastPt.current = p;
-    paint(p, p);
-    cover(p);
+    mark(p.x, p.y);
+    const ctx = inkRef.current!.getContext("2d")!;
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = Math.max(9, width * 0.033);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + 0.1, p.y + 0.1);
+    ctx.stroke();
   };
   const onMove = (e: React.PointerEvent) => {
     if (!drawing.current || e.pointerId !== pointerId.current) return;
     const p = toXY(e);
-    paint(lastPt.current || p, p);
-    cover(p);
+    const last = lastPt.current;
+    const ctx = inkRef.current!.getContext("2d")!;
+    ctx.beginPath();
+    if (last) ctx.moveTo(last.x, last.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    if (last) {
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 3));
+      for (let i = 1; i <= steps; i++)
+        mark(last.x + ((p.x - last.x) * i) / steps, last.y + ((p.y - last.y) * i) / steps);
+    }
     lastPt.current = p;
   };
   const onUp = (e: React.PointerEvent) => {
@@ -235,7 +273,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     drawing.current = false;
     lastPt.current = null;
     pointerId.current = null;
-    checkDone();
+    judge();
   };
 
   return (
@@ -243,6 +281,8 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
       className={`slate ${flash ? `slate--${flash}` : ""}`}
       style={{ width, height }}
       data-text={text}
+      data-step={current}
+      data-steps={nStrokes.current}
     >
       <canvas ref={guideRef} className="slateCanvas" style={{ width, height, zIndex: 0 }} />
       <canvas
@@ -254,6 +294,9 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
         onPointerUp={onUp}
         onPointerCancel={onUp}
       />
+      <button type="button" className="slateClear" onClick={wipeInk} aria-label="फिर से">
+        ↺
+      </button>
     </div>
   );
 }

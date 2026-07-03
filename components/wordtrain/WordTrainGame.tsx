@@ -253,14 +253,11 @@ export default function WordTrainGame() {
       {/* ---- Picture + spoken word (written word stays hidden) ---- */}
       {phase === "playing" && word && (
         <div className="trainTop">
-          <button
-            type="button"
-            className="pictureCard trainPicture"
-            onClick={replay}
-            aria-label="सुनो"
-          >
+          <div className="pictureCard trainPicture">
             <WordPicture word={word} />
-            <span className="pictureHint">🔊</span>
+          </div>
+          <button type="button" className="soundBtn" onClick={replay} aria-label="सुनो">
+            🔊 सुनो
           </button>
         </div>
       )}
