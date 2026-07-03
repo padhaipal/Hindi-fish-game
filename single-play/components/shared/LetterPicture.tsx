@@ -32,6 +32,8 @@ export default function LetterPicture({
       return <ThermosIcon size={size} />;
     case "anaar":
       return <AnaarIcon size={size} />;
+    case "jalebi":
+      return <JalebiIcon size={size} />;
     default:
       return (
         <span className={className} style={style}>
@@ -139,6 +141,28 @@ export function ThermosIcon({ size = 78 }: { size?: number }) {
       {/* label band */}
       <rect x="34" y="52" width="32" height="14" fill="#f3ead7" />
       <rect x="34" y="56" width="32" height="3" fill="#e0552f" />
+    </svg>
+  );
+}
+
+// ज — जलेबी: the coiled orange sweet, drawn as interlocking glossy loops.
+export function JalebiIcon({ size = 78 }: { size?: number }) {
+  const coil = { fill: "none", stroke: "#ef8a17", strokeWidth: 9, strokeLinecap: "round" as const };
+  const gloss = { fill: "none", stroke: "#ffc04d", strokeWidth: 3, strokeLinecap: "round" as const };
+  return (
+    <svg viewBox="0 0 100 100" width={size} height={size} aria-hidden="true">
+      {/* outer scalloped ring */}
+      <path
+        d="M50 20 C 70 20 82 34 80 52 C 78 70 64 82 48 80 C 32 78 20 66 22 50 C 24 36 34 28 46 30 C 58 32 66 42 64 54 C 62 64 52 70 44 66"
+        {...coil}
+      />
+      {/* inner loop */}
+      <path d="M44 66 C 38 62 38 52 46 48 C 54 44 60 50 58 56" {...coil} />
+      {/* highlight */}
+      <path
+        d="M50 24 C 67 24 78 36 76 51 C 74 66 62 76 49 74"
+        {...gloss}
+      />
     </svg>
   );
 }

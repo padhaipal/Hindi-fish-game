@@ -2,9 +2,9 @@
 // HINDI LETTER DATA — SINGLE-PLAY (full alphabet)
 // ---------------------------------------------------------------------------
 // This build practises the WHOLE alphabet (every letter that has a picture),
-// used equally at random by each game. Six letters from the source alphabet
-// were left out because their picture-word has no usable emoji and we chose not
-// to draw them (अ अनार, इ इमली, ओ ओखली, ज जलेबी, ढ ढक्कन, थ थर्मस).
+// used equally at random by each game. Three letters from the source alphabet
+// are left out because their picture-word has no usable emoji and we chose not
+// to draw them (इ इमली, ओ ओखली, ढ ढक्कन). अ, थ and ज are drawn as custom SVGs.
 //
 // Each letter knows:
 //   - `char`   : the Devanagari character shown on the tile.
@@ -21,7 +21,7 @@
 // /audio/letters-word/<id>.mp3 (see `letterWordAudio`).
 // ---------------------------------------------------------------------------
 
-export type IconKey = "lattu" | "handcart" | "damroo" | "rope" | "thermos" | "anaar";
+export type IconKey = "lattu" | "handcart" | "damroo" | "rope" | "thermos" | "anaar" | "jalebi";
 
 export interface Letter {
   id: string;
@@ -77,7 +77,8 @@ export const LETTERS: Letter[] = [
   L("gha", "घ", "gha", "घड़ी", "⏰", { soundAlikes: ["ga"] }), // clock
   L("cha", "च", "cha", "चम्मच", "🥄", { soundAlikes: ["chha"] }), // spoon
   L("chha", "छ", "chha", "छाता", "☂️", { soundAlikes: ["cha"] }), // umbrella
-  L("jha", "झ", "jha", "झंडा", "🚩"), // flag
+  L("ja", "ज", "ja", "जलेबी", "🍩", { icon: "jalebi", soundAlikes: ["jha"] }), // jalebi (sweet)
+  L("jha", "झ", "jha", "झंडा", "🚩", { soundAlikes: ["ja"] }), // flag
   L("tta", "ट", "tta", "टमाटर", "🍅", { soundAlikes: ["ttha"] }), // tomato
   L("ttha", "ठ", "ttha", "ठेला", "🛒", { icon: "handcart", soundAlikes: ["tta"] }), // handcart
   L("dda", "ड", "dda", "डमरू", "🥁", { icon: "damroo" }), // damroo (drum)

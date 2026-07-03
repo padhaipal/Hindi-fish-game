@@ -5,9 +5,8 @@
 // then 3-letter, then 4-letter. Every word here can be spelled from the letter
 // tiles in lib/letters.ts.
 //
-// NOTE: सड़क was dropped (needs ड़, which we don't have) and अजगर is left out
-// (needs ज, dropped for having no picture). थरमस and अदरक ARE here now that थ
-// and अ have been added to the alphabet.
+// NOTE: सड़क was dropped (needs ड़, which we don't have). अजगर, अदरक and थरमस
+// are all here now that अ, ज and थ have been added to the alphabet.
 // ---------------------------------------------------------------------------
 
 import { BLOCK_WORDS } from "@/lib/blocks/words";
@@ -58,6 +57,7 @@ export const FOUR_LETTER_WORDS: TrainWord[] = [
   { id: "parval", word: "परवल", letters: ["pa", "ra", "va", "la"], emoji: "🥒", audio: "/audio/words/parval.mp3", label: "pointed gourd" },
   { id: "adrak", word: "अदरक", letters: ["a", "da", "ra", "ka"], emoji: "🫚", audio: "/audio/words/adrak.mp3", label: "ginger" },
   { id: "tharmas", word: "थरमस", letters: ["tha", "ra", "ma", "sa"], emoji: "🧴", audio: "/audio/words/tharmas.mp3", label: "thermos" },
+  { id: "ajgar", word: "अजगर", letters: ["a", "ja", "ga", "ra"], emoji: "🐍", audio: "/audio/words/ajgar.mp3", label: "python" },
 ];
 
 // All words (e.g. for tooling); the game itself uses buildSession() below.

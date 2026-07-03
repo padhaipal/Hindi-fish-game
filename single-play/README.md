@@ -51,10 +51,26 @@ GET /api/mint?key=<MINT_SECRET>&game=fish&n=5
 compute HMAC-SHA256 itself, it can mint links without this endpoint:
 `token = <uuid>.<base64url(HMAC_SHA256(uuid, LINK_SECRET))>`.
 
-## Deploying
-Deploy this folder as its own project (e.g. a Vercel project with **Root
-Directory = `single-play`**), separate from the main app. Set the env vars
-above in that project.
+## Deploying (Vercel + Upstash)
+
+Deploy this folder as its **own** project, separate from the main app.
+
+1. **Upstash Redis** (the burn store): create a free database at
+   [upstash.com](https://upstash.com) → Redis → copy the **REST URL** and
+   **REST TOKEN**.
+2. **Vercel project**: New Project → import this repo → set **Root Directory =
+   `single-play`** (Framework: Next.js, auto-detected).
+3. **Environment variables** (Project → Settings → Environment Variables), see
+   `.env.example`:
+   - `LINK_SECRET` — a long random string (enables the gate).
+   - `MINT_SECRET` — a long random string (guards `/api/mint`).
+   - `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` — from step 1.
+4. **Deploy.** Then mint links for your bot:
+   `https://<your-domain>/api/mint?key=<MINT_SECRET>&game=fish&n=20`
+   and send one link per child. Each opens its game exactly once.
+
+> Before you add `LINK_SECRET` the gate is off and every route is open — handy
+> for a first smoke-test deploy.
 
 ## Still to wire up
 - **Audio.** Uses the synth fallback until real clips are added under
