@@ -53,7 +53,6 @@ export const FOUR_LETTER_WORDS: TrainWord[] = [
   { id: "bargad", word: "बरगद", letters: ["ba", "ra", "ga", "da"], emoji: "🌳", audio: "/audio/words/bargad.mp3", label: "banyan" },
   { id: "sharbat", word: "शरबत", letters: ["sha", "ra", "ba", "ta"], emoji: "🥤", audio: "/audio/words/sharbat.mp3", label: "cold drink" },
   { id: "bartan", word: "बरतन", letters: ["ba", "ra", "ta", "na"], emoji: "🍲", audio: "/audio/words/bartan.mp3", label: "utensils" },
-  { id: "makhmal", word: "मखमल", letters: ["ma", "kha", "ma", "la"], emoji: "🧣", audio: "/audio/words/makhmal.mp3", label: "velvet" },
   { id: "parval", word: "परवल", letters: ["pa", "ra", "va", "la"], emoji: "🥒", audio: "/audio/words/parval.mp3", label: "pointed gourd" },
   { id: "adrak", word: "अदरक", letters: ["a", "da", "ra", "ka"], emoji: "🫚", audio: "/audio/words/adrak.mp3", label: "ginger" },
   { id: "tharmas", word: "थरमस", letters: ["tha", "ra", "ma", "sa"], emoji: "🧴", audio: "/audio/words/tharmas.mp3", label: "thermos" },
