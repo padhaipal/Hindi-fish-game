@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Block, { BlockState } from "./Block";
 import { LEVELS } from "@/lib/blocks/levels";
 import { getWord } from "@/lib/blocks/words";
+import WordPicture from "@/components/shared/WordPicture";
 import {
   Board,
   Occ,
@@ -241,13 +242,7 @@ export default function BlocksGame() {
             }}
             aria-label={`hear the word ${target.word}`}
           >
-            {/* kab is two emojis (clock + ?) — shrink so it fits the box */}
-            <span
-              className="pictureEmoji"
-              style={target.id === "kab" ? { fontSize: 74 } : undefined}
-            >
-              {target.emoji}
-            </span>
+            <WordPicture id={target.id} emoji={target.emoji} size={130} className="pictureEmoji" />
           </button>
           <button
             type="button"

@@ -21,7 +21,9 @@
 // /audio/letters-word/<id>.mp3 (see `letterWordAudio`).
 // ---------------------------------------------------------------------------
 
-export type IconKey = "lattu" | "handcart" | "damroo" | "rope" | "thermos" | "anaar" | "jalebi";
+export type IconKey =
+  | "lattu" | "handcart" | "damroo" | "rope" | "thermos" | "anaar" | "jalebi"
+  | "fruits" | "gamla" | "plough" | "peas";
 
 export interface Letter {
   id: string;
@@ -73,7 +75,7 @@ export const LETTERS: Letter[] = [
   // ---- consonants (व्यंजन) ----
   L("ka", "क", "ka", "कबूतर", "🕊️", { lookAlikes: ["pha"], soundAlikes: ["kha"] }), // pigeon
   L("kha", "ख", "kha", "खरगोश", "🐰", { soundAlikes: ["ka"] }), // rabbit
-  L("ga", "ग", "ga", "गमला", "🪴", { soundAlikes: ["gha"] }), // flowerpot
+  L("ga", "ग", "ga", "गमला", "🪴", { icon: "gamla", soundAlikes: ["gha"] }), // flowerpot (arrow → pot)
   L("gha", "घ", "gha", "घड़ी", "⏰", { soundAlikes: ["ga"] }), // clock
   L("cha", "च", "cha", "चम्मच", "🥄", { soundAlikes: ["chha"] }), // spoon
   L("chha", "छ", "chha", "छाता", "☂️", { soundAlikes: ["cha"] }), // umbrella
@@ -88,7 +90,7 @@ export const LETTERS: Letter[] = [
   L("dha", "ध", "dha", "धनुष", "🏹", { soundAlikes: ["da"] }), // bow
   L("na", "न", "na", "नल", "🚰"), // tap
   L("pa", "प", "pa", "पतंग", "🪁", { lookAlikes: ["ba"], soundAlikes: ["pha"] }), // kite
-  L("pha", "फ", "pha", "फल", "🍎", { soundAlikes: ["pa"] }), // fruit
+  L("pha", "फ", "pha", "फल", "🍎", { icon: "fruits", soundAlikes: ["pa"] }), // several fruits
   L("ba", "ब", "ba", "बतख", "🦆", { lookAlikes: ["pa"], soundAlikes: ["bha"] }), // duck
   L("bha", "भ", "bha", "भालू", "🐻", { soundAlikes: ["ba"] }), // bear
   L("ma", "म", "ma", "मछली", "🐟"), // fish

@@ -19,7 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { buildSession, TrainWord } from "@/lib/wordtrain/words";
 import { LETTERS, getLetter } from "@/lib/letters";
 import { nonConfusableChoices } from "@/lib/families";
-import EraserIcon from "@/components/shared/EraserIcon";
+import SharedWordPicture from "@/components/shared/WordPicture";
 import {
   playLetterSound,
   playWordSound,
@@ -74,32 +74,7 @@ type Phase = "start" | "playing" | "done";
 // help reading clearly: रबर uses a drawn Indian eraser, and पलक adds an arrow
 // pointing at the eyelid (so the eye emoji isn't mistaken for "eye").
 function WordPicture({ word }: { word: TrainWord }) {
-  if (word.id === "rabar") return <EraserIcon size={104} />;
-  if (word.id === "palak") {
-    return (
-      <span className="palakPic">
-        <span className="palakEye">👁️</span>
-        <svg className="palakArrow" viewBox="0 0 100 100" aria-hidden="true">
-          <path
-            d="M86 14 L52 41"
-            stroke="#e23b3b"
-            strokeWidth="7"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path d="M52 41 L66 38 L60 52 Z" fill="#e23b3b" />
-        </svg>
-      </span>
-    );
-  }
-  return (
-    <span
-      className="pictureEmoji trainEmoji"
-      style={word.id === "kab" ? { fontSize: 60 } : undefined}
-    >
-      {word.emoji}
-    </span>
-  );
+  return <SharedWordPicture id={word.id} emoji={word.emoji} size={104} className="pictureEmoji trainEmoji" />;
 }
 
 export default function WordTrainGame() {
