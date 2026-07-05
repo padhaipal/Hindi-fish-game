@@ -16,15 +16,15 @@ import { linkSecret } from "@/lib/gate";
 const GAMES = new Set(["fish", "blocks", "memory", "wordtrain", "pondhop", "lekhan"]);
 
 export async function GET(req: NextRequest) {
-  const mintSecret = process.env.MINT_SECRET || "";
+  const mintSecret = (process.env.MINT_SECRET || "").trim();
   const secret = linkSecret();
   if (!mintSecret || !secret) {
     return NextResponse.json({ error: "minting not configured" }, { status: 503 });
   }
 
   const sp = req.nextUrl.searchParams;
-  if (sp.get("key") !== mintSecret) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if ((sp.get("key") || "").trim() !== mintSecret) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401, headers: { "cache-control": "no-store" } });
   }
   const game = sp.get("game") || "";
   if (!GAMES.has(game)) {
