@@ -16,7 +16,7 @@ export const SESSION_COOKIE = "pp_play";
 export const GRACE_MS = 15 * 60 * 1000; // reloads allowed for 15 min after first open
 
 export function linkSecret(): string {
-  return process.env.LINK_SECRET || "";
+  return (process.env.LINK_SECRET || "").trim();
 }
 
 export function gateEnabled(): boolean {
@@ -29,8 +29,8 @@ const memBurned = new Set<string>();
 // Atomically burn an id. Returns true if this call burned it (first use),
 // false if it was already burned.
 export async function burnOnce(id: string): Promise<boolean> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
   if (url && token) {
     // SET burn:<id> 1 NX  -> {"result":"OK"} if newly set, {"result":null} if it existed
     const res = await fetch(url, {
