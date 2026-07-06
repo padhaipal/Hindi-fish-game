@@ -26,7 +26,7 @@ import WordPicture from "@/components/shared/WordPicture";
 import {
   Board,
   Occ,
-  adjacentPair,
+  runFromIds,
   findBlock,
   isEmpty,
   makeBoard,
@@ -65,7 +65,7 @@ export default function BlocksGame() {
   const [order, setOrder] = useState<string[]>([]);
   const [targetIndex, setTargetIndex] = useState(0);
   const [board, setBoard] = useState<Board>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]); // tapped-so-far, in order
   const [correctIds, setCorrectIds] = useState<Set<number>>(new Set());
   const [wrongIds, setWrongIds] = useState<Set<number>>(new Set());
   const [hintIds, setHintIds] = useState<Set<number>>(new Set());
@@ -82,13 +82,13 @@ export default function BlocksGame() {
   const target = order.length ? getWord(order[targetIndex]) : null;
   const isLastLevel = levelIdx >= LEVELS.length - 1;
 
-  // Pixel centre (within the board area) of an occurrence's pair.
+  // Pixel centre (within the board area) of a run.
   const center = useCallback((occ: Occ): { x: number; y: number } => {
     const rows = rowsRef.current;
     const bx = occ.c * CELL + INSET + SIZE / 2;
     const by = (rows - 1 - occ.L) * CELL + INSET + SIZE / 2;
-    if (occ.o === "h") return { x: bx + CELL / 2, y: by };
-    return { x: bx, y: by - CELL / 2 }; // vertical: midpoint up half a cell
+    if (occ.o === "h") return { x: bx + ((occ.len - 1) * CELL) / 2, y: by };
+    return { x: bx, y: by - ((occ.len - 1) * CELL) / 2 }; // vertical: run goes up
   }, []);
 
   const clearHint = useCallback(() => {
@@ -106,7 +106,7 @@ export default function BlocksGame() {
       setBoard(makeBoard(data.cols));
       setOrder(data.order);
       setTargetIndex(0);
-      setSelectedId(null);
+      setSelectedIds([]);
       setCorrectIds(new Set());
       setWrongIds(new Set());
       clearHint();
@@ -148,76 +148,76 @@ export default function BlocksGame() {
       const pos = findBlock(board, id);
       if (pos) playLetterSound(getLetter(board[pos.c][pos.L].letterId).audio);
 
-      if (selectedId === null) {
-        setSelectedId(id);
+      // Tapping the last selected block de-selects it (undo).
+      if (selectedIds.length && selectedIds[selectedIds.length - 1] === id) {
+        setSelectedIds(selectedIds.slice(0, -1));
         return;
       }
-      if (selectedId === id) {
-        setSelectedId(null);
-        return;
-      }
+      if (selectedIds.includes(id)) return; // ignore taps on earlier picks
 
-      const pair = adjacentPair(board, selectedId, id);
-      const isCorrect =
-        !!pair &&
-        pair.letters[0] === word.letters[0] &&
-        pair.letters[1] === word.letters[1];
+      // The child spells the word by tapping its letters in order (left→right or
+      // top→bottom). Each tap must extend a straight run AND match the next
+      // letter of the target word.
+      const tentative = [...selectedIds, id];
+      const run = runFromIds(board, tentative);
+      const prefixOk =
+        !!run && word.letters.slice(0, tentative.length).every((l, i) => run.letters[i] === l);
 
-      if (isCorrect && pair) {
-        // CORRECT: green + fireworks + the word says its name again.
+      if (!run || !prefixOk) {
+        // WRONG: flash the tapped (+ selected) blocks red, reset the selection.
         busyRef.current = true;
-        setCorrectIds(new Set([selectedId, id]));
-        setSelectedId(null);
-        setFireworks({ id: fxSeq.current++, ...center(pair.occ) });
-        // 0.5s pause between the second letter's sound and the word's sound.
-        // Once it's built, play the natural blended word (not the spelled-out
-        // teaching version used for the सुनो prompt).
-        window.setTimeout(() => playWordSound(word.audio.replace("/words/", "/words/whole/")), 500);
-
-        const occ = pair.occ;
-        window.setTimeout(() => {
-          const next = removeOcc(board, occ);
-          setBoard(next);
-          setCorrectIds(new Set());
-          setFireworks(null);
-          if (isEmpty(next)) {
-            // Applause at the end of EVERY level (and the final win).
-            setPhase(isLastLevel ? "won" : "levelComplete");
-            playWinSound();
-            busyRef.current = false;
-          } else {
-            // 0.5s pause, new picture appears...
-            window.setTimeout(() => {
-              const nextIndex = targetIndex + 1;
-              setTargetIndex(nextIndex);
-              // ...then another 0.5s pause before speaking the new word.
-              window.setTimeout(() => {
-                playWordSound(getWord(order[nextIndex]).audio);
-                busyRef.current = false;
-              }, 500);
-            }, 500);
-          }
-        }, 1200);
-      } else {
-        // WRONG: red flash for ~0.7s, blocks stay.
-        busyRef.current = true;
-        setWrongIds(new Set([selectedId, id]));
-        setSelectedId(null);
+        setWrongIds(new Set([id, ...selectedIds]));
+        setSelectedIds([]);
         window.setTimeout(() => {
           setWrongIds(new Set());
           busyRef.current = false;
-        }, 700);
+        }, 600);
+        return;
       }
+
+      if (tentative.length < word.letters.length) {
+        setSelectedIds(tentative); // valid so far — keep going
+        return;
+      }
+
+      // COMPLETE — the whole word is spelled: pop the run, play the word.
+      busyRef.current = true;
+      setCorrectIds(new Set(tentative));
+      setSelectedIds([]);
+      setFireworks({ id: fxSeq.current++, ...center(run.occ) });
+      window.setTimeout(() => playWordSound(word.audio.replace("/words/", "/words/whole/")), 450);
+
+      window.setTimeout(() => {
+        const next = removeOcc(board, run.occ);
+        setBoard(next);
+        setCorrectIds(new Set());
+        setFireworks(null);
+        if (isEmpty(next)) {
+          setPhase(isLastLevel ? "won" : "levelComplete");
+          playWinSound();
+          busyRef.current = false;
+        } else {
+          window.setTimeout(() => {
+            const nextIndex = targetIndex + 1;
+            setTargetIndex(nextIndex);
+            window.setTimeout(() => {
+              playWordSound(getWord(order[nextIndex]).audio);
+              busyRef.current = false;
+            }, 500);
+          }, 400);
+        }
+      }, 1000);
     },
-    [phase, order, targetIndex, selectedId, board, isLastLevel, clearHint, center]
+    [phase, order, targetIndex, selectedIds, board, isLastLevel, clearHint, center]
   );
 
   const stateFor = (id: number): BlockState => {
     if (correctIds.has(id)) return "correct";
     if (wrongIds.has(id)) return "wrong";
-    if (selectedId === id) return "selected";
+    if (selectedIds.includes(id)) return "selected";
     return "idle";
   };
+  const selectOrder = (id: number): number => selectedIds.indexOf(id) + 1; // 0 if not selected
 
   const boardWidth = board.length * CELL;
   const solved = targetIndex;
@@ -279,6 +279,7 @@ export default function BlocksGame() {
                 y={(cfg.rows - 1 - L) * CELL + INSET}
                 size={SIZE}
                 state={stateFor(blk.id)}
+                order={selectOrder(blk.id)}
                 hint={hintIds.has(blk.id)}
                 onTap={handleTap}
               />
@@ -319,7 +320,7 @@ export default function BlocksGame() {
             <div className="overlayEmoji">🧩</div>
             <div className="overlayTitle">शब्द बनाओ</div>
             <p style={{ fontSize: 18, color: "#0a3d57", margin: "4px 0 18px" }}>
-              सही दो अक्षर वाले ब्लॉक चुनो
+              चित्र वाले शब्द के अक्षर क्रम से छुओ
             </p>
             <button
               type="button"

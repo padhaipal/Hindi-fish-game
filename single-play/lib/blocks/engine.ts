@@ -1,35 +1,29 @@
 // ---------------------------------------------------------------------------
-// BLOCKS GAME — GRID ENGINE
+// BLOCKS GAME — GRID ENGINE (variable-length word runs)
 // ---------------------------------------------------------------------------
 // The board is a list of COLUMNS, each a stack of blocks bottom→top (index 0 =
-// bottom). Gravity is straight down: removing a block lets the blocks above it
-// fall (a plain array splice does exactly this).
+// bottom). Gravity is straight down: removing blocks lets those above fall.
 //
-// A word is two ADJACENT blocks that spell it:
-//   - HORIZONTAL: same row, neighbouring columns, read left→right.
+// A word is a straight RUN of 2–4 adjacent blocks:
+//   - HORIZONTAL: same row, consecutive columns, read left→right.
 //   - VERTICAL:   same column, stacked, read top→bottom.
-// (A full 5-wide grid can't be cleared with horizontal pairs alone, so vertical
-// pairs are allowed too.) These rules MUST match the offline board generator
-// (scripts/generate-boards.mjs) or winnability isn't guaranteed — keep in sync.
+// These rules MUST match the board generator (scripts/generate-boards.mjs).
 // ---------------------------------------------------------------------------
 
 export interface Blk {
-  id: number; // stable id (for React keys + slide animation)
+  id: number;
   letterId: string;
 }
-
 export type Board = Blk[][]; // columns, index 0 = bottom
 
-// An adjacent pair on the board: (c, L) is the anchor, `o` the orientation.
-//   "h" -> blocks at (c, L) and (c+1, L)
-//   "v" -> blocks at (c, L) [bottom] and (c, L+1) [top]
+// A run: anchor (c, L) is the LEFT cell (horizontal) or BOTTOM cell (vertical).
 export interface Occ {
   c: number;
   L: number;
   o: "h" | "v";
+  len: number;
 }
 
-// Build a live board (with stable block ids) from raw letter-id columns.
 export function makeBoard(cols: string[][]): Board {
   let id = 0;
   return cols.map((col) => col.map((letterId) => ({ id: id++, letterId })));
@@ -39,11 +33,6 @@ export function isEmpty(board: Board): boolean {
   return board.every((col) => col.length === 0);
 }
 
-export function totalBlocks(board: Board): number {
-  return board.reduce((sum, col) => sum + col.length, 0);
-}
-
-// Where is block `id`? Returns {c, L} (column, level) or null.
 export function findBlock(board: Board, id: number): { c: number; L: number } | null {
   for (let c = 0; c < board.length; c++) {
     const L = board[c].findIndex((b) => b.id === id);
@@ -52,78 +41,72 @@ export function findBlock(board: Board, id: number): { c: number; L: number } | 
   return null;
 }
 
-// All occurrences of a word (by letter ids), horizontal + vertical.
-export function occurrences(board: Board, letters: [string, string]): Occ[] {
+// All occurrences of a word (given by its letter ids), horizontal + vertical.
+export function occurrences(board: Board, letters: string[]): Occ[] {
+  const k = letters.length;
   const out: Occ[] = [];
-  // horizontal: (c,L) & (c+1,L), read left→right
-  for (let c = 0; c < board.length - 1; c++) {
-    const h = Math.min(board[c].length, board[c + 1].length);
-    for (let L = 0; L < h; L++) {
-      if (board[c][L].letterId === letters[0] && board[c + 1][L].letterId === letters[1]) {
-        out.push({ c, L, o: "h" });
-      }
+  const cols = board.length;
+  // horizontal at row L
+  for (let c0 = 0; c0 + k <= cols; c0++) {
+    const maxL = Math.min(...Array.from({ length: k }, (_, i) => board[c0 + i].length));
+    for (let L = 0; L < maxL; L++) {
+      let ok = true;
+      for (let i = 0; i < k; i++) if (board[c0 + i][L].letterId !== letters[i]) { ok = false; break; }
+      if (ok) out.push({ c: c0, L, o: "h", len: k });
     }
   }
-  // vertical: (c,L+1)=top & (c,L)=bottom, read top→bottom
-  for (let c = 0; c < board.length; c++) {
-    for (let L = 0; L < board[c].length - 1; L++) {
-      if (board[c][L + 1].letterId === letters[0] && board[c][L].letterId === letters[1]) {
-        out.push({ c, L, o: "v" });
-      }
+  // vertical, read top→bottom
+  for (let c = 0; c < cols; c++) {
+    for (let L0 = 0; L0 + k <= board[c].length; L0++) {
+      let ok = true;
+      for (let i = 0; i < k; i++) if (board[c][L0 + k - 1 - i].letterId !== letters[i]) { ok = false; break; }
+      if (ok) out.push({ c, L: L0, o: "v", len: k });
     }
   }
   return out;
 }
 
-// Remove the pair described by `occ`; blocks above fall straight down.
+// Remove the run's blocks; blocks above fall straight down.
 export function removeOcc(board: Board, occ: Occ): Board {
   return board.map((col, idx) => {
     const next = col.slice();
     if (occ.o === "h") {
-      if (idx === occ.c || idx === occ.c + 1) next.splice(occ.L, 1);
+      if (idx >= occ.c && idx < occ.c + occ.len) next.splice(occ.L, 1);
     } else if (idx === occ.c) {
-      next.splice(occ.L, 2); // the stacked pair
+      next.splice(occ.L, occ.len);
     }
     return next;
   });
 }
 
-// The two block ids of an occurrence (e.g. to highlight them in the demo).
-export function occBlocks(board: Board, occ: Occ): [number, number] {
+// The block ids of a run, in reading order (for highlighting / clearing).
+export function occBlocks(board: Board, occ: Occ): number[] {
+  const ids: number[] = [];
   if (occ.o === "h") {
-    return [board[occ.c][occ.L].id, board[occ.c + 1][occ.L].id];
+    for (let i = 0; i < occ.len; i++) ids.push(board[occ.c + i][occ.L].id);
+  } else {
+    for (let i = 0; i < occ.len; i++) ids.push(board[occ.c][occ.L + occ.len - 1 - i].id); // top→bottom
   }
-  return [board[occ.c][occ.L].id, board[occ.c][occ.L + 1].id];
+  return ids;
 }
 
-// If two blocks form an adjacent pair (horizontal or vertical), return the
-// letters in reading order plus the occurrence; otherwise null.
-export function adjacentPair(
-  board: Board,
-  id1: number,
-  id2: number
-): { letters: [string, string]; occ: Occ } | null {
-  const p1 = findBlock(board, id1);
-  const p2 = findBlock(board, id2);
-  if (!p1 || !p2) return null;
+// Given block ids in TAP order, if they form a straight run read in order
+// (left→right or top→bottom), return its letters + occurrence; else null.
+export function runFromIds(board: Board, ids: number[]): { letters: string[]; occ: Occ } | null {
+  const pos = ids.map((id) => findBlock(board, id));
+  if (pos.some((p) => p === null)) return null;
+  const p = pos as { c: number; L: number }[];
+  const n = p.length;
+  const letters = p.map(({ c, L }) => board[c][L].letterId);
+  if (n === 1) return { letters, occ: { c: p[0].c, L: p[0].L, o: "h", len: 1 } };
 
-  // horizontal: same row, neighbouring columns → read left→right
-  if (p1.L === p2.L && Math.abs(p1.c - p2.c) === 1) {
-    const left = p1.c < p2.c ? p1 : p2;
-    const right = p1.c < p2.c ? p2 : p1;
-    return {
-      letters: [board[left.c][left.L].letterId, board[right.c][right.L].letterId],
-      occ: { c: left.c, L: left.L, o: "h" },
-    };
-  }
-  // vertical: same column, stacked → read top→bottom
-  if (p1.c === p2.c && Math.abs(p1.L - p2.L) === 1) {
-    const top = p1.L > p2.L ? p1 : p2;
-    const bottom = p1.L > p2.L ? p2 : p1;
-    return {
-      letters: [board[top.c][top.L].letterId, board[bottom.c][bottom.L].letterId],
-      occ: { c: bottom.c, L: bottom.L, o: "v" },
-    };
-  }
+  // horizontal: same row, columns increasing by 1 in tap order
+  const horiz = p.every((q, i) => q.L === p[0].L && q.c === p[0].c + i);
+  if (horiz) return { letters, occ: { c: p[0].c, L: p[0].L, o: "h", len: n } };
+
+  // vertical: same column, rows decreasing by 1 (top→bottom) in tap order
+  const vert = p.every((q, i) => q.c === p[0].c && q.L === p[0].L - i);
+  if (vert) return { letters, occ: { c: p[0].c, L: p[n - 1].L, o: "v", len: n } };
+
   return null;
 }
