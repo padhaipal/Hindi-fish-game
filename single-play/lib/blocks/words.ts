@@ -4,10 +4,11 @@
 // Each word is two Hindi consonant-blocks read left→right (e.g. नल = न + ल).
 // The picture is an emoji and the spoken word lives at /audio/words/<id>.mp3.
 //
-// This build has 8 two-letter words (all matra-free, picture-able). Because a
-// board can use each word at most once, the biggest winnable grid is 4x4 (8
-// words) — so Blocks here runs 4 levels, not 5. To add/replace a word, edit
-// this list AND regenerate the boards (scripts/generate-boards.mjs).
+// This build has 8 two-letter words (all matra-free, picture-able) using only
+// 11 distinct letters. Boards keep EACH LETTER AT MOST ONCE, so the biggest
+// all-distinct board is 4x2 (8 blocks) — Blocks runs 3 growing levels (2x2,
+// 3x2, 4x2). To add/replace a word, edit this list AND regenerate the boards
+// (scripts/generate-boards.mjs).
 // ---------------------------------------------------------------------------
 
 export interface BlockWord {

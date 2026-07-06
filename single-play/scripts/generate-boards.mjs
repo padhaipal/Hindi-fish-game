@@ -26,6 +26,7 @@ const pick = (a) => a[ri(a.length)];
 const clone = (cols) => cols.map((c) => c.slice());
 const key = (cols) => cols.map((c) => c.join(",")).join("|");
 const isEmpty = (cols) => cols.every((c) => c.length === 0);
+const distinct = (cols) => { const s = new Set(); for (const c of cols) for (const l of c) s.add(l); return s; };
 
 function occurrences(cols, word) {
   const out = [];
@@ -99,6 +100,7 @@ for (let s = 1; s <= 600 && acc.length < WANT; s++) {
     const cols = buildBoard();
     if (!cols) continue;
     if (!cols.every((c) => c.length === ROWS)) continue;
+    if (distinct(cols).size !== COLS * ROWS) continue; // each letter appears at most once
     const k = key(cols);
     if (seen.has(k)) continue;
     const order = solve(cols);
