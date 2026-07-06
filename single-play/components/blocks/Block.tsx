@@ -1,16 +1,28 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// BLOCK — one letter tile in the Blocks game.
+// BLOCK — one letter "candy" gem in the Blocks game.
 // ---------------------------------------------------------------------------
-// Position (x, y) is set by the parent so blocks can SLIDE (CSS transition on
-// transform) when gravity pulls them down. Visual state colours the tile:
-//   idle     -> grey, selected -> blue ring, correct -> green, wrong -> red.
+// An outer CELL is positioned (and SLIDES via a transform transition when
+// gravity pulls it down); the inner GEM handles its own scale/pop/shake so the
+// two transforms don't fight. Each letter has its own bright candy colour.
+//   idle -> gem, selected -> raised + ring + order number, correct -> pop,
+//   wrong -> red shake.
 // ---------------------------------------------------------------------------
 
 import { getLetter } from "@/lib/letters";
 
 export type BlockState = "idle" | "selected" | "correct" | "wrong";
+
+const CANDY = [
+  "#ff5d6c", "#ff9f1c", "#ffcf33", "#4cc23a", "#00b4d8",
+  "#5b8def", "#9b5de5", "#f15bb5", "#00bfa6", "#ff7a45",
+];
+function candy(letterId: string): string {
+  let h = 0;
+  for (let i = 0; i < letterId.length; i++) h = (h * 31 + letterId.charCodeAt(i)) >>> 0;
+  return CANDY[h % CANDY.length];
+}
 
 interface BlockProps {
   id: number;
@@ -19,7 +31,8 @@ interface BlockProps {
   y: number;
   size: number;
   state: BlockState;
-  hint?: boolean; // demo highlight (pulsing) for the correct pair
+  order?: number; // 1-based position in the current selection (0 = not selected)
+  hint?: boolean;
   onTap: (id: number) => void;
 }
 
@@ -30,25 +43,28 @@ export default function Block({
   y,
   size,
   state,
+  order = 0,
   hint,
   onTap,
 }: BlockProps) {
   return (
-    <button
-      type="button"
-      className={`block block--${state}${hint ? " block--hint" : ""}`}
-      aria-label={`block ${getLetter(letterId).char}`}
-      style={{
-        width: size,
-        height: size,
-        transform: `translate3d(${x}px, ${y}px, 0)`,
-      }}
-      onPointerDown={(e) => {
-        e.preventDefault();
-        onTap(id);
-      }}
+    <div
+      className="blockCell"
+      style={{ width: size, height: size, transform: `translate3d(${x}px, ${y}px, 0)` }}
     >
-      <span className="blockLetter">{getLetter(letterId).char}</span>
-    </button>
+      <button
+        type="button"
+        className={`block block--${state}${hint ? " block--hint" : ""}`}
+        aria-label={`block ${getLetter(letterId).char}`}
+        style={{ ["--candy"]: candy(letterId) } as React.CSSProperties}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          onTap(id);
+        }}
+      >
+        <span className="blockLetter">{getLetter(letterId).char}</span>
+        {order > 0 && <span className="blockOrder">{order}</span>}
+      </button>
+    </div>
   );
 }
