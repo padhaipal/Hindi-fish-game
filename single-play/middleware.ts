@@ -13,15 +13,15 @@
 // browser with a single tap — no second click needed.
 //
 // Config (env):
-//   COOLDOWN_HOURS   how long a game stays "used" per device (default 24)
+//   COOLDOWN_HOURS   how long a game stays "used" per device (default 168 = 7 days)
 //   GATE_DISABLED=1  turn the gate off (handy for local dev)
 // ---------------------------------------------------------------------------
 import { NextRequest, NextResponse } from "next/server";
 
 const GAMES = new Set(["fish", "blocks", "memory", "wordtrain", "pondhop", "lekhan"]);
-const COOLDOWN_HOURS = Number(process.env.COOLDOWN_HOURS || 24);
+const COOLDOWN_HOURS = Number(process.env.COOLDOWN_HOURS || 24 * 7); // default 7 days
 const WINDOW_S = Math.max(1, COOLDOWN_HOURS) * 3600;
-const GRACE_MS = 20 * 60 * 1000; // reloads within 20 min of first open still work
+const GRACE_MS = 10 * 60 * 1000; // re-open / refresh works for 10 min after first open
 
 export function middleware(req: NextRequest) {
   const game = req.nextUrl.pathname.split("/")[1];

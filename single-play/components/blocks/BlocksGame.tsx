@@ -77,6 +77,9 @@ export default function BlocksGame() {
   const wantDemoRef = useRef(false);
   const rowsRef = useRef(LEVELS[0].rows); // current level's row count
   const fxSeq = useRef(0);
+  const boardRef = useRef<HTMLDivElement>(null);
+  const selRef = useRef<number[]>([]); // live selection (for the pointer handlers)
+  const draggingRef = useRef(false);
 
   const cfg = LEVELS[levelIdx];
   const target = order.length ? getWord(order[targetIndex]) : null;
@@ -96,6 +99,20 @@ export default function BlocksGame() {
     setHintPointer(null);
   }, []);
 
+  const setSel = useCallback((ids: number[]) => {
+    selRef.current = ids;
+    setSelectedIds(ids);
+  }, []);
+
+  // Speak the picture's word and keep the board LOCKED (un-clickable) until it
+  // finishes playing.
+  const announce = useCallback((src: string) => {
+    busyRef.current = true;
+    playWordSound(src, () => {
+      busyRef.current = false;
+    });
+  }, []);
+
   // ---- start a given level (0-based) with a random board -----------------
   const startLevel = useCallback(
     (idx: number) => {
@@ -107,17 +124,18 @@ export default function BlocksGame() {
       setOrder(data.order);
       setTargetIndex(0);
       setSelectedIds([]);
+      selRef.current = [];
+      draggingRef.current = false;
       setCorrectIds(new Set());
       setWrongIds(new Set());
       clearHint();
       setFireworks(null);
-      busyRef.current = false;
       // demo only on the very first word of level 1, on first open
       wantDemoRef.current = idx === 0 && !demoShownRef.current;
       setPhase("playing");
-      playWordSound(getWord(data.order[0]).audio);
+      announce(getWord(data.order[0]).audio); // locks the board while it speaks
     },
-    [clearHint]
+    [clearHint, announce]
   );
 
   const newGame = useCallback(() => startLevel(0), [startLevel]);
@@ -137,79 +155,116 @@ export default function BlocksGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, targetIndex, board]);
 
-  // ---- tap handling ------------------------------------------------------
-  const handleTap = useCallback(
-    (id: number) => {
-      if (phase !== "playing" || busyRef.current) return;
-      clearHint();
-      const word = getWord(order[targetIndex]);
+  // ---- selection (swipe OR tap the letters in order) ---------------------
+  const wrongReset = (ids: number[]) => {
+    busyRef.current = true;
+    setWrongIds(new Set(ids));
+    setSel([]);
+    window.setTimeout(() => {
+      setWrongIds(new Set());
+      busyRef.current = false;
+    }, 600);
+  };
 
-      // Play the tapped letter's sound FIRST — before any green/red flash.
-      const pos = findBlock(board, id);
-      if (pos) playLetterSound(getLetter(board[pos.c][pos.L].letterId).audio);
-
-      // Tapping the last selected block de-selects it (undo).
-      if (selectedIds.length && selectedIds[selectedIds.length - 1] === id) {
-        setSelectedIds(selectedIds.slice(0, -1));
-        return;
-      }
-      if (selectedIds.includes(id)) return; // ignore taps on earlier picks
-
-      // The child spells the word by tapping its letters in order (left→right or
-      // top→bottom). Each tap must extend a straight run AND match the next
-      // letter of the target word.
-      const tentative = [...selectedIds, id];
-      const run = runFromIds(board, tentative);
-      const prefixOk =
-        !!run && word.letters.slice(0, tentative.length).every((l, i) => run.letters[i] === l);
-
-      if (!run || !prefixOk) {
-        // WRONG: flash the tapped (+ selected) blocks red, reset the selection.
-        busyRef.current = true;
-        setWrongIds(new Set([id, ...selectedIds]));
-        setSelectedIds([]);
+  // The whole word is spelled: pop the run, speak the word, advance.
+  const complete = (run: { occ: Occ }, curBoard: Board) => {
+    const word = getWord(order[targetIndex]);
+    busyRef.current = true;
+    setCorrectIds(new Set(selRef.current));
+    setSel([]);
+    setFireworks({ id: fxSeq.current++, ...center(run.occ) });
+    window.setTimeout(() => playWordSound(word.audio.replace("/words/", "/words/whole/")), 450);
+    window.setTimeout(() => {
+      const next = removeOcc(curBoard, run.occ);
+      setBoard(next);
+      setCorrectIds(new Set());
+      setFireworks(null);
+      if (isEmpty(next)) {
+        setPhase(isLastLevel ? "won" : "levelComplete");
+        playWinSound();
+        busyRef.current = false;
+      } else {
         window.setTimeout(() => {
-          setWrongIds(new Set());
-          busyRef.current = false;
-        }, 600);
-        return;
+          const ni = targetIndex + 1;
+          setTargetIndex(ni);
+          announce(getWord(order[ni]).audio); // locks the board while it speaks
+        }, 400);
       }
+    }, 1000);
+  };
 
-      if (tentative.length < word.letters.length) {
-        setSelectedIds(tentative); // valid so far — keep going
-        return;
-      }
+  // Add block `id` to the selection. `deliberate` = a real press (flash red on a
+  // wrong letter); a finger merely passing over a wrong block is ignored.
+  const extend = (id: number, deliberate: boolean) => {
+    if (phase !== "playing" || busyRef.current) return;
+    clearHint();
+    const word = getWord(order[targetIndex]);
+    const pos = findBlock(board, id);
+    if (!pos) return;
+    const lid = board[pos.c][pos.L].letterId;
+    const sel = selRef.current;
+    if (sel.includes(id)) return;
 
-      // COMPLETE — the whole word is spelled: pop the run, play the word.
-      busyRef.current = true;
-      setCorrectIds(new Set(tentative));
-      setSelectedIds([]);
-      setFireworks({ id: fxSeq.current++, ...center(run.occ) });
-      window.setTimeout(() => playWordSound(word.audio.replace("/words/", "/words/whole/")), 450);
+    // Pressing the word's FIRST letter (re)starts the selection from there.
+    if (lid === word.letters[0]) {
+      setSel([id]);
+      playLetterSound(getLetter(lid).audio);
+      return;
+    }
+    if (sel.length === 0) {
+      if (deliberate) wrongReset([id]);
+      return;
+    }
+    const tentative = [...sel, id];
+    const run = runFromIds(board, tentative);
+    const ok = !!run && word.letters.slice(0, tentative.length).every((l, i) => run.letters[i] === l);
+    if (!ok || !run) {
+      if (deliberate) wrongReset([id, ...sel]);
+      return;
+    }
+    setSel(tentative);
+    playLetterSound(getLetter(lid).audio);
+    if (tentative.length === word.letters.length) complete(run, board);
+  };
 
-      window.setTimeout(() => {
-        const next = removeOcc(board, run.occ);
-        setBoard(next);
-        setCorrectIds(new Set());
-        setFireworks(null);
-        if (isEmpty(next)) {
-          setPhase(isLastLevel ? "won" : "levelComplete");
-          playWinSound();
-          busyRef.current = false;
-        } else {
-          window.setTimeout(() => {
-            const nextIndex = targetIndex + 1;
-            setTargetIndex(nextIndex);
-            window.setTimeout(() => {
-              playWordSound(getWord(order[nextIndex]).audio);
-              busyRef.current = false;
-            }, 500);
-          }, 400);
-        }
-      }, 1000);
-    },
-    [phase, order, targetIndex, selectedIds, board, isLastLevel, clearHint, center]
-  );
+  // pointer position -> the block under it (null if empty)
+  const blockAt = (clientX: number, clientY: number): number | null => {
+    const el = boardRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    const c = Math.floor((clientX - r.left) / CELL);
+    const rowTop = Math.floor((clientY - r.top) / CELL);
+    const L = rowsRef.current - 1 - rowTop;
+    if (c < 0 || c >= board.length || L < 0) return null;
+    const col = board[c];
+    if (!col || L >= col.length) return null;
+    return col[L].id;
+  };
+
+  const onBoardDown = (e: React.PointerEvent) => {
+    if (phase !== "playing" || busyRef.current) return;
+    const id = blockAt(e.clientX, e.clientY);
+    if (id == null) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    draggingRef.current = true;
+    extend(id, true);
+  };
+  const onBoardMove = (e: React.PointerEvent) => {
+    if (!draggingRef.current || busyRef.current) return;
+    const id = blockAt(e.clientX, e.clientY);
+    if (id == null) return;
+    const sel = selRef.current;
+    if (sel.length && id === sel[sel.length - 1]) return; // still on the last gem
+    if (sel.length >= 2 && id === sel[sel.length - 2]) {
+      setSel(sel.slice(0, -1)); // dragged back — undo the last
+      return;
+    }
+    extend(id, false);
+  };
+  const onBoardUp = () => {
+    draggingRef.current = false;
+  };
 
   const stateFor = (id: number): BlockState => {
     if (correctIds.has(id)) return "correct";
@@ -237,8 +292,9 @@ export default function BlocksGame() {
             type="button"
             className="pictureCard"
             onClick={() => {
+              if (busyRef.current) return;
               unlockAudio();
-              playWordSound(target.audio);
+              announce(target.audio);
             }}
             aria-label={`hear the word ${target.word}`}
           >
@@ -248,8 +304,9 @@ export default function BlocksGame() {
             type="button"
             className="soundBtn"
             onClick={() => {
+              if (busyRef.current) return;
               unlockAudio();
-              playWordSound(target.audio);
+              announce(target.audio);
             }}
             aria-label="सुनो"
           >
@@ -266,8 +323,13 @@ export default function BlocksGame() {
       {/* The block grid, anchored to the bottom */}
       <div className="blocksArea">
         <div
+          ref={boardRef}
           className="blocksBoard"
-          style={{ width: boardWidth, height: cfg.rows * CELL }}
+          style={{ width: boardWidth, height: cfg.rows * CELL, touchAction: "none" }}
+          onPointerDown={onBoardDown}
+          onPointerMove={onBoardMove}
+          onPointerUp={onBoardUp}
+          onPointerCancel={onBoardUp}
         >
           {board.map((col, c) =>
             col.map((blk, L) => (
@@ -281,7 +343,6 @@ export default function BlocksGame() {
                 state={stateFor(blk.id)}
                 order={selectOrder(blk.id)}
                 hint={hintIds.has(blk.id)}
-                onTap={handleTap}
               />
             ))
           )}

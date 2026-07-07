@@ -8,7 +8,7 @@ use case. It differs from the main app in three ways:
 2. **No navigation.** There is no games hub and no home button, so a child sent
    a link to one game can't wander to the others.
 3. **Per-device cooldown.** Each game link is reusable, but once opened on a
-   device it's "used" there for a while (default 24h), then works again.
+   device it's "used" there for a while (default 7 days), then works again.
 
 The original app under the repo root is untouched (the root build simply
 excludes this folder via `tsconfig.json`).
@@ -51,7 +51,7 @@ https://<your-domain>/lekhan
 ### Config (env, all optional)
 | Variable | Purpose |
 |---|---|
-| `COOLDOWN_HOURS` | How long a game stays "used" per device. Default `24`. |
+| `COOLDOWN_HOURS` | How long a game stays "used" per device. Default `168` (7 days). |
 | `GATE_DISABLED=1` | Turn the gate off entirely (e.g. local dev). |
 
 There are **no secrets and no database** to set up.

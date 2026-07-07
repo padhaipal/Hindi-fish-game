@@ -8,6 +8,9 @@
 // two transforms don't fight. Each letter has its own bright candy colour.
 //   idle -> gem, selected -> raised + ring + order number, correct -> pop,
 //   wrong -> red shake.
+//
+// The gem is purely visual — pointer/swipe handling lives on the board itself
+// (see BlocksGame.tsx), which is why `.blockCell` sets `pointer-events: none`.
 // ---------------------------------------------------------------------------
 
 import { getLetter } from "@/lib/letters";
@@ -33,11 +36,9 @@ interface BlockProps {
   state: BlockState;
   order?: number; // 1-based position in the current selection (0 = not selected)
   hint?: boolean;
-  onTap: (id: number) => void;
 }
 
 export default function Block({
-  id,
   letterId,
   x,
   y,
@@ -45,26 +46,20 @@ export default function Block({
   state,
   order = 0,
   hint,
-  onTap,
 }: BlockProps) {
   return (
     <div
       className="blockCell"
       style={{ width: size, height: size, transform: `translate3d(${x}px, ${y}px, 0)` }}
     >
-      <button
-        type="button"
+      <span
         className={`block block--${state}${hint ? " block--hint" : ""}`}
         aria-label={`block ${getLetter(letterId).char}`}
         style={{ ["--candy"]: candy(letterId) } as React.CSSProperties}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          onTap(id);
-        }}
       >
         <span className="blockLetter">{getLetter(letterId).char}</span>
         {order > 0 && <span className="blockOrder">{order}</span>}
-      </button>
+      </span>
     </div>
   );
 }
