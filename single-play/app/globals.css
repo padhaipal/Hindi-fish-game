@@ -534,6 +534,7 @@ body > div {
   left: 0;
   will-change: transform;
   transition: transform 0.34s cubic-bezier(0.3, 1.4, 0.5, 1); /* bouncy fall */
+  pointer-events: none; /* the board captures pointers for swipe-to-spell */
 }
 /* the GEM — a glossy candy in the letter's colour */
 .block {

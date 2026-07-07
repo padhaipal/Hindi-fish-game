@@ -1,22 +1,19 @@
 // ---------------------------------------------------------------------------
 // BLOCKS GAME — LEVELS (single-play)
 // ---------------------------------------------------------------------------
-// 4 levels of growing grids with PRE-GENERATED boards. EACH LETTER APPEARS AT
-// MOST ONCE per board, and each word is a straight run of 2–4 blocks. Word
-// lengths grow with the levels:
-//   Lvl 1: 3x2  (2-letter words)
-//   Lvl 2: 4x2  (2-letter words)
-//   Lvl 3: 4x3  (2- & 3-letter words)
-//   Lvl 4: 5x3  (2-, 3- & 4-letter words)  — 15 blocks, the biggest all-distinct
-//          board possible with this word set.
+// 4 levels of growing grids, 12 pre-generated boards each (a random one per
+// play). EACH LETTER APPEARS AT MOST ONCE per board; each word is a straight run
+// of 2–4 blocks. Word lengths grow with the levels:
+//   Lvl 1: 3x2 (2-letter)   Lvl 2: 4x2 (2-letter)
+//   Lvl 3: 4x3 (2&3)        Lvl 4: 5x3 (2/3/4) — 15 blocks, the biggest
+//          all-distinct board this word set allows.
 // DO NOT hand-edit — regenerate with scripts/generate-boards.mjs.
 // ---------------------------------------------------------------------------
 
 export interface BoardData {
-  cols: string[][]; // columns of letter ids, index 0 = bottom
-  order: string[];  // word ids to clear, in sequence
+  cols: string[][];
+  order: string[];
 }
-
 export interface BlockLevel {
   cols: number;
   rows: number;
@@ -95,6 +92,10 @@ export const LEVELS: BlockLevel[] = [
       { cols: [["a","na","sha"],["ja","ma","ha"],["ga","ka","da"],["ra","la","pha"],["kha","ta","ba"]], order: ["namak","phal","batakh","shahad","ajgar"] },
       { cols: [["ba","na","a"],["ta","ma","ja"],["kha","ka","ga"],["la","pha","ra"],["da","ha","sha"]], order: ["phal","namak","batakh","ajgar","shahad"] },
       { cols: [["a","sha","na"],["ja","ha","ma"],["ga","da","ka"],["ra","la","pha"],["kha","ta","ba"]], order: ["shahad","namak","phal","batakh","ajgar"] },
+      { cols: [["da","ha","sha"],["a","na","ba"],["ja","ma","ta"],["ga","ka","kha"],["ra","la","pha"]], order: ["namak","batakh","phal","shahad","ajgar"] },
+      { cols: [["a","la","pha"],["ja","na","ba"],["ga","ma","ta"],["ra","ka","kha"],["da","ha","sha"]], order: ["batakh","ajgar","phal","shahad","namak"] },
+      { cols: [["da","ha","sha"],["a","la","pha"],["ja","na","ba"],["ga","ma","ta"],["ra","ka","kha"]], order: ["batakh","namak","shahad","phal","ajgar"] },
+      { cols: [["da","ha","sha"],["na","ba","a"],["ma","ta","ja"],["ka","kha","ga"],["la","pha","ra"]], order: ["batakh","namak","shahad","phal","ajgar"] },
     ],
   },
 ];

@@ -184,9 +184,11 @@ export function playEndgameSound(): void {
   playSound("/audio/endgame-message.mp3", "win");
 }
 
-// Spoken word for the Blocks game (e.g. /audio/words/bus.mp3).
-export function playWordSound(src: string): void {
-  playSound(src, "correct");
+// Spoken word for the Blocks game (e.g. /audio/words/bus.mp3). `onEnd` (optional)
+// fires when it finishes — the Blocks game uses it to keep the board locked
+// while the picture's word is being spoken.
+export function playWordSound(src: string, onEnd?: () => void): void {
+  playSound(src, "correct", onEnd);
 }
 
 // Memory game: the picture's word (e.g. "batakh") — trimmed from the fish game's
