@@ -26,27 +26,38 @@ lock you out after one play.
 
 ## The play gate (how the links work)
 
-You use **6 static links** — one per game — and hand them to your bot:
+Each game has a **pool of 10 interchangeable links** — the bare slug plus nine
+numbered variants — so the bot can keep handing out the same game and still pick
+a link that isn't on cooldown:
 
 ```
-https://<your-domain>/fish
 https://<your-domain>/blocks
-https://<your-domain>/memory
-https://<your-domain>/wordtrain
-https://<your-domain>/pondhop
-https://<your-domain>/lekhan
+https://<your-domain>/blocks-2
+https://<your-domain>/blocks-3
+…
+https://<your-domain>/blocks-10
 ```
 
-- The links never change and can be pasted once into the bot; it sends one after
-  each lesson.
-- The first time a child opens a game on their device, a cookie marks it "used";
-  re-opening the **same** game link on that device shows the "come back and do
-  another lesson" screen until the cooldown passes.
+The same pattern applies to `fish`, `memory`, `wordtrain`, `pondhop` and
+`lekhan` — **60 links total** (6 games × 10). Every variant opens the *same*
+game (`/blocks-3` internally renders `/blocks`); the number only changes which
+cookie is used.
+
+- **Each link cools down independently.** Opening `/blocks-3` marks only
+  `/blocks-3` as used on that device; `/blocks`, `/blocks-5`, etc. still play.
+  So a random re-send from the bot almost always lands on a fresh link.
+- The links never change and can be pasted once into the bot.
+- The first time a child opens a given link on their device, a cookie marks
+  that link "used"; re-opening the **same** link shows the "come back and do
+  another lesson" screen until its cooldown passes.
 - The cookie is read on the first request (it travels with it), so this works
   from the WhatsApp in-app browser with a single tap — no second click.
 - It's deliberately light: no accounts, no server store, easily bypassed
   (clearing cookies / incognito). It just stops the same link being replayed
   between lessons.
+
+A ready-to-paste list of all 60 links (with your domain filled in) can be
+generated with `node scripts/print-links.mjs https://<your-domain>`.
 
 ### Config (env, all optional)
 | Variable | Purpose |
