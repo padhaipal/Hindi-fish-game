@@ -33,9 +33,15 @@ interface SlateProps {
   width: number;
   height: number;
   onComplete: () => void; // called once the target is written well enough
-  // When set (the word levels), the drawing is RECOGNISED against these words
-  // and only accepted if the nearest match is `text`.
+  // When set (the letter/word writing levels), the drawing is RECOGNISED against
+  // these candidates rather than measured against a template. It's accepted if
+  // the target is among the closest matches. Real handwriting recognition is
+  // tried first (recognizeOnline); the on-device matcher is the offline net.
   recognizeAgainst?: string[];
+  // How lenient the on-device fallback is: accept if the target ranks in the top
+  // `acceptTopK`. 1 = strict (words); larger = forgiving (single letters, where
+  // a child's scrawl is easily confused with a look-alike).
+  acceptTopK?: number;
 }
 
 const GRID = 14; // coverage grid (cells per axis)
@@ -49,6 +55,7 @@ export default function Slate({
   height,
   onComplete,
   recognizeAgainst,
+  acceptTopK = 1,
 }: SlateProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const targetCells = useRef<Set<number>>(new Set());
@@ -193,16 +200,21 @@ export default function Slate({
     if (!f || f.count < 40) return null; // too little ink yet — wait
     const ranked = classify(f.vec, templates.current);
     const ti = ranked.findIndex((r) => r.word === text);
-    // Accept if the target is the best match, or a very close second (near tie).
-    return ti === 0 || (ti === 1 && ranked[1].d - ranked[0].d < ranked[0].d * 0.12);
-  }, [text]);
+    if (ti < 0) return false;
+    // Accept if the target is among the top-K matches (1 = strict, for words;
+    // larger = forgiving, for single letters), or a near tie just past the cut.
+    if (ti < acceptTopK) return true;
+    return ti === acceptTopK && ranked[ti].d - ranked[0].d < ranked[0].d * 0.12;
+  }, [text, acceptTopK]);
 
   const validate = useCallback(() => {
     if (doneRef.current) return;
 
-    // WORD LEVELS: recognise the written word. Try the online recogniser first
-    // (handles any handwriting); on any failure, fall back to on-device.
+    // WRITING LEVELS: recognise the drawing. Try real handwriting recognition
+    // first (recognizeOnline, handles any script); on any failure fall back to
+    // the on-device matcher. Wait until there's enough ink to judge fairly.
     if (recognizeAgainst && templates.current) {
+      if (drawnPts.current.length < 12) return; // barely anything drawn yet — wait
       const myRun = ++runSeq.current;
       recognizeOnline(strokes.current, width, height)
         .then((cands) => {
