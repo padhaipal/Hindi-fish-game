@@ -26,6 +26,7 @@ import {
   playWinSound,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
@@ -116,6 +117,7 @@ export default function WordTrainGame() {
   // ---- load a word (picture appears, then the word is spoken) -------------
   const loadWord = useCallback((sess: TrainWord[], idx: number) => {
     setWordIdx(idx);
+    trackLevelReached(idx + 1); // Word Train has words, not levels — track the step
     setPlaced([]);
     setMoving(false);
     setWrongSlot(false);

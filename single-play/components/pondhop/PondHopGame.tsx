@@ -28,6 +28,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
@@ -95,6 +96,7 @@ export default function PondHopGame() {
     setSplashId(null);
     setPhase("intro"); // frozen; the intro sound unfreezes into "playing"
     setRoundId((r) => r + 1);
+    trackLevelReached(levelNumber);
   }, []);
 
   const newGame = useCallback(() => {

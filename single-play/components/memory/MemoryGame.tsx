@@ -26,6 +26,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 const CARD_W = 78;
@@ -95,6 +96,7 @@ export default function MemoryGame() {
     setVideoSrc(null);
     busyRef.current = false;
     setPhase("playing");
+    trackLevelReached(idx + 1);
   }, []);
 
   const newGame = useCallback(() => startLevel(0), [startLevel]);
