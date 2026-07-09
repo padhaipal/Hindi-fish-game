@@ -1493,6 +1493,14 @@ body > div {
   60% { transform: scale(1.08); opacity: 1; }
   100% { transform: scale(1); }
 }
+/* chart-image trace level keeps its light card during the green "done" flash */
+.slate--chart.slate--green {
+  animation: chartGreen 0.6s ease;
+}
+@keyframes chartGreen {
+  0%, 100% { background: #fbfaf5; }
+  45% { background: #bff0c9; }
+}
 /* right / wrong flashes */
 .slate--red {
   animation: slateRed 0.48s ease;

@@ -13,6 +13,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Slate from "./Slate";
 import GuidedSlate from "./GuidedSlate";
+import ChartSlate from "./ChartSlate";
+import { hasStrokeImage } from "@/lib/lekhan/strokeImages";
 import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
@@ -192,15 +194,26 @@ export default function LekhanGame() {
           {/* The slate */}
           <div className="lekhanSlateWrap">
             {cfg.showGuide ? (
-              <GuidedSlate
-                key={`${level}-${itemIdx}`}
-                text={item.write}
-                letterId={item.id}
-                width={slateW}
-                height={slateH}
-                onComplete={onComplete}
-                onMistake={onMistake}
-              />
+              hasStrokeImage(item.id) ? (
+                <ChartSlate
+                  key={`${level}-${itemIdx}`}
+                  letterId={item.id}
+                  width={slateW}
+                  height={slateH}
+                  onComplete={onComplete}
+                  onMistake={onMistake}
+                />
+              ) : (
+                <GuidedSlate
+                  key={`${level}-${itemIdx}`}
+                  text={item.write}
+                  letterId={item.id}
+                  width={slateW}
+                  height={slateH}
+                  onComplete={onComplete}
+                  onMistake={onMistake}
+                />
+              )
             ) : (
               <Slate
                 key={`${level}-${itemIdx}`}
