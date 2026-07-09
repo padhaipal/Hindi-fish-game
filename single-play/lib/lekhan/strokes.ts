@@ -259,7 +259,7 @@ export const LETTER_STROKES: Record<string, Stroke[]> = {
 };
 
 // distance from point (px,py) to a polyline (all in the same coordinate space)
-function distToPolyline(px: number, py: number, poly: Stroke): number {
+export function distToPolyline(px: number, py: number, poly: Stroke): number {
   let best = Infinity;
   for (let i = 0; i < poly.length - 1; i++) {
     const [ax, ay] = poly[i];
