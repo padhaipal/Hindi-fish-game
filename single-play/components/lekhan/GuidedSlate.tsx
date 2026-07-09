@@ -300,20 +300,23 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
       sc.lineCap = "round";
       sc.lineJoin = "round";
       sc.strokeStyle = "#141414";
-      sc.lineWidth = 2.7 * dpr;
-      const spacing = 40 * dpr;
-      const size = 7 * dpr;
-      for (let s = spacing * 0.6; s < total - size * 0.5; s += spacing) {
+      sc.lineWidth = 2.2 * dpr;
+      const spacing = 42 * dpr;
+      const half = 6.5 * dpr; // half the arrow's shaft length
+      const head = 4 * dpr; // arrowhead barb length
+      for (let s = spacing * 0.6; s < total - half; s += spacing) {
         const p = sample(s);
         const [sx, sy] = snap(p.x, p.y, pts); // centre the arrow on the actual ink
         const nx = -p.uy, ny = p.ux;
-        const tip = [sx + p.ux * size, sy + p.uy * size];
-        const a = [sx - p.ux * size + nx * size, sy - p.uy * size + ny * size];
-        const b = [sx - p.ux * size - nx * size, sy - p.uy * size - ny * size];
+        const tailX = sx - p.ux * half, tailY = sy - p.uy * half;
+        const tipX = sx + p.ux * half, tipY = sy + p.uy * half;
         sc.beginPath();
-        sc.moveTo(a[0], a[1]);
-        sc.lineTo(tip[0], tip[1]);
-        sc.lineTo(b[0], b[1]);
+        sc.moveTo(tailX, tailY); // shaft
+        sc.lineTo(tipX, tipY);
+        sc.moveTo(tipX, tipY); // arrowhead barbs
+        sc.lineTo(tipX - p.ux * head + nx * head, tipY - p.uy * head + ny * head);
+        sc.moveTo(tipX, tipY);
+        sc.lineTo(tipX - p.ux * head - nx * head, tipY - p.uy * head - ny * head);
         sc.stroke();
       }
       // ...then keep only the parts inside the letter, and stamp onto the view.
