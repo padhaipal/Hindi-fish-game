@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fitFont } from "@/lib/lekhan/recognize";
-import { LETTER_STROKES, segmentStroke, Stroke } from "@/lib/lekhan/strokes";
+import { LETTER_STROKES, distToPolyline, Stroke } from "@/lib/lekhan/strokes";
 
 interface Props {
   text: string;
@@ -26,6 +26,9 @@ interface Props {
   width: number;
   height: number;
   onComplete: () => void;
+  // Called when the child restarts (↺) — a proxy for "stuck", so the game can
+  // offer a "skip" after a couple of restarts (there is no fail state here).
+  onMistake?: () => void;
 }
 
 const GRID = 18; // coverage grid (cells per axis)
@@ -36,7 +39,7 @@ const C_DONE = "#ffffff";
 const C_PENDING = "#c8d0cc";
 const C_YELLOW = "#ffe23a";
 
-export default function GuidedSlate({ text, letterId, width, height, onComplete }: Props) {
+export default function GuidedSlate({ text, letterId, width, height, onComplete, onMistake }: Props) {
   const viewRef = useRef<HTMLCanvasElement>(null); // the coloured letter
   const masks = useRef<HTMLCanvasElement[]>([]); // per-stroke white masks (device px)
   const baseRef = useRef<HTMLCanvasElement | null>(null); // done+pending, recomputed on advance
@@ -85,11 +88,15 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     bctx.setTransform(1, 0, 0, 1, 0, 0);
     bctx.clearRect(0, 0, base.width, base.height);
     const cur = currentRef.current;
-    for (let i = 0; i < masks.current.length; i++) {
-      if (i === cur && !doneRef.current) continue; // the live stroke is drawn per-frame
-      const done = i < cur;
-      // done = bright white; pending = dim grey (so "done" clearly stands out)
-      tint(bctx, masks.current[i], done ? C_DONE : C_PENDING, done ? 1 : 0.5);
+    // Strokes overlap where their bands meet, so paint PENDING (grey) first and
+    // DONE (white) on top — a pixel shared by a done and a pending stroke should
+    // read as done.
+    for (let i = cur + 1; i < masks.current.length; i++) {
+      tint(bctx, masks.current[i], C_PENDING, 0.5); // pending, dim grey
+    }
+    const lastDone = doneRef.current ? masks.current.length - 1 : cur - 1;
+    for (let i = 0; i <= lastDone; i++) {
+      tint(bctx, masks.current[i], C_DONE, 1); // done, bright white
     }
   }, [tint]);
 
@@ -102,7 +109,8 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     setCurrent(0);
     setFlash(null);
     rebuildBase();
-  }, [rebuildBase]);
+    if (onMistake) onMistake();
+  }, [rebuildBase, onMistake]);
 
   useEffect(() => {
     doneRef.current = false;
@@ -158,23 +166,49 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete 
     const bw = Math.max(1, maxx - minx);
     const bh = Math.max(1, maxy - miny);
 
-    // per-stroke white mask (device px) + per-stroke validation cells
+    // Assign every glyph pixel to one or more strokes so each stroke reads as a
+    // clean band FOLLOWING its centreline (not a Voronoi splotch). A pixel joins
+    // stroke i if it's within BAND of that stroke's line; it always also joins
+    // its single NEAREST stroke, so fat parts fill and no pixel is left orphaned.
+    // The headline (top bar) is special-cased to the thin top band.
+    const BAND = 17; // half-thickness of a stroke's band, in the 0..100 glyph box
+    const headline = strokes.length - 1;
+    const hasHeadline = strokes.length >= 2;
+    const bodyCount = hasHeadline ? headline : strokes.length;
     const maskData: ImageData[] = strokes.map(() => new ImageData(DW, DH));
     const sets: Set<number>[] = strokes.map(() => new Set<number>());
+    const paint = (s: number, x: number, y: number, al: number) => {
+      const md = maskData[s].data;
+      const idx = (y * DW + x) * 4;
+      md[idx] = 255;
+      md[idx + 1] = 255;
+      md[idx + 2] = 255;
+      md[idx + 3] = Math.max(md[idx + 3], al); // keep the glyph's anti-aliased edge
+      sets[s].add(Math.floor(y / dpr / ch) * GRID + Math.floor(x / dpr / cw));
+    };
     for (let y = 0; y < DH; y++) {
       for (let x = 0; x < DW; x++) {
         const al = data[(y * DW + x) * 4 + 3];
         if (al <= 60) continue;
         const nx = ((x - minx) / bw) * 100;
         const ny = ((y - miny) / bh) * 100;
-        const s = segmentStroke(nx, ny, strokes);
-        const md = maskData[s].data;
-        const idx = (y * DW + x) * 4;
-        md[idx] = 255;
-        md[idx + 1] = 255;
-        md[idx + 2] = 255;
-        md[idx + 3] = al; // keep the glyph's own anti-aliased edge
-        sets[s].add(Math.floor(y / dpr / ch) * GRID + Math.floor(x / dpr / cw));
+        // the top band belongs to the headline only
+        if (hasHeadline && ny < 15) {
+          paint(headline, x, y, al);
+          continue;
+        }
+        // distance to each BODY stroke; nearest always owns the pixel
+        let nearest = 0;
+        let nd = Infinity;
+        for (let i = 0; i < bodyCount; i++) {
+          const d = distToPolyline(nx, ny, strokes[i]);
+          if (d < nd) {
+            nd = d;
+            nearest = i;
+          }
+          if (d < BAND) paint(i, x, y, al); // band membership -> clean stroke shape
+        }
+        paint(nearest, x, y, al); // guarantee full coverage
       }
     }
     masks.current = maskData.map((imgData) => {

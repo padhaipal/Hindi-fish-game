@@ -91,6 +91,7 @@ export default function LekhanGame() {
   const [seq, setSeq] = useState<Item[]>([]);
   const [itemIdx, setItemIdx] = useState(0);
   const [vw, setVw] = useState(390);
+  const [mistakes, setMistakes] = useState(0); // wrong tries on the current item
   const introRef = useRef("");
 
   const cfg = LEKHAN_LEVELS[level - 1];
@@ -112,6 +113,7 @@ export default function LekhanGame() {
     setLevel(levelNumber);
     setSeq(buildSequence(lvl.mode, lvl.items));
     setItemIdx(0);
+    setMistakes(0);
     setPhase("playing");
     trackLevelReached(levelNumber);
   }, []);
@@ -128,16 +130,24 @@ export default function LekhanGame() {
     return () => window.clearTimeout(t);
   }, [phase, level, itemIdx, item]);
 
-  const onComplete = useCallback(() => {
-    const next = itemIdx + 1;
-    if (next >= seq.length) {
-      playWinSound(); // applause
-      setPhase(isLastLevel ? "allDone" : "levelComplete");
-    } else {
-      playBingSound();
-      setItemIdx(next);
-    }
-  }, [itemIdx, seq.length, isLastLevel]);
+  // Move to the next item. `skip` = they gave up on this one (after a few wrong
+  // tries) rather than getting it right — no celebratory "bing" in that case.
+  const goNext = useCallback(
+    (skip: boolean) => {
+      setMistakes(0);
+      const next = itemIdx + 1;
+      if (next >= seq.length) {
+        playWinSound(); // applause
+        setPhase(isLastLevel ? "allDone" : "levelComplete");
+      } else {
+        if (!skip) playBingSound();
+        setItemIdx(next);
+      }
+    },
+    [itemIdx, seq.length, isLastLevel]
+  );
+  const onComplete = useCallback(() => goNext(false), [goNext]);
+  const onMistake = useCallback(() => setMistakes((m) => m + 1), []);
 
   return (
     <div className="lekhanApp" style={{ background: cfg.bg }}>
@@ -189,6 +199,7 @@ export default function LekhanGame() {
                 width={slateW}
                 height={slateH}
                 onComplete={onComplete}
+                onMistake={onMistake}
               />
             ) : (
               <Slate
@@ -198,11 +209,19 @@ export default function LekhanGame() {
                 width={slateW}
                 height={slateH}
                 onComplete={onComplete}
+                onMistake={onMistake}
                 recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : LETTER_CANDIDATES}
                 acceptTopK={cfg.mode === "word" ? 1 : 5}
               />
             )}
           </div>
+
+          {/* After a couple of wrong tries (or restarts), let them move on. */}
+          {mistakes >= 2 && (
+            <button type="button" className="lekhanSkip" onClick={() => goNext(true)}>
+              आगे बढ़ें →
+            </button>
+          )}
         </>
       )}
 

@@ -42,6 +42,8 @@ interface SlateProps {
   // `acceptTopK`. 1 = strict (words); larger = forgiving (single letters, where
   // a child's scrawl is easily confused with a look-alike).
   acceptTopK?: number;
+  // Called on each rejected attempt, so the game can offer a "skip" after a few.
+  onMistake?: () => void;
 }
 
 const GRID = 14; // coverage grid (cells per axis)
@@ -56,6 +58,7 @@ export default function Slate({
   onComplete,
   recognizeAgainst,
   acceptTopK = 1,
+  onMistake,
 }: SlateProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const targetCells = useRef<Set<number>>(new Set());
@@ -185,11 +188,12 @@ export default function Slate({
   }, [onComplete]);
   const reject = useCallback(() => {
     setFlash("red");
+    if (onMistake) onMistake();
     window.setTimeout(() => {
       wipe();
       setFlash(null);
     }, 480);
-  }, [wipe]);
+  }, [wipe, onMistake]);
 
   // On-device recognition (the fallback): nearest of the candidate words.
   const matchesOnDevice = useCallback(() => {
