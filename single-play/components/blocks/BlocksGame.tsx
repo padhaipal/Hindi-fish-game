@@ -42,6 +42,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 // Sends the child back to PadhaiPal on WhatsApp (same as the fish game).
 const PADHAIPAL_URL = "https://wa.me/918528097842";
@@ -134,6 +135,7 @@ export default function BlocksGame() {
       wantDemoRef.current = idx === 0 && !demoShownRef.current;
       setPhase("playing");
       announce(getWord(data.order[0]).audio); // locks the board while it speaks
+      trackLevelReached(idx + 1);
     },
     [clearHint, announce]
   );

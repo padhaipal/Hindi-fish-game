@@ -25,6 +25,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
@@ -112,6 +113,7 @@ export default function LekhanGame() {
     setSeq(buildSequence(lvl.mode, lvl.items));
     setItemIdx(0);
     setPhase("playing");
+    trackLevelReached(levelNumber);
   }, []);
 
   const newGame = useCallback(() => startLevel(1), [startLevel]);

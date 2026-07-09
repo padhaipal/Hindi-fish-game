@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Analytics from "@/components/analytics/Analytics";
 
 export const metadata: Metadata = {
   title: "PadhaiPal Hindi Games",
@@ -23,7 +24,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="hi">
-      <body>{children}</body>
+      <body>
+        <Analytics />
+        {children}
+      </body>
     </html>
   );
 }

@@ -37,6 +37,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { trackLevelReached } from "@/lib/analytics";
 
 // Where the final "पाठ पर जाएं" button sends the child: a WhatsApp chat with the
 // PadhaiPal number (+91 8528097842). No text param = no auto-filled message.
@@ -164,6 +165,7 @@ export default function PondGame() {
     setRound(plan);
     setPhase("intro"); // start FROZEN; the intro sound effect will unfreeze
     setRoundId((r) => r + 1);
+    trackLevelReached(levelNumber);
   }, []);
 
   // ---- start a brand-new game --------------------------------------------
