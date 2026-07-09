@@ -264,13 +264,13 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
       }
       return [bx, by];
     };
-    // Draw black direction chevrons marching along a device-px polyline, each
-    // snapped onto the current stroke's ink.
+    // Draw STATIC black direction chevrons along a device-px polyline, each
+    // snapped onto the current stroke's ink and CLIPPED to the glyph so the
+    // arrows sit strictly inside the letter.
     const drawArrows = (
       ctx: CanvasRenderingContext2D,
       poly: [number, number][],
-      pts: [number, number][],
-      t: number
+      pts: [number, number][]
     ) => {
       if (poly.length < 2) return;
       const seg: { x0: number; y0: number; dx: number; dy: number; d: number; acc: number }[] = [];
@@ -293,39 +293,42 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
         const g = seg[seg.length - 1];
         return { x: g.x0 + g.dx, y: g.y0 + g.dy, ux: g.dx / g.d, uy: g.dy / g.d };
       };
-      const spacing = 46 * dpr;
-      const size = 8 * dpr;
-      const phase = ((t * 0.045) % spacing);
-      for (let s = spacing * 0.5 + phase; s < total - size; s += spacing) {
+      // Render the chevrons onto the scratch canvas first...
+      const sc = scratchRef.current!.getContext("2d")!;
+      sc.setTransform(1, 0, 0, 1, 0, 0);
+      sc.clearRect(0, 0, DW, DH);
+      sc.lineCap = "round";
+      sc.lineJoin = "round";
+      sc.strokeStyle = "#141414";
+      sc.lineWidth = 2.7 * dpr;
+      const spacing = 40 * dpr;
+      const size = 7 * dpr;
+      for (let s = spacing * 0.6; s < total - size * 0.5; s += spacing) {
         const p = sample(s);
-        const [sx, sy] = snap(p.x, p.y, pts); // put the arrow on the actual ink
+        const [sx, sy] = snap(p.x, p.y, pts); // centre the arrow on the actual ink
         const nx = -p.uy, ny = p.ux;
         const tip = [sx + p.ux * size, sy + p.uy * size];
         const a = [sx - p.ux * size + nx * size, sy - p.uy * size + ny * size];
         const b = [sx - p.ux * size - nx * size, sy - p.uy * size - ny * size];
-        ctx.beginPath();
-        ctx.moveTo(a[0], a[1]);
-        ctx.lineTo(tip[0], tip[1]);
-        ctx.lineTo(b[0], b[1]);
-        ctx.strokeStyle = "rgba(255,255,255,0.85)"; // halo, so it reads on any bg
-        ctx.lineWidth = 5.5 * dpr;
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(a[0], a[1]);
-        ctx.lineTo(tip[0], tip[1]);
-        ctx.lineTo(b[0], b[1]);
-        ctx.strokeStyle = "#161616";
-        ctx.lineWidth = 2.6 * dpr;
-        ctx.stroke();
+        sc.beginPath();
+        sc.moveTo(a[0], a[1]);
+        sc.lineTo(tip[0], tip[1]);
+        sc.lineTo(b[0], b[1]);
+        sc.stroke();
       }
+      // ...then keep only the parts inside the letter, and stamp onto the view.
+      sc.globalCompositeOperation = "destination-in";
+      if (glyphRef.current) sc.drawImage(glyphRef.current, 0, 0);
+      sc.globalCompositeOperation = "source-over";
+      ctx.drawImage(scratchRef.current!, 0, 0);
     };
-    const loop = (t: number) => {
+    const loop = () => {
       vctx.setTransform(1, 0, 0, 1, 0, 0);
       vctx.clearRect(0, 0, DW, DH);
       if (baseRef.current) vctx.drawImage(baseRef.current, 0, 0);
       const cur = currentRef.current;
       if (!doneRef.current && cur < centerlines.current.length) {
-        drawArrows(vctx, centerlines.current[cur], strokeInk.current[cur] || [], t);
+        drawArrows(vctx, centerlines.current[cur], strokeInk.current[cur] || []);
       }
       const f = fingerRef.current;
       if (f && drawing.current) {
