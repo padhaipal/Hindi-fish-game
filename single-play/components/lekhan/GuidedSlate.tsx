@@ -1,19 +1,17 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// GUIDED SLATE — the trace level (L1), solid-fill style.
+// GUIDED SLATE — the trace level (L1), arrow-guided.
 // ---------------------------------------------------------------------------
-// The whole letter is shown as a SOLID FILL, split into its strokes:
-//   - light grey   = a stroke not done yet
-//   - flashing yellow = the stroke to trace NEXT
-//   - white        = a stroke already done
-// The child drags a finger over the flashing yellow stroke; once they've
-// covered enough of it, that stroke snaps to WHITE in its true shape (we do NOT
-// trace the child's wiggly finger path) and the next stroke starts flashing.
-// When the last stroke is filled the letter flashes green and completes.
+// The whole letter is shown in a flat LIGHT GREY (no per-stroke colour). Little
+// black ARROWS march along the CURRENT stroke, inside the letter, showing the
+// direction to draw it. The child drags a finger along that stroke; once enough
+// of it is covered the arrows vanish and THAT stroke turns WHITE (its true
+// shape). The next stroke's arrows then appear. When the last stroke is filled
+// the whole letter is white and it flashes green.
 //
-// It's deliberately forgiving: only coverage of the current stroke matters, so
-// a slightly messy drag still fills it. The ↺ button restarts the letter.
+// Deliberately forgiving: only coverage of the current stroke matters. The ↺
+// button restarts the letter.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -34,18 +32,19 @@ interface Props {
 const GRID = 18; // coverage grid (cells per axis)
 const COVER = 0.5; // fraction of the current stroke that must be covered to fill it
 
-// Colours for the three stroke states.
-const C_DONE = "#ffffff";
-const C_PENDING = "#c8d0cc";
-const C_YELLOW = "#ffe23a";
+const C_DONE = "#ffffff"; // a completed stroke
+const C_GREY = "#cfd6d1"; // the letter before/without being drawn
 
 export default function GuidedSlate({ text, letterId, width, height, onComplete, onMistake }: Props) {
-  const viewRef = useRef<HTMLCanvasElement>(null); // the coloured letter
+  const viewRef = useRef<HTMLCanvasElement>(null);
   const masks = useRef<HTMLCanvasElement[]>([]); // per-stroke white masks (device px)
-  const baseRef = useRef<HTMLCanvasElement | null>(null); // done+pending, recomputed on advance
-  const scratchRef = useRef<HTMLCanvasElement | null>(null); // reused for tinting the live stroke
+  const glyphRef = useRef<HTMLCanvasElement | null>(null); // the whole letter (white)
+  const baseRef = useRef<HTMLCanvasElement | null>(null); // grey letter + white done strokes
+  const scratchRef = useRef<HTMLCanvasElement | null>(null); // reused for tinting
+  const centerlines = useRef<[number, number][][]>([]); // per-stroke path in device px
+  const strokeInk = useRef<[number, number][][]>([]); // per-stroke ink points (device px)
   const strokeCells = useRef<Set<number>[]>([]); // validation cells per stroke
-  const drawnCells = useRef<Set<number>>(new Set()); // cells covered in the current stroke
+  const drawnCells = useRef<Set<number>>(new Set());
   const nStrokes = useRef(0);
   const currentRef = useRef(0);
   const drawing = useRef(false);
@@ -61,7 +60,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
   const ch = height / GRID;
   const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
 
-  // Tint a white per-stroke mask into `color` at `alpha` and stamp it on `dctx`.
+  // Tint a white mask into `color` at `alpha` and stamp it on `dctx`.
   const tint = useCallback(
     (dctx: CanvasRenderingContext2D, mask: HTMLCanvasElement, color: string, alpha: number) => {
       const s = scratchRef.current!;
@@ -80,24 +79,17 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     []
   );
 
-  // Recompute the static base = done strokes (white) + pending strokes (grey).
+  // Base = the whole letter grey, with the already-done strokes painted white.
   const rebuildBase = useCallback(() => {
     const base = baseRef.current;
-    if (!base) return;
+    const glyph = glyphRef.current;
+    if (!base || !glyph) return;
     const bctx = base.getContext("2d")!;
     bctx.setTransform(1, 0, 0, 1, 0, 0);
     bctx.clearRect(0, 0, base.width, base.height);
-    const cur = currentRef.current;
-    // Strokes overlap where their bands meet, so paint PENDING (grey) first and
-    // DONE (white) on top — a pixel shared by a done and a pending stroke should
-    // read as done.
-    for (let i = cur + 1; i < masks.current.length; i++) {
-      tint(bctx, masks.current[i], C_PENDING, 0.5); // pending, dim grey
-    }
-    const lastDone = doneRef.current ? masks.current.length - 1 : cur - 1;
-    for (let i = 0; i <= lastDone; i++) {
-      tint(bctx, masks.current[i], C_DONE, 1); // done, bright white
-    }
+    tint(bctx, glyph, C_GREY, 0.9); // the flat grey letter
+    const lastDone = doneRef.current ? masks.current.length - 1 : currentRef.current - 1;
+    for (let i = 0; i <= lastDone; i++) tint(bctx, masks.current[i], C_DONE, 1);
   }, [tint]);
 
   const resetAll = useCallback(() => {
@@ -166,16 +158,33 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     const bw = Math.max(1, maxx - minx);
     const bh = Math.max(1, maxy - miny);
 
-    // Assign every glyph pixel to one or more strokes so each stroke reads as a
-    // clean band FOLLOWING its centreline (not a Voronoi splotch). A pixel joins
-    // stroke i if it's within BAND of that stroke's line; it always also joins
-    // its single NEAREST stroke, so fat parts fill and no pixel is left orphaned.
-    // The headline (top bar) is special-cased to the thin top band.
-    const BAND = 17; // half-thickness of a stroke's band, in the 0..100 glyph box
+    // The stroke polylines live in a rough design box; map their COLLECTIVE
+    // bounding box onto the glyph's bounding box so the arrows sit on the ink.
+    let pMinX = 1e9, pMinY = 1e9, pMaxX = -1e9, pMaxY = -1e9;
+    for (const st of strokes)
+      for (const [px, py] of st) {
+        if (px < pMinX) pMinX = px;
+        if (px > pMaxX) pMaxX = px;
+        if (py < pMinY) pMinY = py;
+        if (py > pMaxY) pMaxY = py;
+      }
+    const pbw = Math.max(1, pMaxX - pMinX);
+    const pbh = Math.max(1, pMaxY - pMinY);
+    centerlines.current = strokes.map((st) =>
+      st.map(([px, py]) => [
+        minx + ((px - pMinX) / pbw) * bw,
+        miny + ((py - pMinY) / pbh) * bh,
+      ] as [number, number])
+    );
+
+    // Assign every glyph pixel to one or more strokes (band around each centre
+    // line + nearest fallback) — used for the white "done" fill and coverage.
+    const BAND = 17;
     const headline = strokes.length - 1;
     const hasHeadline = strokes.length >= 2;
     const bodyCount = hasHeadline ? headline : strokes.length;
     const maskData: ImageData[] = strokes.map(() => new ImageData(DW, DH));
+    const glyphData = new ImageData(DW, DH);
     const sets: Set<number>[] = strokes.map(() => new Set<number>());
     const paint = (s: number, x: number, y: number, al: number) => {
       const md = maskData[s].data;
@@ -183,21 +192,24 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
       md[idx] = 255;
       md[idx + 1] = 255;
       md[idx + 2] = 255;
-      md[idx + 3] = Math.max(md[idx + 3], al); // keep the glyph's anti-aliased edge
+      md[idx + 3] = Math.max(md[idx + 3], al);
       sets[s].add(Math.floor(y / dpr / ch) * GRID + Math.floor(x / dpr / cw));
     };
     for (let y = 0; y < DH; y++) {
       for (let x = 0; x < DW; x++) {
         const al = data[(y * DW + x) * 4 + 3];
         if (al <= 60) continue;
+        const gi = (y * DW + x) * 4;
+        glyphData.data[gi] = 255;
+        glyphData.data[gi + 1] = 255;
+        glyphData.data[gi + 2] = 255;
+        glyphData.data[gi + 3] = al;
         const nx = ((x - minx) / bw) * 100;
         const ny = ((y - miny) / bh) * 100;
-        // the top band belongs to the headline only
         if (hasHeadline && ny < 15) {
           paint(headline, x, y, al);
           continue;
         }
-        // distance to each BODY stroke; nearest always owns the pixel
         let nearest = 0;
         let nd = Infinity;
         for (let i = 0; i < bodyCount; i++) {
@@ -206,35 +218,114 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
             nd = d;
             nearest = i;
           }
-          if (d < BAND) paint(i, x, y, al); // band membership -> clean stroke shape
+          if (d < BAND) paint(i, x, y, al);
         }
-        paint(nearest, x, y, al); // guarantee full coverage
+        paint(nearest, x, y, al);
       }
     }
-    masks.current = maskData.map((imgData) => {
+    const toCanvas = (imgData: ImageData) => {
       const m = document.createElement("canvas");
       m.width = DW;
       m.height = DH;
       m.getContext("2d")!.putImageData(imgData, 0, 0);
       return m;
-    });
+    };
+    masks.current = maskData.map(toCanvas);
+    glyphRef.current = toCanvas(glyphData);
     strokeCells.current = sets;
+
+    // Downsampled ink points per stroke, so arrows can snap onto the real ink.
+    const stride = Math.max(3, Math.round(4 * dpr));
+    const ink: [number, number][][] = strokes.map(() => []);
+    for (let y = 0; y < DH; y += stride)
+      for (let x = 0; x < DW; x += stride)
+        for (let s = 0; s < strokes.length; s++)
+          if (maskData[s].data[(y * DW + x) * 4 + 3] > 60) ink[s].push([x, y]);
+    strokeInk.current = ink;
 
     rebuildBase();
 
-    // animation loop — base + the flashing yellow live stroke + a fingertip dot
+    // animation loop — grey letter + white done strokes + arrows on the current
+    // stroke + a fingertip dot.
     const vctx = view.getContext("2d")!;
+    vctx.lineCap = "round";
+    vctx.lineJoin = "round";
+    // Snap (x,y) to the nearest ink point of a stroke, so arrows sit on the ink.
+    const snap = (x: number, y: number, pts: [number, number][]): [number, number] => {
+      if (!pts || pts.length === 0) return [x, y];
+      let bx = x, by = y, bd = Infinity;
+      for (const [px, py] of pts) {
+        const d = (px - x) * (px - x) + (py - y) * (py - y);
+        if (d < bd) {
+          bd = d;
+          bx = px;
+          by = py;
+        }
+      }
+      return [bx, by];
+    };
+    // Draw black direction chevrons marching along a device-px polyline, each
+    // snapped onto the current stroke's ink.
+    const drawArrows = (
+      ctx: CanvasRenderingContext2D,
+      poly: [number, number][],
+      pts: [number, number][],
+      t: number
+    ) => {
+      if (poly.length < 2) return;
+      const seg: { x0: number; y0: number; dx: number; dy: number; d: number; acc: number }[] = [];
+      let total = 0;
+      for (let i = 0; i < poly.length - 1; i++) {
+        const dx = poly[i + 1][0] - poly[i][0];
+        const dy = poly[i + 1][1] - poly[i][1];
+        const d = Math.hypot(dx, dy) || 1;
+        seg.push({ x0: poly[i][0], y0: poly[i][1], dx, dy, d, acc: total });
+        total += d;
+      }
+      if (total < 4) return;
+      const sample = (s: number) => {
+        s = Math.max(0, Math.min(total, s));
+        for (const g of seg)
+          if (s <= g.acc + g.d) {
+            const u = (s - g.acc) / g.d;
+            return { x: g.x0 + g.dx * u, y: g.y0 + g.dy * u, ux: g.dx / g.d, uy: g.dy / g.d };
+          }
+        const g = seg[seg.length - 1];
+        return { x: g.x0 + g.dx, y: g.y0 + g.dy, ux: g.dx / g.d, uy: g.dy / g.d };
+      };
+      const spacing = 46 * dpr;
+      const size = 8 * dpr;
+      const phase = ((t * 0.045) % spacing);
+      for (let s = spacing * 0.5 + phase; s < total - size; s += spacing) {
+        const p = sample(s);
+        const [sx, sy] = snap(p.x, p.y, pts); // put the arrow on the actual ink
+        const nx = -p.uy, ny = p.ux;
+        const tip = [sx + p.ux * size, sy + p.uy * size];
+        const a = [sx - p.ux * size + nx * size, sy - p.uy * size + ny * size];
+        const b = [sx - p.ux * size - nx * size, sy - p.uy * size - ny * size];
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(tip[0], tip[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.strokeStyle = "rgba(255,255,255,0.85)"; // halo, so it reads on any bg
+        ctx.lineWidth = 5.5 * dpr;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(tip[0], tip[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.strokeStyle = "#161616";
+        ctx.lineWidth = 2.6 * dpr;
+        ctx.stroke();
+      }
+    };
     const loop = (t: number) => {
       vctx.setTransform(1, 0, 0, 1, 0, 0);
       vctx.clearRect(0, 0, DW, DH);
       if (baseRef.current) vctx.drawImage(baseRef.current, 0, 0);
       const cur = currentRef.current;
-      if (!doneRef.current && cur < masks.current.length) {
-        // solid yellow so it stays vivid on the dark board, plus a white
-        // shimmer that pulses on top to make it "flash".
-        tint(vctx, masks.current[cur], C_YELLOW, 1);
-        const shimmer = 0.28 + 0.28 * Math.sin(t * 0.006);
-        tint(vctx, masks.current[cur], "#ffffff", shimmer);
+      if (!doneRef.current && cur < centerlines.current.length) {
+        drawArrows(vctx, centerlines.current[cur], strokeInk.current[cur] || [], t);
       }
       const f = fingerRef.current;
       if (f && drawing.current) {
@@ -252,7 +343,6 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, letterId, width, height]);
 
-  // is `cell` inside (or adjacent to) the current stroke's region?
   const inCurrentRegion = (cell: number) => {
     const region = strokeCells.current[currentRef.current];
     if (!region) return false;
@@ -266,7 +356,6 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     return false;
   };
 
-  // Advance to the next stroke (snap current to white); finish if it was the last.
   const advance = useCallback(() => {
     const next = currentRef.current + 1;
     currentRef.current = next;
@@ -274,15 +363,14 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     setCurrent(next);
     if (next >= nStrokes.current) {
       doneRef.current = true;
-      rebuildBase(); // all strokes white
+      rebuildBase();
       setFlash("green");
       window.setTimeout(() => onComplete(), 600);
     } else {
-      rebuildBase(); // previous stroke now white
+      rebuildBase();
     }
   }, [onComplete, rebuildBase]);
 
-  // Have we covered enough of the current stroke to fill it?
   const checkCoverage = useCallback(() => {
     if (doneRef.current) return;
     const region = strokeCells.current[currentRef.current];
@@ -311,7 +399,6 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
     fingerRef.current = { x, y };
     if (x < 0 || y < 0 || x >= width || y >= height) return;
     const cell = Math.floor(y / ch) * GRID + Math.floor(x / cw);
-    // only count marks that land on the current stroke — messy strays are ignored
     if (inCurrentRegion(cell)) drawnCells.current.add(cell);
   };
 
@@ -338,7 +425,7 @@ export default function GuidedSlate({ text, letterId, width, height, onComplete,
       mark(p.x, p.y);
     }
     lastPt.current = p;
-    checkCoverage(); // fill the stroke as soon as it's covered — mid-drag is fine
+    checkCoverage();
   };
   const onUp = (e: React.PointerEvent) => {
     if (e.pointerId !== pointerId.current) return;
