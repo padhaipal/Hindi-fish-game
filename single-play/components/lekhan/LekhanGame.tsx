@@ -31,6 +31,10 @@ const PADHAIPAL_URL = "https://wa.me/918528097842";
 // The closed vocabulary for the word levels — the drawing is recognised against
 // these and only accepted if the nearest match is the target word.
 const WORD_CANDIDATES = BLOCK_WORDS.map((w) => w.word);
+// For the letter writing levels (L2, L3) we recognise WHICH letter was drawn,
+// instead of measuring distance from a template. Candidates are the full
+// alphabet; matching is lenient (a child's scrawl is easily confused).
+const LETTER_CANDIDATES = LETTERS.map((l) => l.char);
 
 type Phase = "start" | "playing" | "levelComplete" | "allDone";
 
@@ -192,7 +196,8 @@ export default function LekhanGame() {
                 width={slateW}
                 height={slateH}
                 onComplete={onComplete}
-                recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : undefined}
+                recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : LETTER_CANDIDATES}
+                acceptTopK={cfg.mode === "word" ? 1 : 5}
               />
             )}
           </div>

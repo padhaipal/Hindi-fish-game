@@ -2,8 +2,9 @@
 // LEKHAN (WRITING) — LEVEL CONFIG
 // ---------------------------------------------------------------------------
 // The child traces / writes letters (then 2-letter words) on a slate.
-//   L1: letter shown at top + a DOTTED guide on the slate to trace.
-//   L2: letter shown at top, BLANK slate (write it).
+//   L1: letter shown at top + a SOLID-FILL guide on the slate — each stroke
+//       flashes yellow in turn; dragging over it snaps it white (trace).
+//   L2: letter shown at top, BLANK slate — write it; recognised, not measured.
 //   L3: only the PICTURE at top (audio plays), blank slate — recall the letter.
 //   L4: word mode — picture + the 2-letter word shown, rectangular slate.
 //   L5: word mode — only the picture, recall & write the word.
