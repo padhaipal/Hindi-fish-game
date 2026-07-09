@@ -3,7 +3,8 @@
 // ---------------------------------------------------------------------------
 // Captures just enough to answer three questions on the dashboard:
 //   (a) how many times each GAME's links were opened  -> event `game_open`
-//   (b) how long each play lasted (distribution)       -> event `game_played`
+//   (b) how long each play lasted                      -> event `game_time`
+//       (a 10-second heartbeat; sum `seconds` for total active play time)
 //   (c) how far into a game players got before leaving -> event `level_reached`
 //
 // Everything is anonymous: no login, no names — PostHog assigns a random

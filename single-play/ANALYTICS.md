@@ -27,8 +27,14 @@ off.
 | Event | When | Properties |
 |---|---|---|
 | `game_open` | a game link is opened (counts a **click**, incl. hitting the cooldown "come back" screen) | `game` |
-| `game_played` | the player leaves the page | `game`, `seconds` (active time, tab-hidden time excluded) |
+| `game_time` | **heartbeat** — every 10s of active play (paused while the tab is hidden) | `game`, `seconds` (always 10) |
 | `level_reached` | each level / word step begins | `game`, `level` (1-based) |
+
+Total active play time for a game = **sum of `game_time.seconds`**. A single
+play session ≈ the number of `game_time` events in that PostHog session × 10s.
+We use a heartbeat (rather than one event at the end) because mobile browsers
+fire the page-unload event unreliably, so an end-of-session total can't be
+trusted.
 
 `game` is always the base game with the link-pool suffix folded away
 (`/blocks-7` → `blocks`). For Word Train, which has words rather than levels,
@@ -44,11 +50,21 @@ analytics → New insight):
 - **Break down by** → event property **`game`**.
 - Shows how many times each game's links were opened.
 
-**(b) Time spent per play (distribution)**
-- Type **Trends**, series = event **`game_played`**.
-- Set the series math to **Property value → `seconds` → P50 (median)**; add more
-  series for **P90** to see the spread. Break down by **`game`**.
-- (Or use a **Funnel/Value** insight on `seconds` for a full histogram.)
+**(b) Time spent playing**
+- **Total active minutes per game:** Trends, series = event **`game_time`**, math
+  **Property sum → `seconds`**, **Break down by `game`**. (Divide by 60 for
+  minutes.)
+- **Median play-session length (distribution):** easiest via a **SQL/HogQL**
+  insight — sum the heartbeats per session, then look at the spread:
+  ```sql
+  SELECT properties.game AS game,
+         count() * 10 AS play_seconds
+  FROM events
+  WHERE event = 'game_time'
+  GROUP BY game, $session_id
+  ```
+  Then chart `play_seconds` (e.g. median / P90) by `game`. Each row is one play
+  session, so it's the per-play distribution you asked for.
 
 **(c) Level reached before drop-out**
 - Type **Trends**, series = event **`level_reached`**, math **Unique users**.
