@@ -1,19 +1,18 @@
 // ---------------------------------------------------------------------------
 // LEKHAN (WRITING) — LEVEL CONFIG
 // ---------------------------------------------------------------------------
-// The child traces / writes letters (then 2-letter words) on a slate.
-//   L1: letter shown at top + a SOLID-FILL guide on the slate — each stroke
-//       flashes yellow in turn; dragging over it snaps it white (trace).
-//   L2: letter shown at top, BLANK slate — write it; recognised, not measured.
-//   L3: only the PICTURE at top (audio plays), blank slate — recall the letter.
-//   L4: word mode — picture + the 2-letter word shown, rectangular slate.
-//   L5: word mode — only the picture, recall & write the word.
+// The child writes letters (then 2-letter words) on a blank slate.
+//   L1: letter shown at top, BLANK slate — write it; recognised, not measured.
+//   L2: only the PICTURE at top (audio plays), blank slate — recall the letter.
+//   L3: word mode — picture + the 2-letter word shown, rectangular slate.
+//   L4: word mode — only the picture, recall & write the word.
+// (There used to be a traced "guide" level 1 before these; it was removed and
+// the child now comes straight into writing the letter.)
 // Each level finishes after `items` letters/words; applause, then next level.
 // ---------------------------------------------------------------------------
 
 export interface LekhanLevel {
   mode: "letter" | "word";
-  showGuide: boolean; // dotted trace outline on the slate
   showGlyph: boolean; // show the letter / word text at the top
   shape: "square" | "rect";
   items: number; // how many letters/words complete the level
@@ -21,11 +20,10 @@ export interface LekhanLevel {
 }
 
 export const LEKHAN_LEVELS: LekhanLevel[] = [
-  { mode: "letter", showGuide: true, showGlyph: true, shape: "square", items: 5, bg: "linear-gradient(#e9f7ff 0%, #bfe6ff 100%)" },
-  { mode: "letter", showGuide: false, showGlyph: true, shape: "square", items: 5, bg: "linear-gradient(#e7fbe9 0%, #bff0c9 100%)" },
-  { mode: "letter", showGuide: false, showGlyph: false, shape: "square", items: 5, bg: "linear-gradient(#fff0e6 0%, #ffd9bf 100%)" },
-  { mode: "word", showGuide: false, showGlyph: true, shape: "rect", items: 5, bg: "linear-gradient(#f1e9ff 0%, #d9c9ff 100%)" },
-  { mode: "word", showGuide: false, showGlyph: false, shape: "rect", items: 5, bg: "linear-gradient(#e9f7ff 0%, #bfe0ff 100%)" },
+  { mode: "letter", showGlyph: true, shape: "square", items: 5, bg: "linear-gradient(#e7fbe9 0%, #bff0c9 100%)" },
+  { mode: "letter", showGlyph: false, shape: "square", items: 5, bg: "linear-gradient(#fff0e6 0%, #ffd9bf 100%)" },
+  { mode: "word", showGlyph: true, shape: "rect", items: 5, bg: "linear-gradient(#f1e9ff 0%, #d9c9ff 100%)" },
+  { mode: "word", showGlyph: false, shape: "rect", items: 5, bg: "linear-gradient(#e9f7ff 0%, #bfe0ff 100%)" },
 ];
 
 export const TOTAL_LEKHAN_LEVELS = LEKHAN_LEVELS.length;
