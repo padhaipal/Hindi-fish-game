@@ -78,34 +78,54 @@ export default function ChartSlate({ letterId, width, height, onComplete, onMist
 
     const img = new Image();
     img.onload = () => {
-      // fit the image into the slate with a small margin
-      const margin = 0.08;
-      const availW = width * (1 - margin * 2);
-      const availH = height * (1 - margin * 2);
-      const scale = Math.min(availW / img.width, availH / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
-      const ox = (width - w) / 2;
-      const oy = (height - h) / 2;
+      // 1) find the ink's bounding box in the raw image (everything that isn't
+      //    the near-white paper — INCLUDING the blue headline line), so we can
+      //    centre the letter itself rather than the loosely-cropped rectangle.
+      const tmp = document.createElement("canvas");
+      tmp.width = img.width;
+      tmp.height = img.height;
+      const tctx = tmp.getContext("2d")!;
+      tctx.drawImage(img, 0, 0);
+      const td = tctx.getImageData(0, 0, img.width, img.height).data;
+      let minx = img.width, miny = img.height, maxx = 0, maxy = 0, found = false;
+      for (let y = 0; y < img.height; y++) {
+        for (let x = 0; x < img.width; x++) {
+          const i = (y * img.width + x) * 4;
+          if (td[i + 3] < 20) continue;
+          if (td[i] > 232 && td[i + 1] > 232 && td[i + 2] > 232) continue; // paper
+          found = true;
+          if (x < minx) minx = x;
+          if (x > maxx) maxx = x;
+          if (y < miny) miny = y;
+          if (y > maxy) maxy = y;
+        }
+      }
+      if (!found) { minx = 0; miny = 0; maxx = img.width - 1; maxy = img.height - 1; }
+      const bw = maxx - minx + 1;
+      const bh = maxy - miny + 1;
+
+      // 2) fit that bbox into the slate, centred
+      const margin = 0.1;
+      const scale = Math.min((width * (1 - margin * 2)) / bw, (height * (1 - margin * 2)) / bh);
+      const dw = bw * scale, dh = bh * scale;
+      const ox = (width - dw) / 2, oy = (height - dh) / 2;
 
       const bctx = baseRef.current!.getContext("2d")!;
       bctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       bctx.fillStyle = "#fbfaf5"; // warm off-white card
       bctx.fillRect(0, 0, width, height);
-      bctx.drawImage(img, ox, oy, w, h);
+      bctx.imageSmoothingQuality = "high";
+      bctx.drawImage(img, minx, miny, bw, bh, ox, oy, dw, dh);
 
-      // classify pixels -> the letter's ink (dark/coloured, NOT the light-blue
-      // headline shelf and NOT the near-white paper).
+      // 3) classify pixels -> the traceable ink. Only the near-white paper is
+      //    excluded; the blue headline line IS part of what you write (last).
       const data = bctx.getImageData(0, 0, DW, DH).data;
       const inkData = new ImageData(DW, DH);
       const cells = new Set<number>();
       for (let y = 0; y < DH; y++) {
         for (let x = 0; x < DW; x++) {
           const i = (y * DW + x) * 4;
-          const r = data[i], g = data[i + 1], b = data[i + 2];
-          const nearWhite = r > 225 && g > 225 && b > 225;
-          const bluish = b > 170 && b - r > 30 && g > 150; // the shelf
-          if (nearWhite || bluish) continue;
+          if (data[i] > 228 && data[i + 1] > 228 && data[i + 2] > 228) continue;
           inkData.data[i] = 255;
           inkData.data[i + 1] = 255;
           inkData.data[i + 2] = 255;

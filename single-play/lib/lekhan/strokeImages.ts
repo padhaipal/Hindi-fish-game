@@ -8,8 +8,13 @@
 // ---------------------------------------------------------------------------
 
 export const STROKE_IMAGES = new Set<string>([
-  // page 1
-  "ba", "sa", "pa", "ra", "a", "gha", "ta", "ka", "cha", "la",
+  // vowels (ऐ and अं aren't cleanly on the chart -> they use the drawn guide)
+  "a", "aa", "ii", "u", "uu", "ri", "e", "au",
+  // consonants (all)
+  "ka", "kha", "ga", "gha", "cha", "chha", "ja", "jha",
+  "tta", "ttha", "dda", "ta", "tha", "da", "dha", "na",
+  "pa", "pha", "ba", "bha", "ma", "ya", "ra", "la",
+  "va", "sha", "shha", "sa", "ha",
 ]);
 
 export function hasStrokeImage(letterId: string): boolean {
