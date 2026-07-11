@@ -3,18 +3,15 @@
 // ---------------------------------------------------------------------------
 // LEKHAN (WRITING) GAME
 // ---------------------------------------------------------------------------
-// The child writes letters (L1-L3) then 2-letter words (L4-L5) on a slate.
-// A picture (+ letter/word, depending on the level) shows at the top and its
-// sound plays. The slate validates the tracing/writing (see Slate.tsx). Each
-// level finishes after 5 items, then applause; the last screen links to
-// PadhaiPal. Letter/word order is randomised each level.
+// The child writes letters (L1-L2) then 2-letter words (L3-L4) on a blank
+// slate. A picture (+ letter/word, depending on the level) shows at the top and
+// its sound plays. The slate recognises the letter/word the child wrote (see
+// Slate.tsx). Each level finishes after 5 items, then applause; the last screen
+// links to PadhaiPal. Letter/word order is randomised each level.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Slate from "./Slate";
-import GuidedSlate from "./GuidedSlate";
-import ChartSlate from "./ChartSlate";
-import { hasStrokeImage } from "@/lib/lekhan/strokeImages";
 import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
@@ -193,40 +190,17 @@ export default function LekhanGame() {
 
           {/* The slate */}
           <div className="lekhanSlateWrap">
-            {cfg.showGuide ? (
-              hasStrokeImage(item.id) ? (
-                <ChartSlate
-                  key={`${level}-${itemIdx}`}
-                  letterId={item.id}
-                  width={slateW}
-                  height={slateH}
-                  onComplete={onComplete}
-                  onMistake={onMistake}
-                />
-              ) : (
-                <GuidedSlate
-                  key={`${level}-${itemIdx}`}
-                  text={item.write}
-                  letterId={item.id}
-                  width={slateW}
-                  height={slateH}
-                  onComplete={onComplete}
-                  onMistake={onMistake}
-                />
-              )
-            ) : (
-              <Slate
-                key={`${level}-${itemIdx}`}
-                text={item.write}
-                showGuide={false}
-                width={slateW}
-                height={slateH}
-                onComplete={onComplete}
-                onMistake={onMistake}
-                recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : LETTER_CANDIDATES}
-                acceptTopK={cfg.mode === "word" ? 1 : 5}
-              />
-            )}
+            <Slate
+              key={`${level}-${itemIdx}`}
+              text={item.write}
+              showGuide={false}
+              width={slateW}
+              height={slateH}
+              onComplete={onComplete}
+              onMistake={onMistake}
+              recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : LETTER_CANDIDATES}
+              acceptTopK={cfg.mode === "word" ? 1 : 5}
+            />
           </div>
 
           {/* After a couple of wrong tries (or restarts), let them move on. */}
