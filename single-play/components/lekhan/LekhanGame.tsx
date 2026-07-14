@@ -16,6 +16,7 @@ import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
 import LetterPicture from "@/components/shared/LetterPicture";
+import EndVideo from "@/components/shared/EndVideo";
 import {
   playLetterSound,
   playWordSound,
@@ -25,8 +26,6 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
-
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // The closed vocabulary for the word levels — the drawing is recognised against
 // these and only accepted if the nearest match is the target word.
@@ -258,20 +257,7 @@ export default function LekhanGame() {
         </div>
       )}
 
-      {phase === "allDone" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सभी स्तर पूरे!
-            </div>
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "allDone" && <EndVideo />}
     </div>
   );
 }

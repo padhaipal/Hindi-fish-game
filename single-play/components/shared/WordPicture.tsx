@@ -33,8 +33,9 @@ export default function WordPicture({
         <span className="palakPic">
           <span className="palakEye">👁️</span>
           <svg className="palakArrow" viewBox="0 0 100 100" aria-hidden="true">
-            <path d="M86 14 L52 41" stroke="#e23b3b" strokeWidth="7" strokeLinecap="round" fill="none" />
-            <path d="M52 41 L66 38 L60 52 Z" fill="#e23b3b" />
+            {/* points at the UPPER EYELID (पलक), not the pupil */}
+            <path d="M80 9 L55 28" stroke="#e23b3b" strokeWidth="7" strokeLinecap="round" fill="none" />
+            <path d="M45 30 L59 27 L53 41 Z" fill="#e23b3b" />
           </svg>
         </span>
       );
