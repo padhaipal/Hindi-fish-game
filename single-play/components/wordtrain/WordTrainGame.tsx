@@ -20,6 +20,7 @@ import { buildSession, TrainWord } from "@/lib/wordtrain/words";
 import { LETTERS, getLetter } from "@/lib/letters";
 import { nonConfusableChoices } from "@/lib/families";
 import SharedWordPicture from "@/components/shared/WordPicture";
+import EndVideo from "@/components/shared/EndVideo";
 import {
   playLetterSound,
   playWordSound,
@@ -27,8 +28,6 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
-
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // A cheerful, distinct colour per letter so each coach is recognisable. White
 // text reads on all of these.
@@ -377,20 +376,7 @@ export default function WordTrainGame() {
         </div>
       )}
 
-      {phase === "done" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सभी शब्द पूरे!
-            </div>
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "done" && <EndVideo />}
     </div>
   );
 }
