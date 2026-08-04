@@ -1,3 +1,4 @@
+rapidocr-onnxruntime
+numpy
 pillow
-pytesseract
 openpyxl

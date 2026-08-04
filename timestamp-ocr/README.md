@@ -15,9 +15,9 @@ A WhatsApp photo has two different times, and they aren't always the same:
   the capture time only if the photo was sent promptly after being taken.
 
 Tested on 12 real sample photos:
-- The burned-in stamp comes in **4 different styles across 3 corners**, and OCR
-  (Tesseract) can read it on about **half** — plain white stamps on busy
-  backgrounds and over/under-exposed shots won't read.
+- The burned-in stamp comes in **4 different styles across 3 corners**. OCR
+  (RapidOCR) reads it on **10 of 12** — only genuinely blank or blown-out
+  stamps fail, and those fall back to the filename time.
 - EXIF capture time was **stripped on all 12** (so metadata is no help).
 - Where the stamp *was* readable, the filename ran **0–3 minutes after** it —
   i.e. these were taken and sent right away, so the filename is a good stand-in.
@@ -36,19 +36,14 @@ photos were sent late — trust the stamp for those.
 
 ## Install
 
+No separate program to install — everything comes from pip:
+
 ```bash
-# Tesseract OCR engine (required for the capture-time column):
-#   macOS:  brew install tesseract
-#   Ubuntu: sudo apt install tesseract-ocr
-#   Windows: install from https://github.com/UB-Mannheim/tesseract/wiki
 pip install -r requirements.txt
 ```
 
-On Windows, if Python can't find Tesseract, point to it before running:
-
-```bat
-set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
-```
+(The OCR engine, RapidOCR, ships its models inside the pip package and runs on
+the CPU. No Tesseract, no system binary.)
 
 ## Run
 
@@ -56,7 +51,7 @@ set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 python ocr_timestamps.py /path/to/photos -o timestamps.xlsx
 ```
 
-OCR takes roughly **2–3 seconds per photo** (~25 min for 600). For an instant
+OCR takes roughly **2 seconds per photo** (~20 min for 600). For an instant
 filename-only pass (received time, no capture stamp):
 
 ```bash
