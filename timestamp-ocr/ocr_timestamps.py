@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 Batch-extract the CAPTURE time from a folder of photos into an Excel file.
 
 READ THIS FIRST -- what "timestamp" means here
