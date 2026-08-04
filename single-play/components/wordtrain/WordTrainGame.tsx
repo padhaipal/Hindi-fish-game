@@ -21,6 +21,7 @@ import { LETTERS, getLetter } from "@/lib/letters";
 import { nonConfusableChoices } from "@/lib/families";
 import SharedWordPicture from "@/components/shared/WordPicture";
 import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWordSound,
@@ -260,7 +261,7 @@ export default function WordTrainGame() {
             <WordPicture word={word} />
           </div>
           <button type="button" className="soundBtn" onClick={replay} aria-label="सुनो">
-            🔊 सुनो
+            <SpeakerIcon /> सुनो
           </button>
         </div>
       )}

@@ -21,6 +21,7 @@ import { buildHopBoard, HopStone } from "@/lib/pondhop/board";
 import { LETTERS, getLetter, letterWordAudio, Letter } from "@/lib/letters";
 import LetterPicture from "@/components/shared/LetterPicture";
 import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWrongSound,
@@ -240,7 +241,7 @@ export default function PondHopGame() {
               }}
               aria-label="सुनो"
             >
-              🔊 सुनो
+              <SpeakerIcon /> सुनो
             </button>
           </div>
 

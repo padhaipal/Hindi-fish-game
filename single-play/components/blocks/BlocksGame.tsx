@@ -24,6 +24,7 @@ import { LEVELS } from "@/lib/blocks/levels";
 import { getWord } from "@/lib/blocks/words";
 import WordPicture from "@/components/shared/WordPicture";
 import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   Board,
   Occ,
@@ -310,7 +311,7 @@ export default function BlocksGame() {
             }}
             aria-label="सुनो"
           >
-            🔊 सुनो
+            <SpeakerIcon /> सुनो
           </button>
           <div className="progressDots">
             {order.map((_, i) => (

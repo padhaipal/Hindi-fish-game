@@ -17,9 +17,15 @@ import { getLetter } from "@/lib/letters";
 
 export type BlockState = "idle" | "selected" | "correct" | "wrong";
 
+// A small, harmonious set of soft candy tones. Kept deliberately short (and
+// gently desaturated) so a full board reads as one cheerful palette rather than
+// a clashing rainbow. Each letter is hashed to one of these.
 const CANDY = [
-  "#ff5d6c", "#ff9f1c", "#ffcf33", "#4cc23a", "#00b4d8",
-  "#5b8def", "#9b5de5", "#f15bb5", "#00bfa6", "#ff7a45",
+  "#ef8b7d", // soft coral
+  "#f3b45e", // warm honey
+  "#7cc98d", // soft green
+  "#6bb6e0", // sky blue
+  "#b192dd", // soft lavender
 ];
 function candy(letterId: string): string {
   let h = 0;

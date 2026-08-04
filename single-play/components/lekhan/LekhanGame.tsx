@@ -17,6 +17,7 @@ import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
 import LetterPicture from "@/components/shared/LetterPicture";
 import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWordSound,
@@ -178,7 +179,7 @@ export default function LekhanGame() {
               }}
               aria-label="सुनो"
             >
-              🔊 सुनो
+              <SpeakerIcon /> सुनो
             </button>
             <div className="lekhanProgress">
               {seq.map((_, i) => (

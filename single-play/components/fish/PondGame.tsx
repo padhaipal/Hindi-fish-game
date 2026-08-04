@@ -29,6 +29,7 @@ import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/fish/levels";
 import { getLetter, letterWordAudio, Letter, LETTERS } from "@/lib/letters";
 import LetterPicture from "@/components/shared/LetterPicture";
 import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWrongSound,
@@ -480,7 +481,7 @@ export default function PondGame() {
             }}
             aria-label="play target letter sound"
           >
-            🔊 सुनो
+            <SpeakerIcon /> सुनो
           </button>
         </div>
       )}
