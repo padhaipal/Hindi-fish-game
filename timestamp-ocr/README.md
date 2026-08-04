@@ -1,67 +1,79 @@
 # Photo timestamp → Excel
 
-Extracts the capture time from a folder of photos and writes one row per photo
-to an `.xlsx`.
+Extracts the **capture time** from a folder of WhatsApp photos into an `.xlsx`.
 
-## Why it's not pure OCR
+## Capture time vs. received time — read this
 
-Testing on a real sample of these photos showed the burned-in timestamp is **not
-uniform** — four different overlay styles appear in three different corners, and
-some photos have no readable stamp at all (overexposed or missing). Pure OCR only
-recovered about half of them.
+A WhatsApp photo has two different times, and they aren't always the same:
 
-But WhatsApp photos carry the capture time **in the filename**:
+- **Capture time** — when the photo was actually taken. The only reliable record
+  is the timestamp **burned into the image** (the visible overlay in a corner).
+  WhatsApp strips the camera's EXIF metadata, so this is *not* in the file's
+  metadata — only in the printed pixels.
+- **Received time** — when the photo arrived in the chat. This is what the
+  **filename** encodes (`WhatsApp Image 2026-08-04 at 15.48.39.jpeg`). It equals
+  the capture time only if the photo was sent promptly after being taken.
 
-```
-WhatsApp Image 2026-08-04 at 15.48.39.jpeg   ->   2026-08-04 15:48:39
-```
+Tested on 12 real sample photos:
+- The burned-in stamp comes in **4 different styles across 3 corners**, and OCR
+  (Tesseract) can read it on about **half** — plain white stamps on busy
+  backgrounds and over/under-exposed shots won't read.
+- EXIF capture time was **stripped on all 12** (so metadata is no help).
+- Where the stamp *was* readable, the filename ran **0–3 minutes after** it —
+  i.e. these were taken and sent right away, so the filename is a good stand-in.
 
-and on every sample that had a readable burned-in stamp, the filename time
-matched it to within ~1–3 minutes — including the photos OCR couldn't read.
+So the script reports **both** and lets you verify:
 
-So the script picks the best timestamp per photo, in priority order:
+| source | meaning |
+|---|---|
+| `stamp` | capture time, read by OCR from the burned-in overlay (trust this) |
+| `filename` | received time, used when OCR couldn't read the stamp |
 
-1. **WhatsApp filename** — reliable, exact, present on all WhatsApp photos
-2. **EXIF DateTimeOriginal** — for non-WhatsApp files that kept their metadata
-3. **OCR of the burned-in stamp** — handles all four overlay formats / corners
-4. **File modification time** — last resort
-
-It still runs OCR on every photo and writes the result in its own column with the
-minutes-difference vs the chosen time, so you can spot-check. Any row with no real
-timestamp, or where OCR and the filename disagree by more than 10 minutes, is
-flagged `needs_review = yes`.
+`gap_min` = capture − received (when both exist). **If the gaps are all small
+across your set, the photos were sent promptly and the filename time is a safe
+stand-in for capture time on the rows OCR couldn't read.** Large gaps mean those
+photos were sent late — trust the stamp for those.
 
 ## Install
 
 ```bash
-# OCR engine (only needed for the cross-check column):
+# Tesseract OCR engine (required for the capture-time column):
 #   macOS:  brew install tesseract
 #   Ubuntu: sudo apt install tesseract-ocr
-#   Windows: https://github.com/UB-Mannheim/tesseract/wiki
+#   Windows: install from https://github.com/UB-Mannheim/tesseract/wiki
 pip install -r requirements.txt
+```
+
+On Windows, if Python can't find Tesseract, point to it before running:
+
+```bat
+set TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 ```
 
 ## Run
 
 ```bash
 python ocr_timestamps.py /path/to/photos -o timestamps.xlsx
+```
 
-# Faster — skip OCR entirely (filename/EXIF are enough for WhatsApp photos):
+OCR takes roughly **2–3 seconds per photo** (~25 min for 600). For an instant
+filename-only pass (received time, no capture stamp):
+
+```bash
 python ocr_timestamps.py /path/to/photos --no-ocr -o timestamps.xlsx
 ```
 
 ## Output columns
 
-| filename | timestamp | date | time | source | ocr_stamp_raw | ocr_timestamp | ocr_vs_chosen_min | needs_review |
-|----------|-----------|------|------|--------|---------------|---------------|-------------------|--------------|
+| column | meaning |
+|---|---|
+| `best_estimate` / `date` / `time` | the value to use (stamp if read, else filename) |
+| `source` | `stamp` (capture) or `filename` (received) |
+| `capture_time_stamp` | OCR of the burned-in stamp (blank if unreadable) |
+| `received_time_filename` | time parsed from the WhatsApp filename |
+| `gap_min` | capture − received, in minutes (blank if no stamp) |
+| `stamp_raw` | the raw text OCR matched, for spot-checking |
+| `review` | `yes` when the two times disagree by >10 min, or no time was found |
 
-- **timestamp / date / time** — the value to use.
-- **source** — where it came from (`filename`, `exif`, `ocr`, `file_mtime`).
-- **ocr_\*** — independent OCR read, for cross-checking.
-- **needs_review** — sort/filter by `yes` to hand-check the few uncertain rows.
-
-## Verified on 12 sample photos
-
-All 12 resolved from the filename; OCR agreed within 0–3 minutes on the 6 photos
-with a clearly readable stamp; the other 6 (blurred/overexposed/no stamp) still
-got the correct time from the filename. 0 rows needed review.
+Sort by `review = yes` to hand-check the few uncertain rows; sort/scan `gap_min`
+to confirm your photos were sent promptly.
