@@ -53,7 +53,7 @@ import sys
 from pathlib import Path
 
 try:
-    from PIL import Image
+    from PIL import Image, ImageOps
     from openpyxl import Workbook
 except ImportError as e:
     sys.exit(f"Missing dependency: {e.name}\n"
@@ -143,18 +143,42 @@ def get_engine():
     return _engine
 
 
+def _prep(crop, target_w=2000):
+    """Upscale small crops so faint/small stamps are detectable, and boost contrast."""
+    crop = crop.convert("RGB")
+    if crop.width < target_w:
+        s = target_w / crop.width
+        crop = crop.resize((int(crop.width * s), int(crop.height * s)), Image.LANCZOS)
+    return ImageOps.autocontrast(crop)
+
+
 def ocr_stamp(img, received):
-    """OCR the bottom strip and extract a timestamp. Returns (dt, raw_text)."""
+    """OCR the bottom strip, then upscaled corners, and extract a timestamp.
+
+    The full-width strip catches most stamps in one pass. If that misses (small
+    or faint overlays, e.g. the bottom-left phone watermark), each bottom corner
+    is enlarged ~2x and read individually, which any RapidOCR build can detect.
+    Returns (datetime, raw_matched_text).
+    """
     import numpy as np
     engine = get_engine()
     w, h = img.size
-    crop = img.crop((0, int(h * 0.82), w, h)).convert("RGB")  # bottom 18%, full width
-    result, _ = engine(np.array(crop))
-    if not result:
-        return None, ""
-    text = " ".join(line[1] for line in result)
-    dt, matched = parse_stamp(text, received)
-    return dt, (matched or "")
+    # (left, top, right, bottom) as fractions; full strip first, then corners.
+    regions = [
+        (0.0, 0.82, 1.0, 1.0),   # full bottom strip
+        (0.0, 0.84, 0.58, 1.0),  # bottom-left  (phone watermark)
+        (0.18, 0.82, 0.86, 1.0),  # bottom-center (realme / plain)
+        (0.48, 0.88, 1.0, 1.0),  # bottom-right (GPS/map style)
+    ]
+    for l, t, r, b in regions:
+        crop = img.crop((int(l * w), int(t * h), int(r * w), int(b * h)))
+        result, _ = engine(np.array(_prep(crop)))
+        if result:
+            text = " ".join(line[1] for line in result)
+            dt, matched = parse_stamp(text, received)
+            if dt:
+                return dt, matched
+    return None, ""
 
 
 def fmt(dt):
