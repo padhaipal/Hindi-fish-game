@@ -86,3 +86,26 @@ python ocr_timestamps.py "June" --chat "chat.txt" --no-ocr -o June_timestamps.xl
 
 Sort by `review = yes` to hand-check the few uncertain rows; scan `gap_min` to
 confirm photos were posted promptly after being taken.
+
+---
+
+## Step 2 (optional): teacher attendance grid — `make_attendance.py`
+
+Reshapes the per-photo sheet into the attendance format (dates down the side;
+Start / End / Total per class across the top), matching `teacher_attendance_format.xlsx`.
+
+```bash
+python make_attendance.py June_timestamps.xlsx --template "teacher_attendance_format.xlsx" -o June_attendance.xlsx
+```
+
+- **Start / End / Total** per class per day = first photo, last photo, and the
+  gap between them.
+- Photos are assigned to a class by the scheduled time in the template's row 5
+  (nearest window). Teachers who run two classes at different times split
+  automatically; a same-time pair (Anjum) splits by the largest gap, earlier
+  session → earlier class.
+- **Red** = absent on a working day (Mon–Sat). **Orange** = only one photo that
+  day. A class with no photos all month is left blank.
+
+The teacher/class mapping lives in the `CONFIG` block at the top of the script —
+edit it if teachers, classes, class times, or sender names change.
