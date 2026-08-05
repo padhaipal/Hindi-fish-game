@@ -1,28 +1,32 @@
 #!/usr/bin/env python3
 r"""
-Reshape the per-photo timestamp sheet (from ocr_timestamps.py) into the
-teacher-attendance grid: dates down the side, and each class's Start / End /
-Total across the top, matching teacher_attendance_format.xlsx.
+Reshape the per-photo timestamp sheet (from ocr_timestamps.py, ideally after
+enrich_captions.py) into the teacher-attendance grid, matching the layout of
+teacher_attendance_format.xlsx.
+
+The class structure is READ FROM THE TEMPLATE (row "Teacher" and row "Time"), so
+the number of classes, their teachers, times and columns can change month to
+month without editing this script -- just supply that month's template.
 
 For each class on each day:
-  * Start = time of the first photo, End = time of the last photo,
-    Total = End - Start (the session length).
-  * Photos are assigned to a class by the scheduled time in the template's
-    row 5 (nearest window), so a teacher who runs two classes at different
-    times is split correctly even if a class shifts a bit. For two classes at
-    the SAME scheduled time (Anjum), the day's photos are split by the largest
-    gap, earlier session -> earlier class (template order).
+  * Start = first photo, End = last photo, Total = End - Start.
+  * If caption `flags` are present (from enrich_captions.py), a `start`/`end`
+    label sets the real Start/End.
+  * Photos are assigned to a class by the template's scheduled time (nearest
+    window). A teacher whose two classes share the SAME time (e.g. Anjum) is
+    split by `start` flags: one start that day -> one class ran (the rest is that
+    class's own end), so the second class stays blank.
 
 Highlighting:
   * RED    = teacher absent (no photos) on a working day (Mon-Sat).
-  * ORANGE = only one photo that day (a start or an end, but not both).
-  * A class with no photos all month (e.g. Heena this month) is left blank.
+  * ORANGE = only one photo that day (a start or end, but not both).
+  * GREEN  = the supervisor (Ishrat) visited this class that day.
+  * A class with no photos and no visits all month is left blank.
+A "Supervisions" row below the dates totals each class's visits for the month.
 
 Usage:
-    python make_attendance.py June_timestamps.xlsx \
+    python make_attendance.py June_timestamps_enriched.xlsx \
         --template "teacher_attendance_format.xlsx" -o June_attendance.xlsx
-
-Edit the CONFIG block below if teachers/classes/mappings change.
 """
 
 import argparse
@@ -32,228 +36,299 @@ import sys
 
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Alignment, Font
-from openpyxl.utils import get_column_letter
 
 # ============================ CONFIG =========================================
-# Rename a chat sender to the teacher name used in the template.
-SENDER_RENAME = {"mariyam": "Ishrat"}
-
-# Match a sender (case-insensitive substring) to a canonical teacher.
-SENDER_MATCH = {
-    "afreen": "Afreen",
-    "anjum": "Anjum",
-    "nahid": "Nahid",
-    "heena": "Heena",
-    "ishrat": "Ishrat",
-    "mariyam": "Ishrat",
-}
-
-def _m(t):  # "H:MM" -> minutes since midnight
-    h, mm = t.split(":")
-    return int(h) * 60 + int(mm)
-
-# Each teacher -> ordered list of classes (template order). Each class:
-#   col   = 1-based column of its "Start" cell (Start,End,Total,Prize follow)
-#   win   = (start_min, end_min) scheduled window from template row 5
-# Column groups: C1=B(2) C2=F(6) C3=J(10) C4=N(14) C5=R(18) C6=V(22) C7=Z(26) C8=AD(30)
-TEACHERS = {
-    "Ishrat": [{"col": 2,  "win": (_m("9:30"),  _m("11:29"))},   # C1 home
-               {"col": 26, "win": (_m("16:30"), _m("18:00"))}],  # C7 Daliganj
-    "Anjum":  [{"col": 6,  "win": (_m("10:00"), _m("11:30"))},   # C2 Anjum 1st
-               {"col": 10, "win": (_m("10:00"), _m("11:30"))}],  # C3 Anjum 2nd (same time)
-    "Afreen": [{"col": 14, "win": (_m("15:00"), _m("16:29"))},   # C4 Bisti Tula
-               {"col": 18, "win": (_m("16:30"), _m("18:00"))}],  # C5 Daliganj Station
-    "Nahid":  [{"col": 30, "win": (_m("17:00"), _m("18:30"))}],  # C8 Mariyaon
-    "Heena":  [{"col": 22, "win": (_m("15:00"), _m("16:30"))}],  # C6 (blank this month)
-}
-
-FIRST_DATA_ROW = 10          # data rows start here in the template
-GAP_SPLIT_MIN = 75           # min gap (minutes) to split a same-time class pair
+SUPERVISOR = "Ishrat"            # whose "visit" photos supervise other classes
+SENDER_RENAME = {"mariyam": "Ishrat"}   # chat sender -> teacher name
+GAP_SPLIT_MIN = 75               # (unused fallback) minutes gap for same-time split
 RED = PatternFill("solid", fgColor="FFFFC7CE")     # absent
 ORANGE = PatternFill("solid", fgColor="FFFFC000")  # only one photo
+GREEN = PatternFill("solid", fgColor="FFC6EFCE")   # supervised (visit)
+NOFILL = PatternFill()
 # =============================================================================
 
 
-def canon_teacher(sender):
-    s = (sender or "").strip().lower()
-    for key, name in SENDER_MATCH.items():
-        if key in s:
-            return name
-    return None
+def mins(t):
+    m = re.match(r'(\d{1,2}):(\d{2})', t.strip())
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
-def parse_dt(row, headers):
-    """Get a datetime from a per-photo row (prefers best_estimate)."""
-    def val(col):
-        i = headers.get(col)
-        return row[i] if i is not None and i < len(row) else None
-    be = val("best_estimate")
+def parse_window(text):
+    if not text:
+        return None
+    parts = re.split(r'[-–]', str(text))
+    if len(parts) != 2:
+        return None
+    a, b = mins(parts[0]), mins(parts[1])
+    return (a, b) if a is not None and b is not None else None
+
+
+def base_name(label):
+    m = re.match(r'\s*([A-Za-z]+)', str(label or ""))
+    return m.group(1).capitalize() if m else None
+
+
+def read_template_classes(ws):
+    """Return (classes, date_row). classes: list of dicts col/label/base/win in order."""
+    labels = {}
+    for r in range(1, 20):
+        v = ws.cell(row=r, column=1).value
+        if v:
+            labels[str(v).strip().lower()] = r
+    teacher_row = labels.get("teacher")
+    time_row = labels.get("time")
+    date_row = labels.get("date")
+    if not (teacher_row and date_row):
+        sys.exit("Template must have 'Teacher' and 'Date' labels in column A.")
+    classes = []
+    col = 2
+    while col <= ws.max_column:
+        label = ws.cell(row=teacher_row, column=col).value
+        if label and str(label).strip():
+            win = parse_window(ws.cell(row=time_row, column=col).value) if time_row else None
+            classes.append({"col": col, "label": str(label).strip(),
+                            "base": base_name(label), "win": win})
+        col += 4
+    if not classes:
+        sys.exit("No class columns found in template (row 'Teacher' empty).")
+    return classes, date_row
+
+
+def make_canon(bases):
+    def canon(sender):
+        s = (sender or "").strip().lower()
+        for k, v in SENDER_RENAME.items():
+            if k in s:
+                return v
+        for b in bases:
+            if b.lower() in s:
+                return b
+        return None
+    return canon
+
+
+def parse_dt(be):
     if isinstance(be, datetime.datetime):
         return be
     if isinstance(be, str) and be.strip():
-        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        for f in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
             try:
-                return datetime.datetime.strptime(be.strip(), fmt)
+                return datetime.datetime.strptime(be.strip(), f)
             except ValueError:
                 pass
-    return None  # date-only / no time -> not usable for Start/End
+    return None
 
 
-def load_photos(path):
+def load_photos(path, canon):
     wb = load_workbook(path, read_only=True)
     ws = wb.active
-    rows = ws.iter_rows(values_only=True)
-    header = [str(c).strip() if c is not None else "" for c in next(rows)]
-    headers = {name: i for i, name in enumerate(header)}
-    if "teacher" not in headers:
-        sys.exit("Input sheet has no 'teacher' column - is this the ocr_timestamps output?")
-    fl_i = headers.get("flags")
-    photos = []  # (teacher, datetime, flags)
-    for row in rows:
-        if row is None or all(c is None for c in row):
+    it = ws.iter_rows(values_only=True)
+    hdr = [str(c).strip() if c is not None else "" for c in next(it)]
+    H = {n: i for i, n in enumerate(hdr)}
+    if "teacher" not in H:
+        sys.exit("Input has no 'teacher' column - is this the ocr_timestamps output?")
+    out = []
+    for row in it:
+        if not row or all(c is None for c in row):
             continue
-        t_i = headers["teacher"]
-        teacher = canon_teacher(row[t_i] if t_i < len(row) else "")
+        teacher = canon(row[H["teacher"]] if H["teacher"] < len(row) else "")
         if not teacher:
             continue
-        dt = parse_dt(row, headers)
+        dt = parse_dt(row[H["best_estimate"]] if H.get("best_estimate") is not None else None)
         if not dt:
             continue
         flags = ""
-        if fl_i is not None and fl_i < len(row) and row[fl_i]:
-            flags = str(row[fl_i]).lower()
-        photos.append((teacher, dt, flags))
-    return photos
+        if H.get("flags") is not None and H["flags"] < len(row) and row[H["flags"]]:
+            flags = str(row[H["flags"]]).lower()
+        out.append((teacher, dt, flags))
+    return out
 
 
-def assign(teacher, recs):
-    """recs: list of (minute, flags) sorted by minute. Return {col: [(minute, flags)...]}."""
-    classes = TEACHERS[teacher]
+def assign(classes, recs):
+    """recs: sorted [(minute, flags)]. Return {col: [(minute, flags)]}."""
     out = {c["col"]: [] for c in classes}
     if not recs:
         return out
     if len(classes) == 1:
         out[classes[0]["col"]] = recs[:]
         return out
-    same = classes[0]["win"] == classes[1]["win"]
-    if same:
-        if len(recs) >= 2:
-            gaps = [(recs[i + 1][0] - recs[i][0], i) for i in range(len(recs) - 1)]
-            mg, idx = max(gaps)
-            if mg >= GAP_SPLIT_MIN:
-                out[classes[0]["col"]] = recs[:idx + 1]
-                out[classes[1]["col"]] = recs[idx + 1:]
-                return out
-        out[classes[0]["col"]] = recs[:]  # one session -> first class
+    wins = [c["win"] for c in classes]
+    if len(set(wins)) == 1:  # same-time group (e.g. Anjum): split by start flags
+        starts = [i for i, (m, f) in enumerate(recs) if "start" in f]
+        nsess = min(max(1, len(starts)), len(classes))
+        if nsess <= 1:
+            out[classes[0]["col"]] = recs[:]
+        else:
+            idxs = starts[:nsess]
+            segs = []
+            for si in range(len(idxs)):
+                a = idxs[si]
+                b = idxs[si + 1] if si + 1 < len(idxs) else len(recs)
+                segs.append(recs[a:b])
+            if idxs[0] > 0:
+                segs[0] = recs[:idxs[0]] + segs[0]
+            for ci, seg in enumerate(segs[:len(classes)]):
+                out[classes[ci]["col"]] = seg
         return out
-    # distinct windows: nearest scheduled window (0 if inside)
+
     def dist(t, c):
+        if not c["win"]:
+            return 10 ** 9
         s, e = c["win"]
         return 0 if s <= t <= e else (s - t if t < s else t - e)
-    for t, fl in recs:
-        best = min(classes, key=lambda c: dist(t, c))
-        out[best["col"]].append((t, fl))
+    for m, f in recs:
+        out[min(classes, key=lambda c: dist(m, c))["col"]].append((m, f))
     return out
 
 
-def hhmm(minutes):
-    return f"{minutes // 60}:{minutes % 60:02d}"
+def hhmm(m):
+    return f"{m // 60}:{m % 60:02d}"
+
+
+def start_end(recs):
+    times = [m for m, _ in recs]
+    starts = [m for m, f in recs if "start" in f]
+    ends = [m for m, f in recs if "end" in f]
+    s = min(starts) if starts else times[0]
+    e = max(ends) if ends else times[-1]
+    if e < s:
+        s, e = times[0], times[-1]
+    return s, e
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("photos", help="Per-photo .xlsx from ocr_timestamps.py")
-    ap.add_argument("--template", required=True, help="teacher_attendance_format.xlsx")
+    ap.add_argument("photos")
+    ap.add_argument("--template", required=True)
     ap.add_argument("-o", "--output", default="attendance.xlsx")
     args = ap.parse_args()
 
-    photos = load_photos(args.photos)
-    if not photos:
-        sys.exit("No photos with a recognized teacher + time were found.")
+    wb = load_workbook(args.template)
+    ws = wb.active
+    classes, date_row = read_template_classes(ws)
+    bases = {c["base"] for c in classes if c["base"]}
+    canon = make_canon(bases)
+    by_base = {}
+    for c in classes:
+        by_base.setdefault(c["base"], []).append(c)
 
-    # Group: {(teacher, date): [(minute, flags)...]}. A photo flagged "visit" is
-    # the supervisor visiting someone else's class -> excluded from the poster's
-    # own class so it doesn't inflate their session. (Left in the per-photo sheet,
-    # tagged, for the AI/human pass to credit the visited class.)
-    by_key = {}
+    photos = load_photos(args.photos, canon)
+    if not photos:
+        sys.exit("No photos with a recognized teacher were found.")
+
+    # Split visits (supervisor visiting another class) from teaching photos.
+    by_key = {}          # (base, date) -> [(minute, flags)]
+    visits = []          # (mentioned_base, date, minute)
     all_dates = set()
-    n_visit = 0
+    n_visit = n_visit_unattributed = 0
     for teacher, dt, flags in photos:
         d = dt.date()
         all_dates.add(d)
         if "visit" in flags:
             n_visit += 1
+            mentioned = re.search(r'mentions:([a-z/]+)', flags)
+            names = [n.capitalize() for n in mentioned.group(1).split("/")] if mentioned else []
+            targets = [n for n in names if n in bases and n != teacher]
+            if targets:
+                for n in targets:
+                    visits.append((n, d, dt.hour * 60 + dt.minute))
+            else:
+                n_visit_unattributed += 1
             continue
         by_key.setdefault((teacher, d), []).append((dt.hour * 60 + dt.minute, flags))
 
-    # Per (col, date) -> sorted session records
-    cell_recs = {}           # (col, date) -> [(minute, flags)...]
-    col_has_data = set()
-    for (teacher, d), recs in by_key.items():
+    # Assign teaching photos to class columns.
+    cell_recs = {}
+    teaching_cols = set()
+    for (base, d), recs in by_key.items():
+        if base not in by_base:
+            continue
         recs.sort()
-        for col, crecs in assign(teacher, recs).items():
-            if crecs:
-                cell_recs[(col, d)] = sorted(crecs)
-                col_has_data.add(col)
+        for col, cr in assign(by_base[base], recs).items():
+            if cr:
+                cell_recs[(col, d)] = sorted(cr)
+                teaching_cols.add(col)
 
+    # Attribute each visit to the mentioned teacher's class column for that date.
+    supervised = {}      # (col, date) -> count
+    superv_total = {}    # col -> count
+    for base, d, minute in visits:
+        cls = by_base.get(base, [])
+        if not cls:
+            continue
+        def dist(c):
+            if not c["win"]:
+                return 10 ** 9
+            s, e = c["win"]
+            return 0 if s <= minute <= e else (s - minute if minute < s else minute - e)
+        # prefer an active class, then nearest window
+        chosen = min(cls, key=lambda c: (0 if c["col"] in teaching_cols else 1, dist(c)))
+        supervised[(chosen["col"], d)] = supervised.get((chosen["col"], d), 0) + 1
+        superv_total[chosen["col"]] = superv_total.get(chosen["col"], 0) + 1
+
+    active_cols = teaching_cols | set(superv_total)
     lo, hi = min(all_dates), max(all_dates)
     dates = [lo + datetime.timedelta(days=i) for i in range((hi - lo).days + 1)]
 
-    wb = load_workbook(args.template)
-    ws = wb.active
+    # Clear old data rows.
+    for r in range(date_row + 1, ws.max_row + 1):
+        for c in range(1, ws.max_column + 1):
+            ws.cell(row=r, column=c).value = None
+            ws.cell(row=r, column=c).fill = NOFILL
 
-    # Clear old data rows (values + fills) from FIRST_DATA_ROW down.
-    max_col = 33  # through AG (col 33)
-    for r in range(FIRST_DATA_ROW, ws.max_row + 1):
-        for c in range(1, max_col + 1):
-            cell = ws.cell(row=r, column=c)
-            cell.value = None
-            cell.fill = PatternFill()
-
-    all_cols = [c["col"] for cs in TEACHERS.values() for c in cs]
     center = Alignment(horizontal="center")
-
     for i, d in enumerate(dates):
-        r = FIRST_DATA_ROW + i
-        label = f"{d.strftime('%a')}, {d.strftime('%b')} {d.day}, {d.strftime('%y')}"
-        ws.cell(row=r, column=1, value=label)
-        working = d.weekday() <= 5  # Mon(0)..Sat(5) ; Sunday excluded
-        for col in all_cols:
-            if col not in col_has_data:
-                continue  # class inactive all month -> leave blank
-            start_c = ws.cell(row=r, column=col)
-            end_c = ws.cell(row=r, column=col + 1)
-            total_c = ws.cell(row=r, column=col + 2)
-            for c in (start_c, end_c, total_c):
-                c.alignment = center
-            recs = cell_recs.get((col, d))
-            if not recs:
-                if working:
-                    for c in (start_c, end_c, total_c):
-                        c.fill = RED
+        r = date_row + 1 + i
+        ws.cell(row=r, column=1,
+                value=f"{d.strftime('%a')}, {d.strftime('%b')} {d.day}, {d.strftime('%y')}")
+        working = d.weekday() <= 5
+        for c in classes:
+            col = c["col"]
+            if col not in active_cols:
                 continue
-            if len(recs) == 1:
-                start_c.value = hhmm(recs[0][0])
-                start_c.fill = end_c.fill = total_c.fill = ORANGE
+            sc, ec, tc = (ws.cell(row=r, column=col), ws.cell(row=r, column=col + 1),
+                          ws.cell(row=r, column=col + 2))
+            for cell in (sc, ec, tc):
+                cell.alignment = center
+            recs = cell_recs.get((col, d))
+            if recs:
+                if len(recs) == 1:
+                    sc.value = hhmm(recs[0][0])
+                    fill = ORANGE
+                else:
+                    s, e = start_end(recs)
+                    sc.value, ec.value, tc.value = hhmm(s), hhmm(e), hhmm(e - s)
+                    fill = None
             else:
-                times = [m for m, _ in recs]
-                starts = [m for m, f in recs if "start" in f]
-                ends = [m for m, f in recs if "end" in f]
-                start = min(starts) if starts else times[0]
-                end = max(ends) if ends else times[-1]
-                if end < start:  # flags out of order -> fall back to span
-                    start, end = times[0], times[-1]
-                start_c.value = hhmm(start)
-                end_c.value = hhmm(end)
-                total_c.value = hhmm(end - start)
+                fill = RED if working else None
+            if (col, d) in supervised:      # supervision overrides absent/normal
+                fill = GREEN
+            if fill:
+                for cell in (sc, ec, tc):
+                    cell.fill = fill
+
+    # Supervisions total row.
+    tr = date_row + 1 + len(dates) + 1
+    ws.cell(row=tr, column=1, value="Supervisions (visits by Ishrat)").font = Font(bold=True)
+    for c in classes:
+        if superv_total.get(c["col"]):
+            cell = ws.cell(row=tr, column=c["col"], value=int(superv_total[c["col"]]))
+            cell.number_format = "General"   # template cells are time-formatted; force plain count
+            cell.fill = GREEN
+            cell.alignment = center
 
     wb.save(args.output)
     print(f"Wrote {args.output}")
+    print(f"  classes read from template: {len(classes)}  "
+          f"({', '.join(c['label'][:14] for c in classes)})")
     print(f"  dates: {lo} .. {hi}  ({len(dates)} rows)")
-    print(f"  active class-columns: {len(col_has_data)} of {len(all_cols)}")
-    print(f"  filled class/day sessions: {len(cell_recs)}")
-    print(f"  visit photos excluded from own class: {n_visit}")
+    print(f"  active class-columns: {len(active_cols)} of {len(classes)}")
+    print(f"  visits: {n_visit} ({n_visit_unattributed} not attributable to a named class)")
+    if superv_total:
+        by_label = {c["col"]: c["label"] for c in classes}
+        print("  supervisions per class: "
+              + ", ".join(f"{by_label[col]}={n}" for col, n in superv_total.items()))
 
 
 if __name__ == "__main__":

@@ -119,14 +119,20 @@ Start / End / Total per class across the top), matching `teacher_attendance_form
 python make_attendance.py June_timestamps.xlsx --template "teacher_attendance_format.xlsx" -o June_attendance.xlsx
 ```
 
+- **Classes are read from the template** (the `Teacher` and `Time` header rows),
+  so the number of classes, their teachers and times can change month to month —
+  just supply that month's template, no code edits.
 - **Start / End / Total** per class per day = first photo, last photo, and the
-  gap between them.
-- Photos are assigned to a class by the scheduled time in the template's row 5
-  (nearest window). Teachers who run two classes at different times split
-  automatically; a same-time pair (Anjum) splits by the largest gap, earlier
-  session → earlier class.
+  gap. `start`/`end` caption flags (from `enrich_captions.py`) set the real
+  Start/End when present.
+- Photos are assigned to a class by the scheduled time (nearest window).
+  A teacher with two classes at the **same** time (e.g. Anjum) is split by
+  `start` flags: one start that day → one class ran, the rest is that class's own
+  end, so the second class stays blank.
 - **Red** = absent on a working day (Mon–Sat). **Orange** = only one photo that
-  day. A class with no photos all month is left blank.
+  day. **Green** = the supervisor visited this class that day. A class with no
+  photos and no visits all month is left blank.
+- A **Supervisions** row below the dates totals each class's visits for the month.
 
-The teacher/class mapping lives in the `CONFIG` block at the top of the script —
-edit it if teachers, classes, class times, or sender names change.
+Only a small `CONFIG` block remains at the top (who the supervisor is, the
+`Mariyam → Ishrat` rename, and the highlight colours).
