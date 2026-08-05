@@ -219,9 +219,10 @@ def main():
 
     # Split visits (supervisor visiting another class) from teaching photos.
     by_key = {}          # (base, date) -> [(minute, flags)]
-    visits = []          # (mentioned_base, date, minute)
+    visits = []          # (mentioned_base, date, minute) -- teacher named in caption
+    ctx_visits = []      # (date, minute) -- no teacher named; infer from context
     all_dates = set()
-    n_visit = n_visit_unattributed = 0
+    n_visit = 0
     for teacher, dt, flags in photos:
         d = dt.date()
         all_dates.add(d)
@@ -234,7 +235,7 @@ def main():
                 for n in targets:
                     visits.append((n, d, dt.hour * 60 + dt.minute))
             else:
-                n_visit_unattributed += 1
+                ctx_visits.append((d, dt.hour * 60 + dt.minute))
             continue
         by_key.setdefault((teacher, d), []).append((dt.hour * 60 + dt.minute, flags))
 
@@ -253,6 +254,13 @@ def main():
     # Attribute each visit to the mentioned teacher's class column for that date.
     supervised = {}      # (col, date) -> count
     superv_total = {}    # col -> count
+    n_ctx_resolved = 0
+    ish_cols = {c["col"] for c in classes if c["base"] == SUPERVISOR}
+
+    def record(col, d):
+        supervised[(col, d)] = supervised.get((col, d), 0) + 1
+        superv_total[col] = superv_total.get(col, 0) + 1
+
     for base, d, minute in visits:
         cls = by_base.get(base, [])
         if not cls:
@@ -262,10 +270,24 @@ def main():
                 return 10 ** 9
             s, e = c["win"]
             return 0 if s <= minute <= e else (s - minute if minute < s else minute - e)
-        # prefer an active class, then nearest window
         chosen = min(cls, key=lambda c: (0 if c["col"] in teaching_cols else 1, dist(c)))
-        supervised[(chosen["col"], d)] = supervised.get((chosen["col"], d), 0) + 1
-        superv_total[chosen["col"]] = superv_total.get(chosen["col"], 0) + 1
+        record(chosen["col"], d)
+
+    # Unnamed visits: infer the class from context -- the non-Ishrat class whose
+    # session that day was running closest to the visit time.
+    for d, minute in ctx_visits:
+        cands = []
+        for (col, dd), recs in cell_recs.items():
+            if dd != d or col in ish_cols:
+                continue
+            t0 = min(m for m, _ in recs)
+            t1 = max(m for m, _ in recs)
+            gap = 0 if t0 <= minute <= t1 else min(abs(minute - t0), abs(minute - t1))
+            cands.append((gap, col))
+        if cands:
+            cands.sort()
+            record(cands[0][1], d)
+            n_ctx_resolved += 1
 
     active_cols = teaching_cols | set(superv_total)
     lo, hi = min(all_dates), max(all_dates)
@@ -324,7 +346,8 @@ def main():
           f"({', '.join(c['label'][:14] for c in classes)})")
     print(f"  dates: {lo} .. {hi}  ({len(dates)} rows)")
     print(f"  active class-columns: {len(active_cols)} of {len(classes)}")
-    print(f"  visits: {n_visit} ({n_visit_unattributed} not attributable to a named class)")
+    print(f"  visits: {n_visit} ({len(visits)} named, {n_ctx_resolved} inferred by context, "
+          f"{len(ctx_visits) - n_ctx_resolved} unresolved)")
     if superv_total:
         by_label = {c["col"]: c["label"] for c in classes}
         print("  supervisions per class: "
