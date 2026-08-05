@@ -107,7 +107,8 @@ def load_photos(path):
     headers = {name: i for i, name in enumerate(header)}
     if "teacher" not in headers:
         sys.exit("Input sheet has no 'teacher' column - is this the ocr_timestamps output?")
-    photos = []  # (teacher, datetime)
+    fl_i = headers.get("flags")
+    photos = []  # (teacher, datetime, flags)
     for row in rows:
         if row is None or all(c is None for c in row):
             continue
@@ -116,38 +117,42 @@ def load_photos(path):
         if not teacher:
             continue
         dt = parse_dt(row, headers)
-        if dt:
-            photos.append((teacher, dt))
+        if not dt:
+            continue
+        flags = ""
+        if fl_i is not None and fl_i < len(row) and row[fl_i]:
+            flags = str(row[fl_i]).lower()
+        photos.append((teacher, dt, flags))
     return photos
 
 
-def assign(teacher, times):
-    """times: sorted list of minutes-of-day. Return {col: [minutes...]}."""
+def assign(teacher, recs):
+    """recs: list of (minute, flags) sorted by minute. Return {col: [(minute, flags)...]}."""
     classes = TEACHERS[teacher]
     out = {c["col"]: [] for c in classes}
-    if not times:
+    if not recs:
         return out
     if len(classes) == 1:
-        out[classes[0]["col"]] = times[:]
+        out[classes[0]["col"]] = recs[:]
         return out
     same = classes[0]["win"] == classes[1]["win"]
     if same:
-        if len(times) >= 2:
-            gaps = [(times[i + 1] - times[i], i) for i in range(len(times) - 1)]
+        if len(recs) >= 2:
+            gaps = [(recs[i + 1][0] - recs[i][0], i) for i in range(len(recs) - 1)]
             mg, idx = max(gaps)
             if mg >= GAP_SPLIT_MIN:
-                out[classes[0]["col"]] = times[:idx + 1]
-                out[classes[1]["col"]] = times[idx + 1:]
+                out[classes[0]["col"]] = recs[:idx + 1]
+                out[classes[1]["col"]] = recs[idx + 1:]
                 return out
-        out[classes[0]["col"]] = times[:]  # one session -> first class
+        out[classes[0]["col"]] = recs[:]  # one session -> first class
         return out
     # distinct windows: nearest scheduled window (0 if inside)
     def dist(t, c):
         s, e = c["win"]
         return 0 if s <= t <= e else (s - t if t < s else t - e)
-    for t in times:
+    for t, fl in recs:
         best = min(classes, key=lambda c: dist(t, c))
-        out[best["col"]].append(t)
+        out[best["col"]].append((t, fl))
     return out
 
 
@@ -167,23 +172,29 @@ def main():
     if not photos:
         sys.exit("No photos with a recognized teacher + time were found.")
 
-    # Rename senders already handled by SENDER_MATCH -> canonical names.
-    # Group: {(teacher, date): [minutes...]}
+    # Group: {(teacher, date): [(minute, flags)...]}. A photo flagged "visit" is
+    # the supervisor visiting someone else's class -> excluded from the poster's
+    # own class so it doesn't inflate their session. (Left in the per-photo sheet,
+    # tagged, for the AI/human pass to credit the visited class.)
     by_key = {}
     all_dates = set()
-    for teacher, dt in photos:
+    n_visit = 0
+    for teacher, dt, flags in photos:
         d = dt.date()
         all_dates.add(d)
-        by_key.setdefault((teacher, d), []).append(dt.hour * 60 + dt.minute)
+        if "visit" in flags:
+            n_visit += 1
+            continue
+        by_key.setdefault((teacher, d), []).append((dt.hour * 60 + dt.minute, flags))
 
-    # Per (col, date) -> sorted session minutes
-    cell_times = {}          # (col, date) -> [minutes...]
-    col_has_data = set()     # cols with any photo all month
-    for (teacher, d), mins in by_key.items():
-        mins.sort()
-        for col, tmins in assign(teacher, mins).items():
-            if tmins:
-                cell_times[(col, d)] = sorted(tmins)
+    # Per (col, date) -> sorted session records
+    cell_recs = {}           # (col, date) -> [(minute, flags)...]
+    col_has_data = set()
+    for (teacher, d), recs in by_key.items():
+        recs.sort()
+        for col, crecs in assign(teacher, recs).items():
+            if crecs:
+                cell_recs[(col, d)] = sorted(crecs)
                 col_has_data.add(col)
 
     lo, hi = min(all_dates), max(all_dates)
@@ -216,27 +227,33 @@ def main():
             total_c = ws.cell(row=r, column=col + 2)
             for c in (start_c, end_c, total_c):
                 c.alignment = center
-            times = cell_times.get((col, d))
-            if not times:
+            recs = cell_recs.get((col, d))
+            if not recs:
                 if working:
                     for c in (start_c, end_c, total_c):
                         c.fill = RED
                 continue
-            if len(times) == 1:
-                start_c.value = hhmm(times[0])
+            if len(recs) == 1:
+                start_c.value = hhmm(recs[0][0])
                 start_c.fill = end_c.fill = total_c.fill = ORANGE
             else:
-                start_c.value = hhmm(times[0])
-                end_c.value = hhmm(times[-1])
-                total_c.value = hhmm(times[-1] - times[0])
+                times = [m for m, _ in recs]
+                starts = [m for m, f in recs if "start" in f]
+                ends = [m for m, f in recs if "end" in f]
+                start = min(starts) if starts else times[0]
+                end = max(ends) if ends else times[-1]
+                if end < start:  # flags out of order -> fall back to span
+                    start, end = times[0], times[-1]
+                start_c.value = hhmm(start)
+                end_c.value = hhmm(end)
+                total_c.value = hhmm(end - start)
 
     wb.save(args.output)
-    ncells = sum(1 for _ in cell_times)
     print(f"Wrote {args.output}")
     print(f"  dates: {lo} .. {hi}  ({len(dates)} rows)")
-    print(f"  active class-columns: {sorted(col_has_data, key=lambda c: c)}"
-          f"  ({len(col_has_data)} of {len(all_cols)})")
-    print(f"  filled class/day sessions: {ncells}")
+    print(f"  active class-columns: {len(col_has_data)} of {len(all_cols)}")
+    print(f"  filled class/day sessions: {len(cell_recs)}")
+    print(f"  visit photos excluded from own class: {n_visit}")
 
 
 if __name__ == "__main__":

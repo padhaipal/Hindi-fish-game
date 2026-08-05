@@ -89,6 +89,27 @@ confirm photos were posted promptly after being taken.
 
 ---
 
+## Step 1b (optional): add captions + flags — `enrich_captions.py`
+
+Adds `caption` and `flags` columns to the per-photo sheet using the chat export,
+**without re-running OCR** (takes seconds). Captions are what the teacher wrote
+with the photo; flags are spelling-tolerant keyword tags for a later AI/human
+pass to finish the judgement calls.
+
+```bash
+python enrich_captions.py June_timestamps.xlsx --chat "chat.txt" -o June_timestamps_enriched.xlsx
+```
+
+- `caption` — e.g. `Class start photo`, `Ishrat ki class ending`, `Afreen ki class vizti`.
+- `flags` — any of `start` / `end` / `visit` / `mentions:<Teacher>` (catches
+  spellings like vizti, stetion, ending, over).
+
+`make_attendance.py` automatically uses these when present: `start`/`end` set the
+real Start/End, and a `visit` photo (supervisor visiting another class) is
+excluded from the poster's own class so it doesn't inflate their session.
+
+---
+
 ## Step 2 (optional): teacher attendance grid — `make_attendance.py`
 
 Reshapes the per-photo sheet into the attendance format (dates down the side;
