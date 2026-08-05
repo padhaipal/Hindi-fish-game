@@ -1,47 +1,44 @@
 #!/usr/bin/env python3
 r"""
-Batch-extract the CAPTURE time from a folder of photos into an Excel file.
+Batch-extract the CAPTURE time (and sender/teacher) for a folder of WhatsApp
+photos into an Excel file.
 
-READ THIS FIRST -- what "timestamp" means here
-----------------------------------------------
-There are two different times attached to a WhatsApp photo, and they are NOT
-always the same:
+WHERE EACH VALUE COMES FROM
+---------------------------
+A WhatsApp photo has several possible time sources; this script uses the most
+reliable one available per photo, in this order:
 
-  * CAPTURE time  -- when the photo was actually taken. The only reliable record
-                     is the timestamp *burned into the image* (the visible
-                     overlay in a corner). WhatsApp strips the camera's EXIF
-                     metadata, so the capture time is NOT in the file's
-                     metadata -- only in those printed pixels.
+  1. CAPTURE time  -- OCR of the timestamp burned into the image (the visible
+                      overlay in a corner). This is the true "when it was taken"
+                      and is preferred whenever it can be read.
+  2. CHAT time     -- from a WhatsApp chat-export .txt (--chat). Each photo's
+                      filename is matched to the message that posted it, giving
+                      the time it was sent AND the sender's name (the teacher).
+                      Used when the burned-in stamp can't be read.
+  3. FILENAME date -- bulk-downloaded names like "IMG-20260602-WA0006.jpg" carry
+                      only the date (no time). Used as a last resort.
 
-  * RECEIVED time -- when the photo arrived in the chat. This is what the
-                     WhatsApp FILENAME encodes, e.g.
-                     "WhatsApp Image 2026-08-04 at 15.48.39.jpeg".
-                     It equals the capture time ONLY if the photo was sent
-                     promptly after being taken.
+The chat export also provides the TEACHER (sender) column for every photo it
+can match, regardless of which time source was used.
 
-This script reports both, so you can trust the result:
+Columns written:
+  filename, teacher, best_estimate, date, time, source,
+  capture_time_stamp, chat_time, gap_min, stamp_raw, review
 
-  1. It OCRs the burned-in stamp -> capture_time (the one you actually want).
-     Uses RapidOCR, which reads these overlays on ~10 of 12 typical photos
-     (only genuinely blank / blown-out stamps fail).
-  2. It parses the filename       -> received_time (available on every photo).
-  3. best_estimate = capture_time when the stamp was read, else received_time.
-  4. gap_min = capture_time - received_time (when both exist). If this is small
-     across your set, photos were sent promptly and received_time is a safe
-     stand-in for capture_time on the few rows OCR couldn't read.
-
-Rows are flagged `review = yes` when the two times disagree by more than
---disagree-min minutes, or when neither source produced a time.
+  * source     = stamp / chat / filename / filename_date / none
+  * gap_min    = capture_time - chat_time in minutes (when both exist); if small,
+                 photos were sent promptly.
+  * review=yes = no exact time was found, or stamp and chat disagree by a lot.
 
 --------------------------------------------------------------------------
-Setup (once) -- NO separate program to install, just pip:
-    pip install rapidocr-onnxruntime openpyxl pillow numpy
+Setup (once) -- just pip, no separate program:
+    pip install rapidocr-onnxruntime numpy pillow openpyxl
 
-Run:
-    python ocr_timestamps.py /path/to/photos -o timestamps.xlsx
+Run (recommended -- with the chat export for times + teacher names):
+    python ocr_timestamps.py "June" --chat "WhatsApp Chat with Teachers Team.txt" -o June_timestamps.xlsx
 
-    # Filename time only, skip OCR (instant; received-time, not capture-time):
-    python ocr_timestamps.py /path/to/photos --no-ocr -o timestamps.xlsx
+    # Without OCR (instant; uses chat / filename only):
+    python ocr_timestamps.py "June" --chat "chat.txt" --no-ocr -o June_timestamps.xlsx
 --------------------------------------------------------------------------
 """
 
@@ -65,31 +62,77 @@ MONTHS = {m.lower(): i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
 
-# WhatsApp filename: "WhatsApp Image 2026-08-04 at 15.48.39.jpeg"
-FNAME_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})\s+at\s+(\d{2})\.(\d{2})\.(\d{2})')
+# ---- filenames ---------------------------------------------------------------
+# Old style with a full time: "WhatsApp Image 2026-08-04 at 15.48.39.jpeg"
+FNAME_FULL = re.compile(r'(\d{4})-(\d{2})-(\d{2})\s+at\s+(\d{2})\.(\d{2})\.(\d{2})')
+# Bulk-download style, date only: "IMG-20260602-WA0006.jpg"
+FNAME_DATE = re.compile(r'(\d{4})(\d{2})(\d{2})')
 
+
+def parse_filename(name):
+    """Return (datetime, has_time). has_time is False when only a date is known."""
+    m = FNAME_FULL.search(name)
+    if m:
+        y, mo, d, h, mi, s = map(int, m.groups())
+        try:
+            return datetime.datetime(y, mo, d, h, mi, s), True
+        except ValueError:
+            pass
+    m = FNAME_DATE.search(name)
+    if m:
+        y, mo, d = map(int, m.groups())
+        try:
+            return datetime.datetime(y, mo, d), False
+        except ValueError:
+            pass
+    return None, False
+
+
+# ---- chat export -------------------------------------------------------------
+# "02/06/2026, 09:11 - Mariyam: IMG-20260602-WA0006.jpg (file attached)"
+# tolerant of 12-hour times ("9:11 am"), seconds, and en-dash separators.
+CHAT_LINE = re.compile(
+    r'(\d{1,2})/(\d{1,2})/(\d{2,4}),\s+(\d{1,2}):(\d{2})(?::\d{2})?\s*([apAP][. ]?[mM])?\s*[-–]\s*'
+    r'([^:]+?):\s*([A-Za-z0-9._-]+\.\w+)\s*\(file attached\)')
+
+
+def parse_chat(path):
+    """Map {filename: (datetime, sender)} from a WhatsApp chat export."""
+    mapping = {}
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            g = CHAT_LINE.search(line)
+            if not g:
+                continue
+            d, mo, y, h, mi, ap, sender, fname = g.groups()
+            y = int(y)
+            y = y + 2000 if y < 100 else y
+            h = int(h)
+            if ap:
+                ap = ap.lower().replace(".", "").replace(" ", "")
+                if ap == "pm" and h != 12:
+                    h += 12
+                if ap == "am" and h == 12:
+                    h = 0
+            try:
+                dt = datetime.datetime(y, int(mo), int(d), h, int(mi))
+            except ValueError:
+                continue
+            mapping.setdefault(fname, (dt, sender.strip()))  # first occurrence wins
+    return mapping
+
+
+# ---- burned-in stamp parsing -------------------------------------------------
 # OCR often runs words together, so these are space-TOLERANT:
-#   "4Aug2026,1:01pm"  /  "4 August 2026 at 4:02 pm"
+#   "4Aug2026,1:01pm" / "4 August 2026 at 4:02 pm"
 RE_TEXT = re.compile(
     r'(\d{1,2})\s*([A-Za-z]{3,9})\.?\s*(\d{4})\s*(?:,|at)?\s*(\d{1,2}):(\d{2})\s*([ap])', re.I)
 #   "2026.08.0403:25P" / "2026080411:43" / "2026.08.04 05:01"
-#   (Y M D; the day may glue to the time; meridian may be truncated or absent)
 RE_YMD = re.compile(
     r'(\d{4})[.\-/ ]?(\d{2})[.\-/ ]?(\d{2})\s*(\d{1,2}):(\d{2})(?:\s*([ap]))?', re.I)
 
 
-def parse_filename(name):
-    m = FNAME_RE.search(name)
-    if not m:
-        return None
-    y, mo, d, h, mi, s = map(int, m.groups())
-    try:
-        return datetime.datetime(y, mo, d, h, mi, s)
-    except ValueError:
-        return None
-
-
-def _build(y, mo, d, h, mi, ap, received):
+def _build(y, mo, d, h, mi, ap, ref):
     y, mo, d, h, mi = int(y), int(mo), int(d), int(h), int(mi)
     if ap:
         ap = ap.lower()
@@ -98,16 +141,15 @@ def _build(y, mo, d, h, mi, ap, received):
         if ap == 'a' and h == 12:
             h = 0
         return datetime.datetime(y, mo, d, h, mi)
-    # Meridian missing/truncated: choose the AM vs PM reading closest to the
-    # received time (capture is always within a few minutes of it).
+    # Meridian missing/truncated: pick the AM vs PM reading closest to a
+    # reference time (the chat time), since capture is within minutes of it.
     opts = [datetime.datetime(y, mo, d, hh % 24, mi) for hh in {h, (h + 12) % 24}]
-    if received:
-        return min(opts, key=lambda dt: abs((dt - received).total_seconds()))
+    if ref:
+        return min(opts, key=lambda dt: abs((dt - ref).total_seconds()))
     return datetime.datetime(y, mo, d, h % 24, mi)
 
 
-def parse_stamp(text, received):
-    """Return (datetime, matched_str) from OCR text, or (None, '')."""
+def parse_stamp(text, ref):
     t = " ".join(text.split())
     m = RE_TEXT.search(t)
     if m:
@@ -115,21 +157,20 @@ def parse_stamp(text, received):
         mo = MONTHS.get(mon.lower()[:3])
         if mo:
             try:
-                return _build(y, mo, d, h, mi, ap, received), m.group(0)
+                return _build(y, mo, d, h, mi, ap, ref), m.group(0)
             except ValueError:
                 pass
     m = RE_YMD.search(t)
     if m:
         y, mo, d, h, mi, ap = m.groups()
         try:
-            return _build(y, mo, d, h, mi, ap, received), m.group(0)
+            return _build(y, mo, d, h, mi, ap, ref), m.group(0)
         except ValueError:
             pass
     return None, ""
 
 
-# --- OCR engine (RapidOCR) ----------------------------------------------------
-
+# ---- OCR engine (RapidOCR) ---------------------------------------------------
 _engine = None
 
 
@@ -137,14 +178,13 @@ def get_engine():
     global _engine
     if _engine is None:
         import logging
-        logging.getLogger().setLevel(logging.ERROR)  # quiet RapidOCR's chatter
+        logging.getLogger().setLevel(logging.ERROR)
         from rapidocr_onnxruntime import RapidOCR
         _engine = RapidOCR()
     return _engine
 
 
 def _prep(crop, target_w=2000):
-    """Upscale small crops so faint/small stamps are detectable, and boost contrast."""
     crop = crop.convert("RGB")
     if crop.width < target_w:
         s = target_w / crop.width
@@ -152,18 +192,11 @@ def _prep(crop, target_w=2000):
     return ImageOps.autocontrast(crop)
 
 
-def ocr_stamp(img, received):
-    """OCR the bottom strip, then upscaled corners, and extract a timestamp.
-
-    The full-width strip catches most stamps in one pass. If that misses (small
-    or faint overlays, e.g. the bottom-left phone watermark), each bottom corner
-    is enlarged ~2x and read individually, which any RapidOCR build can detect.
-    Returns (datetime, raw_matched_text).
-    """
+def ocr_stamp(img, ref):
+    """OCR the bottom strip, then enlarged corners; return (datetime, raw_text)."""
     import numpy as np
     engine = get_engine()
     w, h = img.size
-    # (left, top, right, bottom) as fractions; full strip first, then corners.
     regions = [
         (0.0, 0.82, 1.0, 1.0),   # full bottom strip
         (0.0, 0.84, 0.58, 1.0),  # bottom-left  (phone watermark)
@@ -175,14 +208,17 @@ def ocr_stamp(img, received):
         result, _ = engine(np.array(_prep(crop)))
         if result:
             text = " ".join(line[1] for line in result)
-            dt, matched = parse_stamp(text, received)
+            dt, matched = parse_stamp(text, ref)
             if dt:
                 return dt, matched
     return None, ""
 
 
-def fmt(dt):
-    return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else ""
+# ---- main --------------------------------------------------------------------
+def fmt(dt, date_only=False):
+    if not dt:
+        return ""
+    return dt.strftime("%Y-%m-%d") if date_only else dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def iter_images(folder):
@@ -191,88 +227,94 @@ def iter_images(folder):
             yield p
 
 
-def run(folder, out_path, use_ocr, disagree_min):
+def run(folder, out_path, use_ocr, disagree_min, chat_map):
     images = list(iter_images(folder))
     if not images:
         sys.exit(f"No images found in {folder}")
 
     if use_ocr:
         try:
-            get_engine()  # fail early with a clear message if RapidOCR is missing
+            get_engine()
         except ImportError:
             sys.exit("RapidOCR is not installed.\n"
-                     "Install it with:  pip install rapidocr-onnxruntime numpy\n"
-                     "Or run with --no-ocr to use filename (received) time only.")
+                     "Install:  pip install rapidocr-onnxruntime numpy\n"
+                     "Or run with --no-ocr.")
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Timestamps"
-    ws.append(["filename", "best_estimate", "date", "time", "source",
-               "capture_time_stamp", "received_time_filename",
-               "gap_min", "stamp_raw", "review"])
+    ws.append(["filename", "teacher", "best_estimate", "date", "time", "source",
+               "capture_time_stamp", "chat_time", "gap_min", "stamp_raw", "review"])
 
     total = len(images)
-    n_stamp = n_file = n_none = n_review = 0
+    counts = {"stamp": 0, "chat": 0, "filename": 0, "filename_date": 0, "none": 0}
+    n_review = 0
 
     for i, p in enumerate(images, 1):
+        chat_dt, teacher = chat_map.get(p.name, (None, ""))
+        fdt, has_time = parse_filename(p.name)
+        ref = chat_dt or (fdt if has_time else None)
+
         try:
             img = Image.open(p)
         except Exception as ex:
-            ws.append([p.name, "", "", "", "error", "", "", "", f"open failed: {ex}", "yes"])
-            n_none += 1
+            ws.append([p.name, teacher, "", "", "", "error", "", fmt(chat_dt),
+                       "", f"open failed: {ex}", "yes"])
+            counts["none"] += 1
             n_review += 1
             print(f"[{i}/{total}] {p.name}: ERROR {ex}")
             continue
 
-        received = parse_filename(p.name)
         capture, raw = (None, "")
         if use_ocr:
             try:
-                capture, raw = ocr_stamp(img, received)
+                capture, raw = ocr_stamp(img, ref)
             except Exception:
                 capture, raw = (None, "")
 
+        date_only = False
         if capture:
             best, source = capture, "stamp"
-            n_stamp += 1
-        elif received:
-            best, source = received, "filename"
-            n_file += 1
+        elif chat_dt:
+            best, source = chat_dt, "chat"
+        elif fdt and has_time:
+            best, source = fdt, "filename"
+        elif fdt:
+            best, source, date_only = fdt, "filename_date", True
         else:
             best, source = None, "none"
-            n_none += 1
+        counts[source] += 1
 
         gap = None
-        if capture and received:
-            gap = round((capture - received).total_seconds() / 60)
+        if capture and chat_dt:
+            gap = round((capture - chat_dt).total_seconds() / 60)
 
-        review = (source == "none") or (gap is not None and abs(gap) > disagree_min)
+        review = source in ("none", "filename_date") or (gap is not None and abs(gap) > disagree_min)
         if review:
             n_review += 1
 
         ws.append([
-            p.name, fmt(best),
+            p.name, teacher,
+            fmt(best, date_only),
             best.strftime("%Y-%m-%d") if best else "",
-            best.strftime("%H:%M:%S") if best else "",
-            source, fmt(capture), fmt(received),
+            "" if (best is None or date_only) else best.strftime("%H:%M:%S"),
+            source, fmt(capture), fmt(chat_dt),
             gap if gap is not None else "", raw,
             "yes" if review else "",
         ])
-        tag = "" if not review else "   <-- review"
-        print(f"[{i}/{total}] {p.name}: {fmt(best)} ({source})"
-              f"{'' if gap is None else f'  gap={gap:+d}m'}{tag}")
+        tag = "   <-- review" if review else ""
+        print(f"[{i}/{total}] {p.name}: {fmt(best, date_only) or '(no time)'} "
+              f"({source}){'' if gap is None else f'  gap={gap:+d}m'}{tag}")
 
     wb.save(out_path)
     print(f"\nWrote {out_path}")
-    print(f"Capture time from stamp (OCR): {n_stamp}/{total}")
-    print(f"Fell back to filename time:    {n_file}/{total}")
-    if n_none:
-        print(f"No time found at all:          {n_none}/{total}")
-    print(f"Rows flagged for review:       {n_review}/{total}  (filter review = yes)")
-    if n_stamp:
-        print("\nTip: check the gap_min column on the 'stamp' rows. If gaps are all\n"
-              "small, photos were sent promptly and the filename time is a safe\n"
-              "stand-in for capture time on the rows OCR couldn't read.")
+    for k in ("stamp", "chat", "filename", "filename_date", "none"):
+        if counts[k]:
+            label = {"stamp": "capture stamp (OCR)", "chat": "chat export time",
+                     "filename": "filename time", "filename_date": "filename date only",
+                     "none": "no time found"}[k]
+            print(f"  {label:24}: {counts[k]}/{total}")
+    print(f"  rows flagged for review : {n_review}/{total}  (filter review = yes)")
 
 
 def main():
@@ -280,16 +322,28 @@ def main():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("folder", help="Folder of photos.")
     ap.add_argument("-o", "--output", default="timestamps.xlsx", help="Output .xlsx path.")
+    ap.add_argument("--chat", help="WhatsApp chat-export .txt (for fallback times + teacher names).")
     ap.add_argument("--no-ocr", action="store_true",
-                    help="Skip OCR; use filename (received) time only. Instant.")
+                    help="Skip OCR; use chat / filename time only.")
     ap.add_argument("--disagree-min", type=int, default=10,
-                    help="Flag review if stamp and filename differ by more than "
-                         "this many minutes (default 10).")
+                    help="Flag review if stamp and chat time differ by more than this (default 10).")
     args = ap.parse_args()
 
     if not os.path.isdir(args.folder):
         sys.exit(f"{args.folder} is not a folder.")
-    run(args.folder, args.output, use_ocr=not args.no_ocr, disagree_min=args.disagree_min)
+
+    chat_map = {}
+    if args.chat:
+        if not os.path.isfile(args.chat):
+            sys.exit(f"Chat file not found: {args.chat}")
+        chat_map = parse_chat(args.chat)
+        print(f"Loaded {len(chat_map)} attachments from chat export.\n")
+    else:
+        print("No --chat file given: photos without a readable stamp will have no "
+              "time/teacher. Pass --chat to fill those in.\n")
+
+    run(args.folder, args.output, use_ocr=not args.no_ocr,
+        disagree_min=args.disagree_min, chat_map=chat_map)
 
 
 if __name__ == "__main__":

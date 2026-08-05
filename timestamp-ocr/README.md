@@ -47,28 +47,42 @@ the CPU. No Tesseract, no system binary.)
 
 ## Run
 
-```bash
-python ocr_timestamps.py /path/to/photos -o timestamps.xlsx
-```
-
-OCR takes roughly **2 seconds per photo** (~20 min for 600). For an instant
-filename-only pass (received time, no capture stamp):
+Recommended — pass the WhatsApp **chat export** so photos without a readable
+stamp still get a time, and every photo gets its **teacher** (sender) name:
 
 ```bash
-python ocr_timestamps.py /path/to/photos --no-ocr -o timestamps.xlsx
+python ocr_timestamps.py "June" --chat "WhatsApp Chat with Teachers Team.txt" -o June_timestamps.xlsx
 ```
+
+(To get the chat export: open the WhatsApp group → ⋯ → More → Export chat →
+Without media. It saves a `.txt`.)
+
+OCR takes roughly **2 seconds per photo** (~20 min for 600). For an instant pass
+that skips OCR and uses the chat/filename time only:
+
+```bash
+python ocr_timestamps.py "June" --chat "chat.txt" --no-ocr -o June_timestamps.xlsx
+```
+
+## How the time is chosen (per photo, best available)
+
+1. **Capture stamp** (OCR of the burned-in overlay) — the true "when taken".
+2. **Chat time** (from `--chat`) — when it was posted; also gives the teacher.
+3. **Filename date** — bulk-download names (`IMG-20260602-WA0006.jpg`) carry only
+   the date, used as a last resort.
 
 ## Output columns
 
 | column | meaning |
 |---|---|
-| `best_estimate` / `date` / `time` | the value to use (stamp if read, else filename) |
-| `source` | `stamp` (capture) or `filename` (received) |
+| `teacher` | sender of the photo, from the chat export |
+| `best_estimate` / `date` / `time` | the value to use |
+| `source` | `stamp` / `chat` / `filename` / `filename_date` / `none` |
 | `capture_time_stamp` | OCR of the burned-in stamp (blank if unreadable) |
-| `received_time_filename` | time parsed from the WhatsApp filename |
-| `gap_min` | capture − received, in minutes (blank if no stamp) |
+| `chat_time` | time the photo was posted, from the chat export |
+| `gap_min` | capture − chat, in minutes (blank unless both exist) |
 | `stamp_raw` | the raw text OCR matched, for spot-checking |
-| `review` | `yes` when the two times disagree by >10 min, or no time was found |
+| `review` | `yes` when no exact time was found, or stamp vs chat disagree by >10 min |
 
-Sort by `review = yes` to hand-check the few uncertain rows; sort/scan `gap_min`
-to confirm your photos were sent promptly.
+Sort by `review = yes` to hand-check the few uncertain rows; scan `gap_min` to
+confirm photos were posted promptly after being taken.
