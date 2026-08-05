@@ -45,6 +45,15 @@ RED = PatternFill("solid", fgColor="FFFFC7CE")     # absent
 ORANGE = PatternFill("solid", fgColor="FFFFC000")  # only one photo
 GREEN = PatternFill("solid", fgColor="FFC6EFCE")   # supervised (visit)
 NOFILL = PatternFill()
+
+# Correct a class's time window when the template's scheduled time is stale.
+# Keyed by a lowercase substring of the class's Teacher label; value is
+# ("H:MM", "H:MM"). Ishrat's real classes are reversed vs the schedule: her
+# "1st" (home) runs in the afternoon and her "2nd" (Daliganj) in the morning.
+WINDOW_OVERRIDE = {
+    "ishrat 1st": ("11:00", "20:00"),
+    "ishrat 2nd": ("6:00", "11:00"),
+}
 # =============================================================================
 
 
@@ -86,6 +95,11 @@ def read_template_classes(ws):
         label = ws.cell(row=teacher_row, column=col).value
         if label and str(label).strip():
             win = parse_window(ws.cell(row=time_row, column=col).value) if time_row else None
+            low = str(label).strip().lower()
+            for key, (a, b) in WINDOW_OVERRIDE.items():
+                if key in low:
+                    win = (mins(a), mins(b))
+                    break
             classes.append({"col": col, "label": str(label).strip(),
                             "base": base_name(label), "win": win})
         col += 4
