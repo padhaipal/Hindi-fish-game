@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 // ALfA ENGLISH — MEMORY GAME
 // ---------------------------------------------------------------------------
-// Match each PICTURE card to its LETTER card. Tap a card -> it flips and the
-// picture-word is spoken (both the picture AND the letter card say the WORD,
-// e.g. "apple" — never a bare letter, since text-to-speech mangles phonemes).
+// Match each PICTURE card to its LETTER card. Tap a card -> it flips: a PICTURE
+// card speaks the picture-WORD (e.g. "apple") while a LETTER card speaks the
+// letter's SOUND (via the shared sound layer, which falls back to the word).
 // Two cards a turn:
 //   - match  -> ding + flash green, the pair fades away.
 //   - no match -> buzz + both flip back after a beat.
@@ -16,7 +16,8 @@
 import { useCallback, useRef, useState } from "react";
 import Card, { MemCard } from "./Card";
 import { getLetter } from "@/lib/letters";
-import { say, stopSpeech, primeSpeech } from "@/lib/speech";
+import { stopSpeech, primeSpeech } from "@/lib/speech";
+import { speakLetterSound, speakWord } from "@/lib/sound";
 import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
 
 // Only letters with a CLEAR, child-friendly emoji picture are used, so tapping
@@ -102,8 +103,12 @@ export default function MemoryGame() {
       const card = cards.find((c) => c.id === id);
       if (!card) return;
 
-      // Always speak the picture-WORD, for both the picture and the letter card.
-      say(getLetter(card.letterId).word);
+      // A PICTURE card speaks the picture-WORD; a LETTER card speaks the SOUND.
+      if (card.kind === "letter") {
+        speakLetterSound(card.letterId);
+      } else {
+        speakWord(getLetter(card.letterId).word);
+      }
 
       const next = [...flippedIds, id];
       setFlippedIds(next);

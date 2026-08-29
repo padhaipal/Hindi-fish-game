@@ -17,9 +17,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CVC_WORDS, CvcWord } from "@/lib/lessons";
-import { say, stopSpeech, primeSpeech } from "@/lib/speech";
-import { dingCorrect, buzzWrong, chimeWin, tick, unlockSfx } from "@/lib/sfx";
+import { stopSpeech, primeSpeech } from "@/lib/speech";
+import { speakLetterSound, speakWord } from "@/lib/sound";
+import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
+import JamIcon from "@/components/shared/JamIcon";
 
 // How many words make up one game session.
 const SESSION_LENGTH = 10;
@@ -53,12 +55,15 @@ function buildSession(): CvcWord[] {
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz".split("");
 
-// The coach tray for a word: its own (unique) letters plus two distractor
-// letters that are not in the word, all shuffled for display.
+// How many coaches the tray always offers to choose between.
+const TRAY_SIZE = 8;
+
+// The coach tray for a word: its own (unique) letters plus enough distractor
+// letters (not in the word) to total TRAY_SIZE, all shuffled for display.
 function buildTray(word: string): string[] {
   const wordLetters = Array.from(new Set(word.split("")));
   const pool = ALPHABET.filter((c) => !wordLetters.includes(c));
-  const distractors = shuffle(pool).slice(0, 2);
+  const distractors = shuffle(pool).slice(0, Math.max(0, TRAY_SIZE - wordLetters.length));
   return shuffle([...wordLetters, ...distractors]);
 }
 
@@ -110,7 +115,7 @@ export default function WordTrainGame() {
       setTray(buildTray(w.word));
       // small cadence: picture shows, brief pause, then the word is spoken.
       later(() => {
-        say(w.word);
+        speakWord(w.word);
         busyRef.current = false;
       }, 500);
     },
@@ -128,7 +133,7 @@ export default function WordTrainGame() {
   // ---- replay the spoken word when the picture / Listen button is tapped ---
   const replay = useCallback(() => {
     if (!word || moving) return;
-    say(word.word);
+    speakWord(word.word);
   }, [word, moving]);
 
   // ---- a coach was dropped: place it if it is the correct next letter ------
@@ -148,7 +153,7 @@ export default function WordTrainGame() {
 
       const next = [...placed, ch];
       setPlaced(next);
-      tick(); // "clicks into place"
+      speakLetterSound(ch); // the letter's SOUND as it clicks into place
 
       if (next.length < letters.length) return;
 
@@ -157,7 +162,7 @@ export default function WordTrainGame() {
       dingCorrect();
       later(() => {
         setMoving(true);
-        say(word.word);
+        speakWord(word.word);
       }, 500);
       later(() => {
         if (isLast) {
@@ -250,7 +255,9 @@ export default function WordTrainGame() {
             onClick={replay}
             aria-label="Listen to the word"
           >
-            <span className="pictureEmoji trainEmoji">{word.emoji}</span>
+            <span className="pictureEmoji trainEmoji">
+              {word.word === "jam" ? <JamIcon size={96} /> : word.emoji}
+            </span>
           </button>
           <button type="button" className="soundBtn" onClick={replay} aria-label="Listen">
             <SpeakerIcon /> Listen

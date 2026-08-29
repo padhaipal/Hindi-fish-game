@@ -7,8 +7,10 @@
 // canvas. The child drags a finger over it; the finger path is drawn in bright
 // chalk. We track COVERAGE only (NO handwriting recognition): the guide glyph
 // is rendered to an offscreen canvas, its opaque pixels are bucketed into a
-// coarse grid of "target" cells, and we mark the cells the finger passes. Once
-// enough of the target cells are covered we flash green and call onComplete.
+// fine grid of "target" cells, and we mark ONLY the cells the finger passes
+// that are themselves glyph cells (points in the empty space don't count). Once
+// most of the target cells are covered — and the finger has crossed enough
+// distinct glyph cells — we flash green and call onComplete.
 // High-DPI aware (devicePixelRatio), like the Hindi slate.
 // ---------------------------------------------------------------------------
 
@@ -21,8 +23,9 @@ interface Props {
   onComplete: () => void; // called once enough of the guide has been traced
 }
 
-const GRID = 14; // coverage grid (cells per axis)
-const COVER = 0.55; // complete once this fraction of the glyph is covered
+const GRID = 18; // coverage grid (cells per axis) — fine enough that off-glyph scribbles miss
+const COVER = 0.8; // complete once this fraction of the glyph is covered
+const MIN_CELLS = 10; // must cross at least this many DISTINCT glyph cells (a few taps won't do)
 const GUIDE_FONT = "'Baloo 2', 'Comic Sans MS', sans-serif";
 
 // Fit a bold font size so the letter sits comfortably inside the slate.
@@ -121,30 +124,18 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [letter, width, height]);
 
-  // Has the finger passed through this target cell or one of its neighbours?
-  const nearDrawn = (cell: number) => {
-    const r = Math.floor(cell / GRID);
-    const col = cell % GRID;
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dc = -1; dc <= 1; dc++) {
-        const rr = r + dr;
-        const cc = col + dc;
-        if (rr < 0 || cc < 0 || rr >= GRID || cc >= GRID) continue;
-        if (drawnCells.current.has(rr * GRID + cc)) return true;
-      }
-    }
-    return false;
-  };
-
   const checkCoverage = useCallback(() => {
     if (doneRef.current) return;
     const target = targetCells.current;
     if (target.size === 0) return;
+    // The finger only ever marks cells that ARE target cells (see mark), so the
+    // covered count is simply how many distinct glyph cells have been touched.
     let cov = 0;
     target.forEach((cell) => {
-      if (nearDrawn(cell)) cov++;
+      if (drawnCells.current.has(cell)) cov++;
     });
-    if (cov / target.size >= COVER) {
+    const needCells = Math.min(target.size, MIN_CELLS);
+    if (cov >= needCells && cov / target.size >= COVER) {
       doneRef.current = true;
       setFlash("green");
       window.setTimeout(() => onComplete(), 200);
@@ -159,7 +150,10 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
   };
   const mark = (x: number, y: number) => {
     if (x < 0 || y < 0 || x >= width || y >= height) return;
-    drawnCells.current.add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
+    const cell = Math.floor(y / ch) * GRID + Math.floor(x / cw);
+    // Only count a point that lands ON an actual glyph cell — scribbles in the
+    // empty space around the letter don't add coverage.
+    if (targetCells.current.has(cell)) drawnCells.current.add(cell);
   };
 
   const onDown = (e: React.PointerEvent) => {

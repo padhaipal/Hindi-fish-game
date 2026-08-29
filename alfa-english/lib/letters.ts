@@ -11,7 +11,7 @@
 // picture-word ("apple") and blended words ("cat"), never a bare /a/.
 // ---------------------------------------------------------------------------
 
-export type IconKey = "top";
+export type IconKey = "top" | "jam";
 
 export interface Letter {
   id: string; // the lowercase letter, also the key
@@ -44,7 +44,7 @@ export const LETTERS: Letter[] = [
   L("g", "goat", "🐐"),
   L("h", "hat", "🎩"),
   L("i", "insect", "🐛"),
-  L("j", "jam", "🍓"),
+  L("j", "jam", "🍓", { icon: "jam" }),
   L("k", "kite", "🪁"),
   L("l", "lion", "🦁"),
   L("m", "mug", "☕"),

@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 import { Letter } from "@/lib/letters";
 import TopIcon from "./TopIcon";
+import JamIcon from "./JamIcon";
 
 export default function LetterPicture({
   letter,
@@ -15,6 +16,7 @@ export default function LetterPicture({
   className?: string;
 }) {
   if (letter.icon === "top") return <TopIcon size={size} />;
+  if (letter.icon === "jam") return <JamIcon size={size} />;
   return (
     <span className={className} style={{ fontSize: Math.round(size * 0.86), lineHeight: 1 }}>
       {letter.emoji}

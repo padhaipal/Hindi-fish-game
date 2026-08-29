@@ -8,9 +8,9 @@
 // button that speaks the picture-word. Each hoppable row holds exactly one
 // target-letter stone plus distractors from the same lesson set.
 //
-//   - correct tap -> the frog hops up a row (dingCorrect); reaching the far
-//     bank finishes a crossing: we speak the word, pick a NEW target letter and
-//     send the frog back to the near bank for the next crossing.
+//   - correct tap -> the frog hops up a row and we play the letter's SOUND;
+//     reaching the far bank finishes a crossing: we speak the word, pick a NEW
+//     target letter and send the frog back to the near bank for the next crossing.
 //   - wrong tap   -> the stone flashes red (buzzWrong) and the frog STAYS put.
 //     There is no drowning and no restart — young children simply try again.
 //
@@ -22,7 +22,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getLetter, Letter } from "@/lib/letters";
 import { getReadingLesson, READING_LESSONS } from "@/lib/lessons";
 import { say, stopSpeech, primeSpeech } from "@/lib/speech";
-import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
+import { buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
+import { speakCombo, speakLetterSound } from "@/lib/sound";
 import { buildHopBoard, HopStone, HopConfig } from "@/lib/pond/board";
 import LetterPicture from "@/components/shared/LetterPicture";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
@@ -91,8 +92,8 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
       setCrossing(idx);
       setPhase("playing");
 
-      // Say the target word automatically at the start of each crossing.
-      later(() => say(tgt.word), 260);
+      // Speak the ALfA combo (picture-word then its sound) at the start of each crossing.
+      later(() => speakCombo(targetId), 260);
     },
     [pool]
   );
@@ -121,7 +122,7 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
 
       // CORRECT: the frog hops up onto the tapped stone.
       busyRef.current = true;
-      dingCorrect();
+      if (target) speakLetterSound(target.id); // the target letter's SOUND
       setFrog({ x: stone.x, y: stone.y });
       setHopCount((h) => h + 1);
       const newPos = pos + 1;
@@ -180,7 +181,7 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
               className="soundBtn soundBtn--compact"
               onClick={() => {
                 unlockSfx();
-                say(target.word);
+                speakCombo(target.id);
               }}
               aria-label={`Listen: ${target.word}`}
             >
