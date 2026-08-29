@@ -15,8 +15,10 @@ import { say, stopSpeech } from "./speech";
 import { getLetter } from "./letters";
 
 // Letters that have a real /audio/sounds/<id>.mp3 phoneme recording.
+// All 26 letter sounds are recorded, so the games speak the real sounds.
 export const SOUND_FILES = new Set<string>([
-  // e.g. "a", "b", "c", ...  (empty for now → falls back to the word via TTS)
+  "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+  "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
 ]);
 
 // Words that have a real /audio/words/<word>.mp3 recording.
