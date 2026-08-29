@@ -9,8 +9,8 @@
 //   idle -> gem, selected -> raised + ring + order number, correct -> pop,
 //   wrong -> red shake.
 //
-// The child taps the letters directly, so the gem carries its own pointer
-// handler (the .blockCell's `pointer-events:none` is overridden here).
+// The gem is purely visual — pointer/swipe handling lives on the board itself
+// (see BlocksGame.tsx), which is why `.blockCell` keeps `pointer-events: none`.
 // ---------------------------------------------------------------------------
 
 import type { CSSProperties } from "react";
@@ -34,7 +34,6 @@ function candy(char: string): string {
 }
 
 interface BlockProps {
-  id: number;
   char: string;
   x: number;
   y: number;
@@ -42,11 +41,9 @@ interface BlockProps {
   state: BlockState;
   order?: number; // 1-based position in the current selection (0 = not selected)
   hint?: boolean;
-  onTap: (id: number) => void;
 }
 
 export default function Block({
-  id,
   char,
   x,
   y,
@@ -54,7 +51,6 @@ export default function Block({
   state,
   order = 0,
   hint,
-  onTap,
 }: BlockProps) {
   return (
     <div
@@ -63,17 +59,12 @@ export default function Block({
         width: size,
         height: size,
         transform: `translate3d(${x}px, ${y}px, 0)`,
-        pointerEvents: "auto",
       }}
     >
       <span
         className={`block block--${state}${hint ? " block--hint" : ""}`}
         aria-label={`block ${char}`}
         style={{ ["--candy"]: candy(char) } as CSSProperties}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          onTap(id);
-        }}
       >
         <span className="blockLetter">{char}</span>
         {order > 0 && <span className="blockOrder">{order}</span>}
