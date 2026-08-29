@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
 // HOME — the ALfA English games hub.
 // ---------------------------------------------------------------------------
-// A simple, child-friendly menu of all the games. Fish, Frog Jump and Writing
-// open a lesson picker (each lesson has its own deep link); the rest start
-// straight away.
+// Games are grouped so the growing list stays scannable. Fish, Frog Jump and
+// Writing open a lesson picker (each lesson has its own deep link); the rest
+// start straight away. Every game has its own shareable URL.
 // ---------------------------------------------------------------------------
 import Link from "next/link";
 
@@ -14,14 +14,33 @@ interface GameLink {
   cls: string;
 }
 
-const GAMES: GameLink[] = [
-  { href: "/fish", label: "Fish Game", emoji: "🐟", cls: "gbFish" },
-  { href: "/pond", label: "Frog Jump", emoji: "🐸", cls: "gbHop" },
-  { href: "/writing", label: "Writing", emoji: "✏️", cls: "gbLekhan" },
-  { href: "/memory", label: "Memory", emoji: "🧠", cls: "gbMemory" },
-  { href: "/train", label: "Word Train", emoji: "🚂", cls: "gbTrain" },
-  { href: "/blocks", label: "Blocks", emoji: "🧱", cls: "gbBlocks" },
-  { href: "/magic-e", label: "Magic-e", emoji: "🪄", cls: "gbMagic" },
+interface Group {
+  title: string;
+  games: GameLink[];
+}
+
+const GROUPS: Group[] = [
+  {
+    title: "Letters",
+    games: [
+      { href: "/fish", label: "Fish Game", emoji: "🐟", cls: "gbFish" },
+      { href: "/pond", label: "Frog Jump", emoji: "🐸", cls: "gbHop" },
+      { href: "/writing", label: "Writing", emoji: "✏️", cls: "gbLekhan" },
+    ],
+  },
+  {
+    title: "Sounds & Words",
+    games: [
+      { href: "/memory", label: "Memory", emoji: "🧠", cls: "gbMemory" },
+      { href: "/blocks", label: "Blocks", emoji: "🧱", cls: "gbBlocks" },
+      { href: "/train", label: "Word Train", emoji: "🚂", cls: "gbTrain" },
+      { href: "/word-machine", label: "Word Machine", emoji: "🎡", cls: "gbMachine" },
+      { href: "/rhyme", label: "Rhyme Time", emoji: "🎵", cls: "gbRhyme" },
+      { href: "/detective", label: "Sound Detective", emoji: "🕵️", cls: "gbDetective" },
+      { href: "/sentence", label: "Sentence Builder", emoji: "📝", cls: "gbSentence" },
+      { href: "/magic-e", label: "Magic-e", emoji: "🪄", cls: "gbMagic" },
+    ],
+  },
 ];
 
 export default function Home() {
@@ -33,13 +52,18 @@ export default function Home() {
         </div>
         <h1 className="homeTitle">ALfA English</h1>
         <p className="homeSub">Reading &amp; Writing Games</p>
-        <div className="homeButtons">
-          {GAMES.map((g) => (
-            <Link key={g.href} className={`gameButton ${g.cls}`} href={g.href}>
-              <span className="gameEmoji">{g.emoji}</span> {g.label}
-            </Link>
-          ))}
-        </div>
+        {GROUPS.map((g) => (
+          <div key={g.title} className="homeGroup">
+            <div className="homeGroupTitle">{g.title}</div>
+            <div className="homeButtons">
+              {g.games.map((game) => (
+                <Link key={game.href} className={`gameButton ${game.cls}`} href={game.href}>
+                  <span className="gameEmoji">{game.emoji}</span> {game.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     </main>
   );

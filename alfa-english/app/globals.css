@@ -1694,3 +1694,24 @@ body > div {
   box-shadow: 0 3px 0 #00000018;
   text-decoration: none;
 }
+
+/* ---- home groups + the four new game buttons -------------------------- */
+.homeGroup { margin-top: 14px; }
+.homeGroupTitle {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #1f8bbf;
+  opacity: 0.85;
+  margin: 2px 4px 8px;
+}
+.gameButton.gbMachine { background: linear-gradient(#8a8cff, #6a6cf0); box-shadow: 0 6px 0 #4a4cc0; }
+.gameButton.gbMachine:active { transform: translateY(4px); box-shadow: 0 2px 0 #4a4cc0; }
+.gameButton.gbRhyme { background: linear-gradient(#ff7eb3, #ff5c95); box-shadow: 0 6px 0 #d63d74; }
+.gameButton.gbRhyme:active { transform: translateY(4px); box-shadow: 0 2px 0 #d63d74; }
+.gameButton.gbDetective { background: linear-gradient(#c79a5b, #a97f42); box-shadow: 0 6px 0 #7d5c2c; color: #fff; }
+.gameButton.gbDetective:active { transform: translateY(4px); box-shadow: 0 2px 0 #7d5c2c; }
+.gameButton.gbSentence { background: linear-gradient(#3fd0a6, #1fae86); box-shadow: 0 6px 0 #148063; }
+.gameButton.gbSentence:active { transform: translateY(4px); box-shadow: 0 2px 0 #148063; }
