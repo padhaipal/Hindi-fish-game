@@ -1,19 +1,28 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// FISH GAME (ALfA English) — catch the fish with the right letter.
+// FISH GAME (ALfA English) — catch ALL the fish with the right letter.
 // ---------------------------------------------------------------------------
 // Pedagogy: the child is shown a PICTURE they know (an apple) and hears the
-// word ("apple"). They must catch a fish showing the letter that word starts
-// with (a) — i.e. they map the SOUND to the letter, never the letter's name.
+// word then its sound ("apple … /a/"). They must catch the fish showing the
+// letter that word starts with (a) — i.e. they map the SOUND to the letter,
+// never the letter's name.
 //
-// Round flow:
+// Game flow:
 //   1. "start"   — big Play button (unlocks audio + speech on the first tap).
-//   2. "playing" — a target picture is shown; fish swim; the target word is
-//                  spoken once. Tapping the target letter's fish = a catch:
-//                  it splashes away, the word replays, the next target appears.
-//                  A wrong fish just shakes. After 6 catches you win.
-//   3. "won"     — trophy overlay with Play again / All games / Next lesson.
+//   2. "playing" — the game runs one ROUND per letter in the lesson. Each round
+//                  targets a different letter (the lesson's letters, shuffled).
+//                  Several fish swim; some carry the target letter and the rest
+//                  carry other lesson letters. The child must catch EVERY target
+//                  fish to finish the round and move on to the next target. The
+//                  pond grows (3 fish up to 7) as the rounds progress.
+//   3. "won"     — trophy overlay after the last round: Play again / All games /
+//                  Next lesson.
+//
+// Speech (see lib/sound):
+//   - round start        -> speakCombo(targetId)  (picture-word then its sound)
+//   - catch a TARGET fish -> speakLetterSound(targetId)  (the letter's sound)
+//   - catch a WRONG fish  -> buzzWrong() + a shake; play continues.
 //
 // Fish motion (position + swivel + bounce) is animated with requestAnimationFrame
 // writing transforms straight to the DOM, so we never re-render per frame.
@@ -21,31 +30,25 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Fish from "./Fish";
-import { buildLetterIds, FishSpec, randomColor } from "@/lib/fish/round";
+import { buildFish, FishSpec, shuffle } from "@/lib/fish/round";
 import { getLetter, Letter } from "@/lib/letters";
 import { getReadingLesson, READING_LESSONS } from "@/lib/lessons";
 import LetterPicture from "@/components/shared/LetterPicture";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
-import {
-  dingCorrect,
-  buzzWrong,
-  chimeWin,
-  unlockSfx,
-} from "@/lib/sfx";
-import { say, stopSpeech, primeSpeech } from "@/lib/speech";
+import { buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
+import { speakCombo, speakLetterSound, stopAll } from "@/lib/sound";
+import { primeSpeech } from "@/lib/speech";
 
 // Must match the .fish width/height in globals.css.
 const FISH = 88;
 // How close two fish centres may get before they bounce off each other.
 const COLLIDE_DIST = 60;
-// Fish in the pond at once (5–7 keeps it lively but not crowded).
-const FISH_COUNT = 6;
-// Target fish per pond (so it is always catchable, and quick to find).
-const TARGET_FISH = 2;
-// Catch this many correct targets to win the round.
-const GOAL = 6;
 // Base swim speed (pixels per second).
 const SPEED = 46;
+// Pond starts at this many fish and grows one per round, capped so it never
+// gets crowded (the target-fish table only goes up to 7).
+const MIN_FISH = 3;
+const MAX_FISH = 7;
 
 type Phase = "start" | "playing" | "won";
 
@@ -76,6 +79,8 @@ function facingTransform(vx: number, vy: number): string {
 export default function FishGame({ lesson }: { lesson: number }) {
   // The lesson's letter pool (fall back to the first reading lesson).
   const pool = (getReadingLesson(lesson) ?? READING_LESSONS[0]).letters;
+  // One round per letter in the lesson.
+  const totalRounds = pool.length;
 
   // The next reading lesson (for the "Next lesson" link), if any.
   const lessonIdx = READING_LESSONS.findIndex((l) => l.n === lesson);
@@ -87,7 +92,8 @@ export default function FishGame({ lesson }: { lesson: number }) {
   const [phase, setPhase] = useState<Phase>("start");
   const [fish, setFish] = useState<FishSpec[]>([]);
   const [target, setTarget] = useState<Letter | null>(null);
-  const [caughtCount, setCaughtCount] = useState(0);
+  const [roundNum, setRoundNum] = useState(1);
+  const [caughtTargets, setCaughtTargets] = useState(0);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const [roundId, setRoundId] = useState(0);
 
@@ -97,10 +103,13 @@ export default function FishGame({ lesson }: { lesson: number }) {
   const fishGraphics = useRef<Map<number, HTMLSpanElement>>(new Map());
   const motion = useRef<Map<number, Motion>>(new Map());
   const caughtRef = useRef<Set<number>>(new Set());
-  const colorRef = useRef<Map<number, string>>(new Map());
   const targetRef = useRef<Letter | null>(null);
-  const acceptRef = useRef(false); // ignore taps during a catch transition
-  const caughtCountRef = useRef(0);
+  const acceptRef = useRef(false); // ignore taps during a round transition
+  const caughtTargetsRef = useRef(0);
+  const targetsNeededRef = useRef(1);
+  const roundIndexRef = useRef(0); // 0-based index into letterOrderRef
+  const letterOrderRef = useRef<string[]>([]); // lesson letters, shuffled per game
+  const fishIdSeq = useRef(0); // fresh ids each round (fish count changes)
   const rafRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
   const burstSeq = useRef(0);
@@ -117,50 +126,48 @@ export default function FishGame({ lesson }: { lesson: number }) {
     []
   );
 
-  // Build a fresh set of fish specs (stable ids 0..FISH_COUNT-1) whose letters
-  // guarantee the target letter is present.
-  const buildFish = useCallback(
-    (targetId: string): FishSpec[] => {
-      const letterIds = buildLetterIds(pool, targetId, FISH_COUNT, TARGET_FISH);
-      return letterIds.map((letterId, i) => {
-        let color = colorRef.current.get(i);
-        if (!color) {
-          color = randomColor();
-          colorRef.current.set(i, color);
-        }
-        return { id: i, letterId, char: letterId, color };
-      });
+  // ---- start a round (by 0-based index into the shuffled letter order) ----
+  const startRound = useCallback(
+    (index: number) => {
+      const order = letterOrderRef.current;
+      const targetId = order[index % order.length];
+      const t = getLetter(targetId);
+      // Pond grows one fish per round, capped so it stays solvable.
+      const count = Math.min(MIN_FISH + index, MAX_FISH);
+      const specs = buildFish(pool, targetId, count, fishIdSeq.current);
+      fishIdSeq.current += specs.length;
+
+      targetRef.current = t;
+      roundIndexRef.current = index;
+      caughtRef.current = new Set();
+      caughtTargetsRef.current = 0;
+      targetsNeededRef.current = specs.filter((f) => f.isTarget).length;
+      acceptRef.current = true;
+      lastRef.current = 0;
+      fishEls.current = new Map();
+      fishGraphics.current = new Map();
+      motion.current = new Map();
+
+      setTarget(t);
+      setFish(specs);
+      setRoundNum(index + 1);
+      setCaughtTargets(0);
+      setPhase("playing");
+      setRoundId((r) => r + 1);
     },
     [pool]
   );
 
-  // Pick a target letter from the pool, avoiding an immediate repeat.
-  const pickTarget = useCallback(
-    (avoidId?: string): Letter => {
-      const choices = pool.filter((id) => id !== avoidId);
-      const src = choices.length ? choices : pool;
-      return getLetter(src[Math.floor(Math.random() * src.length)]);
-    },
-    [pool]
-  );
+  // ---- start a brand-new game --------------------------------------------
+  // Reshuffle the lesson's letters (so each round's target is random per
+  // player), then begin at the first round.
+  const newGame = useCallback(() => {
+    letterOrderRef.current = shuffle([...pool]);
+    fishIdSeq.current = 0;
+    startRound(0);
+  }, [pool, startRound]);
 
-  // ---- start a brand-new round -------------------------------------------
-  const newRound = useCallback(() => {
-    const first = pickTarget();
-    targetRef.current = first;
-    caughtRef.current = new Set();
-    caughtCountRef.current = 0;
-    acceptRef.current = true;
-    lastRef.current = 0;
-
-    setTarget(first);
-    setCaughtCount(0);
-    setFish(buildFish(first.id));
-    setPhase("playing");
-    setRoundId((r) => r + 1);
-  }, [buildFish, pickTarget]);
-
-  // ---- place fish + speak the target once, each new round ----------------
+  // ---- place fish + speak the target combo, each new round ---------------
   useLayoutEffect(() => {
     if (phase !== "playing") return;
     const pond = pondRef.current;
@@ -209,8 +216,8 @@ export default function FishGame({ lesson }: { lesson: number }) {
       }
     });
 
-    // Speak the target word once as the round begins.
-    if (targetRef.current) say(targetRef.current.word);
+    // Speak the target combo (picture-word then its sound) as the round begins.
+    if (targetRef.current) speakCombo(targetRef.current.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId]);
 
@@ -224,34 +231,6 @@ export default function FishGame({ lesson }: { lesson: number }) {
     }, 800);
   }, []);
 
-  // Move a fish (by id) to a fresh random spot and apply it immediately, so a
-  // revived (recycled) fish never flashes at its old position.
-  const repositionFish = useCallback((id: number) => {
-    const pond = pondRef.current;
-    if (!pond) return;
-    const W = pond.clientWidth;
-    const H = pond.clientHeight;
-    const x = Math.random() * Math.max(1, W - FISH);
-    const y = Math.random() * Math.max(1, H - FISH);
-    const angle = Math.random() * Math.PI * 2;
-    const fm: Motion = {
-      x,
-      y,
-      vx: Math.cos(angle) * SPEED,
-      vy: Math.sin(angle) * SPEED,
-      bob: Math.random() * Math.PI * 2,
-      facing: "",
-    };
-    motion.current.set(id, fm);
-    const el = fishEls.current.get(id);
-    if (el) el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    const g = fishGraphics.current.get(id);
-    if (g) {
-      fm.facing = facingTransform(fm.vx, fm.vy);
-      g.style.transform = fm.facing;
-    }
-  }, []);
-
   // ---- handle a tap on a fish --------------------------------------------
   const handleTap = useCallback(
     (spec: FishSpec, el: HTMLButtonElement) => {
@@ -260,54 +239,39 @@ export default function FishGame({ lesson }: { lesson: number }) {
       if (!t) return;
       if (caughtRef.current.has(spec.id)) return;
 
-      if (spec.letterId === t.id) {
-        // CORRECT: splash the fish, replay the word, reward, next target.
-        acceptRef.current = false;
+      if (spec.isTarget) {
+        // CORRECT: splash the fish, play the letter's SOUND, reward.
         caughtRef.current.add(spec.id);
         el.classList.add("caught");
-        dingCorrect();
-        say(t.word);
+        speakLetterSound(t.id);
 
         const m = motion.current.get(spec.id);
         if (m) spawnBurst(m.x + FISH / 2, m.y);
 
-        caughtCountRef.current += 1;
-        const done = caughtCountRef.current;
-        setCaughtCount(done);
+        caughtTargetsRef.current += 1;
+        setCaughtTargets(caughtTargetsRef.current);
 
-        if (done >= GOAL) {
-          // Round complete — celebrate.
+        // All target fish caught -> round complete.
+        if (caughtTargetsRef.current >= targetsNeededRef.current) {
+          acceptRef.current = false;
+          const isLast = roundIndexRef.current >= totalRounds - 1;
           window.setTimeout(() => {
-            chimeWin();
-            setPhase("won");
-          }, 500);
-          return;
+            if (isLast) {
+              chimeWin();
+              setPhase("won");
+            } else {
+              startRound(roundIndexRef.current + 1);
+            }
+          }, 550);
         }
-
-        // Advance to the next target after the splash finishes.
-        window.setTimeout(() => {
-          const next = pickTarget(t.id);
-          targetRef.current = next;
-
-          // Revive the caught fish at a new spot and rebuild the pond's letters
-          // so the new target is present.
-          repositionFish(spec.id);
-          el.classList.remove("caught");
-          caughtRef.current.delete(spec.id);
-
-          setTarget(next);
-          setFish(buildFish(next.id));
-          say(next.word);
-          acceptRef.current = true;
-        }, 500);
       } else {
-        // WRONG: the fish stays and shakes.
+        // WRONG: the fish stays and shakes; play continues (no game over).
         buzzWrong();
         el.classList.add("shake");
         window.setTimeout(() => el.classList.remove("shake"), 450);
       }
     },
-    [buildFish, pickTarget, repositionFish, spawnBurst]
+    [spawnBurst, startRound, totalRounds]
   );
 
   // ---- the animation loop (runs only while "playing") --------------------
@@ -413,22 +377,26 @@ export default function FishGame({ lesson }: { lesson: number }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, phase]);
 
-  // Stop any speech if we leave the game.
-  useEffect(() => () => stopSpeech(), []);
+  // Stop any speech/audio if we leave the game.
+  useEffect(() => () => stopAll(), []);
 
-  const progressPct = Math.min(100, (caughtCount / GOAL) * 100);
+  const targetsNeeded = fish.filter((f) => f.isTarget).length;
+  const progressPct =
+    targetsNeeded > 0 ? Math.min(100, (caughtTargets / targetsNeeded) * 100) : 0;
 
   return (
     <div className="app">
-      {/* Top bar: catches + lesson */}
+      {/* Top bar: target fish caught + which round */}
       <div className="topbar">
         <div className="scorePill">
           <span>🐟</span>
           <span>
-            {caughtCount}/{GOAL}
+            {caughtTargets}/{targetsNeeded}
           </span>
         </div>
-        <div className="levelPill">📖 {lesson}</div>
+        <div className="levelPill">
+          📖 {lesson} · {roundNum}/{totalRounds}
+        </div>
       </div>
 
       {/* Target: the picture + a Listen button (no letter shown — that's the game!) */}
@@ -445,7 +413,7 @@ export default function FishGame({ lesson }: { lesson: number }) {
             className="targetSound"
             onClick={() => {
               unlockSfx();
-              if (targetRef.current) say(targetRef.current.word);
+              if (targetRef.current) speakCombo(targetRef.current.id);
             }}
             aria-label="listen to the target word"
           >
@@ -493,7 +461,7 @@ export default function FishGame({ lesson }: { lesson: number }) {
               onClick={() => {
                 unlockSfx();
                 primeSpeech();
-                newRound();
+                newGame();
               }}
             >
               ▶ Play
@@ -514,7 +482,7 @@ export default function FishGame({ lesson }: { lesson: number }) {
               onClick={() => {
                 unlockSfx();
                 primeSpeech();
-                newRound();
+                newGame();
               }}
             >
               ▶ Play again

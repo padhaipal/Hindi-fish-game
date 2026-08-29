@@ -4,11 +4,12 @@
 // The board is a list of COLUMNS, each a stack of blocks bottom→top (index 0 =
 // bottom). Gravity is straight down: removing blocks lets those above fall.
 //
-// This is a simplified adaptation of the Hindi Blocks engine: instead of
-// requiring letters to sit in an adjacent RUN, the child taps the word's letters
-// in order anywhere on the board, so the engine only needs board building,
-// lookup and gravity. (Copied/simplified here — nothing is imported from the
-// Hindi app.)
+// A word must appear as a straight RUN of adjacent blocks and be spelled in
+// order:
+//   - HORIZONTAL: same row, consecutive columns, read left→right.
+//   - VERTICAL:   same column, stacked, read top→bottom.
+// These rules match the board generator in words.ts. (This is an adaptation of
+// the Hindi Blocks engine — nothing is imported from the Hindi app.)
 // ---------------------------------------------------------------------------
 
 export interface Blk {
@@ -16,6 +17,14 @@ export interface Blk {
   char: string; // a single lowercase letter
 }
 export type Board = Blk[][]; // columns, index 0 = bottom
+
+// A run: anchor (c, L) is the LEFT cell (horizontal) or BOTTOM cell (vertical).
+export interface Occ {
+  c: number;
+  L: number;
+  o: "h" | "v";
+  len: number;
+}
 
 // Build a board from a column/char grid. Each block gets a unique id.
 export function makeBoard(cols: string[][]): Board {
@@ -43,26 +52,59 @@ export function removeByIds(board: Board, ids: number[]): Board {
   return board.map((col) => col.filter((b) => !gone.has(b.id)));
 }
 
-// Greedily pick the blocks that spell `word`, one distinct block per letter in
-// order (used only for the first-word demo hint). Returns null if the word is
-// not fully present on the board.
-export function spellBlocks(board: Board, word: string): { id: number; c: number; L: number }[] | null {
-  const used = new Set<number>();
-  const out: { id: number; c: number; L: number }[] = [];
-  for (const ch of word) {
-    let found: { id: number; c: number; L: number } | null = null;
-    for (let c = 0; c < board.length && !found; c++) {
-      for (let L = 0; L < board[c].length; L++) {
-        const blk = board[c][L];
-        if (blk.char === ch && !used.has(blk.id)) {
-          found = { id: blk.id, c, L };
-          break;
-        }
-      }
+// All occurrences of a word (given by its characters), horizontal + vertical.
+export function occurrences(board: Board, chars: string[]): Occ[] {
+  const k = chars.length;
+  const out: Occ[] = [];
+  const cols = board.length;
+  // horizontal at row L: consecutive columns, read left→right
+  for (let c0 = 0; c0 + k <= cols; c0++) {
+    const maxL = Math.min(...Array.from({ length: k }, (_, i) => board[c0 + i].length));
+    for (let L = 0; L < maxL; L++) {
+      let ok = true;
+      for (let i = 0; i < k; i++) if (board[c0 + i][L].char !== chars[i]) { ok = false; break; }
+      if (ok) out.push({ c: c0, L, o: "h", len: k });
     }
-    if (!found) return null;
-    used.add(found.id);
-    out.push(found);
+  }
+  // vertical in a column, read top→bottom
+  for (let c = 0; c < cols; c++) {
+    for (let L0 = 0; L0 + k <= board[c].length; L0++) {
+      let ok = true;
+      for (let i = 0; i < k; i++) if (board[c][L0 + k - 1 - i].char !== chars[i]) { ok = false; break; }
+      if (ok) out.push({ c, L: L0, o: "v", len: k });
+    }
   }
   return out;
+}
+
+// The block ids of a run, in reading order (for highlighting the demo hint).
+export function occBlocks(board: Board, occ: Occ): number[] {
+  const ids: number[] = [];
+  if (occ.o === "h") {
+    for (let i = 0; i < occ.len; i++) ids.push(board[occ.c + i][occ.L].id);
+  } else {
+    for (let i = 0; i < occ.len; i++) ids.push(board[occ.c][occ.L + occ.len - 1 - i].id); // top→bottom
+  }
+  return ids;
+}
+
+// Given block ids in TAP order, if they form a straight run read in order
+// (left→right or top→bottom), return its chars + occurrence; else null.
+export function runFromIds(board: Board, ids: number[]): { chars: string[]; occ: Occ } | null {
+  const pos = ids.map((id) => findBlock(board, id));
+  if (pos.some((p) => p === null)) return null;
+  const p = pos as { c: number; L: number }[];
+  const n = p.length;
+  const chars = p.map(({ c, L }) => board[c][L].char);
+  if (n === 1) return { chars, occ: { c: p[0].c, L: p[0].L, o: "h", len: 1 } };
+
+  // horizontal: same row, columns increasing by 1 in tap order
+  const horiz = p.every((q, i) => q.L === p[0].L && q.c === p[0].c + i);
+  if (horiz) return { chars, occ: { c: p[0].c, L: p[0].L, o: "h", len: n } };
+
+  // vertical: same column, rows decreasing by 1 (top→bottom) in tap order
+  const vert = p.every((q, i) => q.c === p[0].c && q.L === p[0].L - i);
+  if (vert) return { chars, occ: { c: p[0].c, L: p[n - 1].L, o: "v", len: n } };
+
+  return null;
 }

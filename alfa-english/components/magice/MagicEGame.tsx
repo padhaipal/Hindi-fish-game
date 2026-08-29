@@ -9,8 +9,9 @@
 
 import { useState, type CSSProperties } from "react";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
-import { say, stopSpeech, primeSpeech } from "@/lib/speech";
-import { dingCorrect, chimeWin, tick, unlockSfx } from "@/lib/sfx";
+import { stopSpeech, primeSpeech } from "@/lib/speech";
+import { speakWord } from "@/lib/sound";
+import { dingCorrect, buzzWrong, chimeWin, tick, unlockSfx } from "@/lib/sfx";
 
 interface WordInfo {
   word: string;
@@ -72,16 +73,29 @@ export default function MagicEGame() {
   const [eShown, setEShown] = useState(false); // drives the slide-in transition
   const [pulse, setPulse] = useState(false); // vowel pop while it says its name
 
+  // Within a round: first "transform" (add the magic e), then a listen-and-
+  // choose "quiz" that tests short vs. long by ear.
+  const [phase, setPhase] = useState<"transform" | "quiz">("transform");
+  const [quizTarget, setQuizTarget] = useState<"short" | "long">("short"); // which word plays
+  const [longFirst, setLongFirst] = useState(false); // left/right card order
+  const [quizSolved, setQuizSolved] = useState(false); // correct card tapped
+  const [wrongPick, setWrongPick] = useState<"short" | "long" | null>(null); // shake/redden
+  const [wrongNonce, setWrongNonce] = useState(0); // re-triggers the shake on repeat wrongs
+
   const pair = PAIRS[index];
   const shortWord = pair.short.word;
   const longWord = pair.long.word;
   const vi = vowelIndex(shortWord);
   const vowelChar = shortWord[vi];
+  const targetWord = quizTarget === "short" ? shortWord : longWord;
 
   function resetRound() {
     setRevealed(false);
     setEShown(false);
     setPulse(false);
+    setPhase("transform");
+    setQuizSolved(false);
+    setWrongPick(null);
   }
 
   function startGame() {
@@ -91,12 +105,12 @@ export default function MagicEGame() {
     setWon(false);
     setIndex(0);
     resetRound();
-    setTimeout(() => say(PAIRS[0].short.word), 220);
+    setTimeout(() => speakWord(PAIRS[0].short.word), 220);
   }
 
   function listen() {
     tick();
-    say(revealed ? longWord : shortWord);
+    speakWord(revealed ? longWord : shortWord);
   }
 
   function addMagicE() {
@@ -109,8 +123,47 @@ export default function MagicEGame() {
       setEShown(true);
       setPulse(true);
     });
-    setTimeout(() => say(longWord), 640);
+    setTimeout(() => speakWord(longWord), 640);
     setTimeout(() => setPulse(false), 1300);
+  }
+
+  // Move from the reveal into the listen-and-choose quiz for this same pair.
+  function startQuiz() {
+    tick();
+    stopSpeech();
+    const target: "short" | "long" = Math.random() < 0.5 ? "short" : "long";
+    setQuizTarget(target);
+    setLongFirst(Math.random() < 0.5);
+    setQuizSolved(false);
+    setWrongPick(null);
+    setPhase("quiz");
+    // Auto-play the word to identify, once, when the quiz appears.
+    const w = target === "short" ? shortWord : longWord;
+    setTimeout(() => speakWord(w), 380);
+  }
+
+  // Replay the word the child must identify.
+  function playQuiz() {
+    tick();
+    speakWord(targetWord);
+  }
+
+  // Tap an answer card during the quiz.
+  function pickAnswer(kind: "short" | "long") {
+    if (quizSolved) return;
+    if (kind === quizTarget) {
+      tick();
+      dingCorrect();
+      setWrongPick(null);
+      setQuizSolved(true);
+    } else {
+      buzzWrong();
+      setWrongPick(kind);
+      setWrongNonce((n) => n + 1);
+      // Replay the target so they can compare and try again.
+      setTimeout(() => speakWord(targetWord), 260);
+      setTimeout(() => setWrongPick(null), 480);
+    }
   }
 
   function next() {
@@ -124,7 +177,7 @@ export default function MagicEGame() {
     const n = index + 1;
     setIndex(n);
     resetRound();
-    setTimeout(() => say(PAIRS[n].short.word), 220);
+    setTimeout(() => speakWord(PAIRS[n].short.word), 220);
   }
 
   function playAgain() {
@@ -133,7 +186,51 @@ export default function MagicEGame() {
     setWon(false);
     setIndex(0);
     resetRound();
-    setTimeout(() => say(PAIRS[0].short.word), 220);
+    setTimeout(() => speakWord(PAIRS[0].short.word), 220);
+  }
+
+  // ---- quiz answer card ------------------------------------------------
+  function answerCard(kind: "short" | "long") {
+    const wi = kind === "short" ? pair.short : pair.long;
+    const isCorrectCard = quizSolved && kind === quizTarget;
+    const isWrongCard = wrongPick === kind;
+    const style: CSSProperties = {
+      flex: 1,
+      minWidth: 0,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      gap: 6,
+      padding: "16px 10px",
+      borderRadius: 22,
+      background: isCorrectCard ? "#e7ffef" : isWrongCard ? "#ffe6e6" : "#fff",
+      border: `5px solid ${isCorrectCard ? "#37c46b" : isWrongCard ? "#ff5a5a" : "#c9a6f0"}`,
+      boxShadow: isCorrectCard
+        ? "0 6px 0 #00000018, 0 0 20px 3px #37c46b66"
+        : "0 6px 0 #00000018",
+      cursor: quizSolved ? "default" : "pointer",
+      transition: "background .2s ease, border-color .2s ease, box-shadow .2s ease",
+      animation: isWrongCard ? "shake .42s ease" : undefined,
+      WebkitTapHighlightColor: "transparent",
+    };
+    return (
+      <button
+        key={`${kind}-${isWrongCard ? wrongNonce : 0}`}
+        onClick={() => pickAnswer(kind)}
+        disabled={quizSolved}
+        style={style}
+      >
+        <span aria-hidden="true" style={{ fontSize: 52, lineHeight: 1 }}>
+          {wi.emoji}
+        </span>
+        <span style={{ fontSize: 30, fontWeight: 800, color: isCorrectCard ? "#1f7a3f" : INK }}>
+          {wi.word}
+        </span>
+        <span style={{ fontSize: 20, height: 22, lineHeight: 1 }}>
+          {isCorrectCard ? "✅" : ""}
+        </span>
+      </button>
+    );
   }
 
   // ---- letter tile -----------------------------------------------------
@@ -275,60 +372,101 @@ export default function MagicEGame() {
           </div>
 
           {/* controls */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, width: "100%", maxWidth: 340 }}>
-            <button className="soundBtn" onClick={listen} style={{ marginTop: 0 }}>
-              <SpeakerIcon size={26} />
-              Listen
-            </button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, width: "100%", maxWidth: 360 }}>
+            {phase === "transform" ? (
+              <>
+                <button className="soundBtn" onClick={listen} style={{ marginTop: 0 }}>
+                  <SpeakerIcon size={26} />
+                  Listen
+                </button>
 
-            {!revealed ? (
-              <button
-                onClick={addMagicE}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                  border: "none",
-                  borderRadius: 999,
-                  padding: "16px 26px",
-                  fontSize: 24,
-                  fontWeight: 800,
-                  color: "#5a3b00",
-                  background: "linear-gradient(#ffe27a, #ffc21f)",
-                  boxShadow: "0 6px 0 #b98700, 0 0 22px 3px #ffd23f88",
-                  cursor: "pointer",
-                  animation: "pop .5s ease",
-                }}
-              >
-                <span
-                  aria-hidden="true"
+                {!revealed ? (
+                  <button
+                    onClick={addMagicE}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      border: "none",
+                      borderRadius: 999,
+                      padding: "16px 26px",
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: "#5a3b00",
+                      background: "linear-gradient(#ffe27a, #ffc21f)",
+                      boxShadow: "0 6px 0 #b98700, 0 0 22px 3px #ffd23f88",
+                      cursor: "pointer",
+                      animation: "pop .5s ease",
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 36,
+                        height: 36,
+                        borderRadius: 12,
+                        background: "#fff",
+                        color: "#7c3fe0",
+                        fontSize: 24,
+                        fontWeight: 800,
+                        boxShadow: "0 0 12px 2px #ffffffcc",
+                      }}
+                    >
+                      e
+                    </span>
+                    Add magic e! 🪄
+                  </button>
+                ) : (
+                  <button
+                    className="bigButton blue"
+                    onClick={startQuiz}
+                    style={{ maxWidth: 340, animation: "pop .4s ease" }}
+                  >
+                    Now play! 🎧
+                  </button>
+                )}
+              </>
+            ) : (
+              <>
+                <div
                   style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 36,
-                    height: 36,
-                    borderRadius: 12,
-                    background: "#fff",
-                    color: "#7c3fe0",
-                    fontSize: 24,
+                    fontSize: 21,
                     fontWeight: 800,
-                    boxShadow: "0 0 12px 2px #ffffffcc",
+                    color: "#fff",
+                    textAlign: "center",
+                    textShadow: "0 1px 4px #00000033",
                   }}
                 >
-                  e
-                </span>
-                Add magic e! 🪄
-              </button>
-            ) : (
-              <button
-                className="bigButton blue"
-                onClick={next}
-                style={{ maxWidth: 320 }}
-              >
-                {index + 1 >= PAIRS.length ? "Finish 🎉" : "Next →"}
-              </button>
+                  Which word is this? 🎧
+                </div>
+
+                <button className="soundBtn" onClick={playQuiz} style={{ marginTop: 0 }}>
+                  <SpeakerIcon size={26} />
+                  ▶ Play again
+                </button>
+
+                {/* two big tappable answer cards, random left/right order */}
+                <div style={{ display: "flex", gap: 12, width: "100%" }}>
+                  {(longFirst
+                    ? (["long", "short"] as const)
+                    : (["short", "long"] as const)
+                  ).map((k) => answerCard(k))}
+                </div>
+
+                {quizSolved && (
+                  <button
+                    className="bigButton blue"
+                    onClick={next}
+                    style={{ maxWidth: 340, animation: "pop .4s ease" }}
+                  >
+                    {index + 1 >= PAIRS.length ? "Finish 🎉" : "Next →"}
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
