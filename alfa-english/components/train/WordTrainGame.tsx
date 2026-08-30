@@ -48,9 +48,18 @@ function shuffle<T>(input: T[]): T[] {
   return a;
 }
 
-// One session: a shuffled handful of CVC words.
+// ONLY Lesson-1 phonic words — decodable with a, b, t, g, c, m:
+//   cat, bat, bag, cab, tag, mat. No other-lesson words appear.
+const LESSON1_WORDS: CvcWord[] = CVC_WORDS.filter((w) => w.lesson === 1);
+
+// One session: the Lesson-1 words, shuffled and cycled to SESSION_LENGTH so
+// each round picks from this set.
 function buildSession(): CvcWord[] {
-  return shuffle(CVC_WORDS).slice(0, Math.min(SESSION_LENGTH, CVC_WORDS.length));
+  const out: CvcWord[] = [];
+  while (out.length < SESSION_LENGTH) {
+    out.push(...shuffle(LESSON1_WORDS));
+  }
+  return out.slice(0, SESSION_LENGTH);
 }
 
 const ALPHABET = "abcdefghijklmnopqrstuvwxyz".split("");
@@ -153,25 +162,32 @@ export default function WordTrainGame() {
 
       const next = [...placed, ch];
       setPlaced(next);
-      speakLetterSound(ch); // the letter's SOUND as it clicks into place
 
-      if (next.length < letters.length) return;
+      if (next.length < letters.length) {
+        // Not the last coach: play this letter's SOUND as it clicks into place.
+        speakLetterSound(ch);
+        return;
+      }
 
-      // Whole word complete -> speak it, chug off, then load the next word.
+      // Whole word complete. Play the FINAL letter's sound, then wait ~1 second,
+      // THEN say the whole word while the train chugs off and the next loads.
       busyRef.current = true;
       dingCorrect();
-      later(() => {
-        setMoving(true);
-        speakWord(word.word);
-      }, 500);
-      later(() => {
-        if (isLast) {
-          chimeWin();
-          setPhase("done");
-        } else {
-          loadWord(session, wordIdx + 1);
-        }
-      }, 2200);
+      const w = word;
+      speakLetterSound(ch, () => {
+        later(() => {
+          setMoving(true);
+          speakWord(w.word);
+          later(() => {
+            if (isLast) {
+              chimeWin();
+              setPhase("done");
+            } else {
+              loadWord(session, wordIdx + 1);
+            }
+          }, 1700);
+        }, 1000); // clear ~1s gap between the last letter-sound and the word
+      });
     },
     [word, placed, moving, isLast, session, wordIdx, loadWord, later]
   );

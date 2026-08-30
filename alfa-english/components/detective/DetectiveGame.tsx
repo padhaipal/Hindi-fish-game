@@ -1,11 +1,12 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// SOUND DETECTIVE 🕵️ — find the two-letters-that-make-ONE-sound.
-// The child hears a word, looks at the picture, and taps the sound-cluster
-// hiding inside it. Level 1 hunts the digraphs sh / ch / th; Level 2 hunts
-// beginning blends (st, tr, fr, gr, pl ...). A correct tap lights up those
-// exact letters inside the printed word. Mobile-first, big tap targets.
+// SOUND DETECTIVE 🕵️ — fill the BLANK with the sound-cluster that's hiding.
+// The child hears a word, looks at the picture, and sees the word with its
+// tricky cluster BLANKED where it belongs (e.g. "__ar", "fi__"). They tap the
+// cluster that fills the blank; a correct tap slots the letters back in, lit
+// up. Level 1 hunts beginning BLENDS (st, tr, fr, gr, pl ...); Level 2 hunts
+// the DIGRAPHS (ng, sh, ch, th, ph). Mobile-first, big tap targets.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useState, type CSSProperties } from "react";
@@ -19,29 +20,12 @@ interface WordItem {
   word: string;
   emoji: string;
   answer: string;
-  options?: string[]; // only Level 2 carries its own option set
+  options: string[]; // correct + 2 distractors; shuffled per round
 }
 
-// LEVEL 1 — digraphs. The three option buttons are ALWAYS sh / ch / th.
-const DIGRAPH_OPTIONS = ["sh", "ch", "th"] as const;
+// LEVEL 1 — beginning BLENDS. Each word ships its own 3 options (answer + 2
+// plausible distractor blends). The blank sits at the START of the word.
 const LEVEL1_WORDS: WordItem[] = [
-  { word: "ship", emoji: "🚢", answer: "sh" },
-  { word: "fish", emoji: "🐟", answer: "sh" },
-  { word: "shell", emoji: "🐚", answer: "sh" },
-  { word: "brush", emoji: "🖌️", answer: "sh" },
-  { word: "chair", emoji: "🪑", answer: "ch" },
-  { word: "cheese", emoji: "🧀", answer: "ch" },
-  { word: "chess", emoji: "♟️", answer: "ch" },
-  { word: "thumb", emoji: "👍", answer: "th" },
-  { word: "three", emoji: "3️⃣", answer: "th" },
-  { word: "bath", emoji: "🛁", answer: "th" },
-  { word: "teeth", emoji: "🦷", answer: "th" },
-  { word: "math", emoji: "➗", answer: "th" },
-];
-
-// LEVEL 2 — beginning blends. Each word ships its own 3 options (answer + 2
-// plausible distractor blends). Options get shuffled per round.
-const LEVEL2_WORDS: WordItem[] = [
   { word: "star", emoji: "⭐", answer: "st", options: ["st", "sp", "sk"] },
   { word: "stop", emoji: "🛑", answer: "st", options: ["st", "sn", "sl"] },
   { word: "tree", emoji: "🌳", answer: "tr", options: ["tr", "dr", "cr"] },
@@ -53,14 +37,33 @@ const LEVEL2_WORDS: WordItem[] = [
   { word: "flag", emoji: "🚩", answer: "fl", options: ["fl", "fr", "bl"] },
   { word: "drum", emoji: "🥁", answer: "dr", options: ["dr", "tr", "gr"] },
   { word: "crab", emoji: "🦀", answer: "cr", options: ["cr", "cl", "gr"] },
+  { word: "sled", emoji: "🛷", answer: "sl", options: ["sl", "sn", "sk"] },
 ];
 
-const ROUNDS_PER_LEVEL = 7;
+// LEVEL 2 — DIGRAPHS (ng, sh, ch, th, ph). Options are always drawn from that
+// digraph set. The blank sits wherever the cluster lives in the word.
+const LEVEL2_WORDS: WordItem[] = [
+  { word: "ship", emoji: "🚢", answer: "sh", options: ["sh", "ch", "th"] },
+  { word: "fish", emoji: "🐟", answer: "sh", options: ["sh", "ph", "ch"] },
+  { word: "shell", emoji: "🐚", answer: "sh", options: ["sh", "th", "ch"] },
+  { word: "chair", emoji: "🪑", answer: "ch", options: ["ch", "sh", "th"] },
+  { word: "cheese", emoji: "🧀", answer: "ch", options: ["ch", "th", "ph"] },
+  { word: "chess", emoji: "♟️", answer: "ch", options: ["ch", "sh", "ng"] },
+  { word: "thumb", emoji: "👍", answer: "th", options: ["th", "sh", "ch"] },
+  { word: "bath", emoji: "🛁", answer: "th", options: ["th", "sh", "ph"] },
+  { word: "teeth", emoji: "🦷", answer: "th", options: ["th", "ch", "ng"] },
+  { word: "ring", emoji: "💍", answer: "ng", options: ["ng", "th", "sh"] },
+  { word: "king", emoji: "👑", answer: "ng", options: ["ng", "ph", "ch"] },
+  { word: "phone", emoji: "📱", answer: "ph", options: ["ph", "sh", "th"] },
+];
+
+const ROUNDS_PER_LEVEL = 8;
 
 interface Round {
   word: string;
   emoji: string;
   answer: string;
+  blankAt: number; // index in `word` where the cluster (and blank) sits
   options: string[]; // shuffled, ready to render
 }
 
@@ -82,7 +85,8 @@ function buildLevel(level: 0 | 1): Round[] {
       word: w.word,
       emoji: w.emoji,
       answer: w.answer,
-      options: shuffled(level === 0 ? DIGRAPH_OPTIONS : (w.options ?? [])),
+      blankAt: w.word.indexOf(w.answer),
+      options: shuffled(w.options),
     }));
 }
 
@@ -140,7 +144,7 @@ export default function DetectiveGame() {
       dingCorrect();
       setWrongOption(null);
       setSolved(true);
-      // Say the word again with the caught letters now lit up.
+      // Say the word again with the blank now filled in.
       setTimeout(() => speakWord(round.word), 220);
     } else {
       buzzWrong();
@@ -160,14 +164,14 @@ export default function DetectiveGame() {
       setRoundIndex(roundIndex + 1);
       return;
     }
-    // Finished Level 1 → hunt the blends in Level 2.
+    // Finished Level 1 blends → hunt the digraphs in Level 2.
     if (level === 0) {
       setLevel(1);
       setRounds(buildLevel(1));
       setRoundIndex(0);
       return;
     }
-    // Finished the last blend round → celebrate.
+    // Finished the last digraph round → celebrate.
     setWon(true);
     chimeWin();
   }
@@ -177,33 +181,36 @@ export default function DetectiveGame() {
     startGame();
   }
 
-  // ---- the printed word, with the caught cluster lit up once solved -------
-  function renderWord(w: string, answer: string, lit: boolean) {
-    const idx = lit ? w.indexOf(answer) : -1;
+  // ---- the word with a BLANK where the cluster belongs --------------------
+  // Before solving: shows e.g. "fi__". After solving: the cluster slots back
+  // in, lit up in the highlight colour.
+  function renderWordBlank(r: Round, filled: boolean) {
+    const before = r.word.slice(0, r.blankAt);
+    const after = r.word.slice(r.blankAt + r.answer.length);
     const letter: CSSProperties = {
       fontSize: 46,
       fontWeight: 800,
       color: "#fff",
       letterSpacing: 1,
     };
-    if (idx < 0) {
-      return <span style={letter}>{w}</span>;
-    }
-    const before = w.slice(0, idx);
-    const match = w.slice(idx, idx + answer.length);
-    const after = w.slice(idx + answer.length);
-    const hit: CSSProperties = {
-      ...letter,
-      color: HILITE,
-      borderBottom: `5px solid ${HILITE}`,
-      padding: "0 2px",
+    const blankSlot: CSSProperties = {
+      fontSize: 46,
+      fontWeight: 800,
+      letterSpacing: 4,
+      color: filled ? HILITE : "#ffffff66",
+      borderBottom: `5px solid ${filled ? HILITE : GOLD}`,
+      padding: "0 6px",
+      margin: "0 2px",
       borderRadius: 4,
-      textShadow: "0 0 14px #ff6b3daa",
+      textShadow: filled ? "0 0 14px #ff6b3daa" : undefined,
+      transition: "color .2s ease, border-color .2s ease",
     };
+    // Placeholder blanks — one underscore per hidden letter.
+    const placeholder = "_".repeat(r.answer.length);
     return (
       <span style={{ display: "inline-flex", alignItems: "baseline" }}>
         {before && <span style={letter}>{before}</span>}
-        <span style={hit}>{match}</span>
+        <span style={blankSlot}>{filled ? r.answer : placeholder}</span>
         {after && <span style={letter}>{after}</span>}
       </span>
     );
@@ -244,17 +251,21 @@ export default function DetectiveGame() {
     );
   }
 
-  const pillText =
-    level === 0
-      ? "🔍 sh · ch · th"
-      : `🔍 Round ${roundIndex + 1}/${rounds.length}`;
+  const levelName = level === 0 ? "Blends" : "Digraphs";
+  const total = rounds.length || ROUNDS_PER_LEVEL;
+  const current = Math.min(roundIndex + 1, total);
+  const progressPct = total > 0 ? (current / total) * 100 : 0;
 
   return (
     <div className="app" style={rootStyle}>
       <a className="cornerLink" href="/" aria-label="All games">
         🏠
       </a>
-      {started && !won && <div className="blocksLevelPill">{pillText}</div>}
+      {started && !won && (
+        <div className="blocksLevelPill">
+          🔍 Level {level + 1} · {levelName}
+        </div>
+      )}
 
       {/* ---------------- Play area ---------------- */}
       {started && round && (
@@ -265,11 +276,50 @@ export default function DetectiveGame() {
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: 18,
+            gap: 16,
             padding: "64px 14px 24px",
             minHeight: 0,
           }}
         >
+          {/* ---- progress: counter + filling bar ---- */}
+          <div style={{ width: "100%", maxWidth: 340, flex: "0 0 auto" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+                fontSize: 14,
+                fontWeight: 800,
+                color: "#ffffffcc",
+                textShadow: "0 1px 3px #00000044",
+              }}
+            >
+              <span>🕵️ Round {current} / {total}</span>
+              <span>{levelName}</span>
+            </div>
+            <div
+              style={{
+                height: 12,
+                borderRadius: 8,
+                background: "#ffffff2e",
+                overflow: "hidden",
+                border: "1px solid #ffffff33",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${progressPct}%`,
+                  borderRadius: 8,
+                  background: `linear-gradient(90deg, ${GOLD}, ${HILITE})`,
+                  boxShadow: "0 0 12px #ffd23f88",
+                  transition: "width .35s ease",
+                }}
+              />
+            </div>
+          </div>
+
           {/* the picture clue */}
           <div
             style={{
@@ -290,9 +340,9 @@ export default function DetectiveGame() {
             <span aria-hidden="true">{round.emoji}</span>
           </div>
 
-          {/* the printed word (cluster lights up once caught) */}
+          {/* the word with a blank (fills in once solved) */}
           <div style={{ minHeight: 56, display: "flex", alignItems: "center" }}>
-            {renderWord(round.word, round.answer, solved)}
+            {renderWordBlank(round, solved)}
           </div>
 
           {/* listen again */}
@@ -313,8 +363,8 @@ export default function DetectiveGame() {
             }}
           >
             {solved
-              ? `🕵️ Found it! “${round.answer}” makes one sound.`
-              : "🕵️ Which 2 letters make ONE sound?"}
+              ? `🕵️ Case solved! “${round.answer}” fills the blank.`
+              : "🕵️ Which sound fills the blank?"}
           </div>
 
           {/* the option buttons */}
@@ -360,9 +410,9 @@ export default function DetectiveGame() {
                 color: "#1f8bbf",
               }}
             >
-              Two letters can hide ONE sound! 🔍
+              A sound is missing from the word! 🔍
               <br />
-              Listen, then catch the sound in the word.
+              Listen, then tap the letters that fill the blank.
             </p>
             <button className="bigButton" onClick={startGame}>
               ▶ Play
@@ -385,7 +435,7 @@ export default function DetectiveGame() {
                 color: "#1f8bbf",
               }}
             >
-              You caught every hidden sound! 🕵️🔍
+              You filled every hidden blank! 🕵️🔍
             </p>
             <button
               className="bigButton"
