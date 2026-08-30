@@ -176,12 +176,12 @@ export default function SillySentencesGame() {
         return;
       }
 
-      // Fourth (final) word chosen → assemble, speak, celebrate.
+      // Fourth (final) word chosen → assemble, READ the sentence, and only clap
+      // once it has finished being read out.
       const sentence = assemble(next);
       setPhase("done");
       setPop(true);
-      playApplause();
-      later(() => speakWord(sentence), 260);
+      later(() => speakWord(sentence, () => playApplause()), 260);
       later(() => setPop(false), 700);
     },
     [phase, picked, later]
