@@ -5,14 +5,20 @@
 // ---------------------------------------------------------------------------
 // The target LOWERCASE letter is drawn LARGE and FAINT as a guide. Over it we
 // place a single-file line of WAYPOINT dots that runs down the CENTRE-LINE
-// (skeleton) of the letter, plus one larger RED start dot at the top so the
+// (skeleton) of the letter, plus one larger RED start dot placed where the pen
+// begins for that letter's normal print stroke order (per-letter table), so the
 // child knows where to begin. As the child drags a finger the path is drawn in
 // bright chalk — CLIPPED to the letter's silhouette so a mark can never appear
 // outside the outline — and every waypoint the finger passes near (within a
-// generous tolerance) lights green. When ~85% of the waypoints are lit the
-// slate flashes green and we call onComplete. No stroke-order enforcement and
-// no fragile pixel-coverage test: any order works, a genuine trace over the
-// whole letter reliably completes, and a tap does not.
+// generous tolerance) lights green. Completion requires BOTH: (a) >=90% of the
+// waypoints lit, AND (b) EVERY stroke-EXTREMITY waypoint lit — a skeleton
+// ENDPOINT (degree-1 node): the two tips of t's crossbar, the end of j's hook,
+// f's crossbar tip, the ends of every stem. This forces the child to actually
+// cover the short strokes (crossbar / hook), not just the main stem, so a
+// partial trace that skips them does not complete. Isolated tittles of i/j sit
+// in a separate skeleton component and are never walked, so they stay excluded.
+// No stroke-order enforcement and no fragile pixel-coverage test: any order
+// works, a genuine full trace reliably completes, and a tap does not.
 //
 // HOW THE WAYPOINTS ARE FOUND
 //   1. Render the glyph SOLID to an offscreen canvas and read its opaque pixels.
@@ -45,10 +51,47 @@ const GUIDE_FONT = "'Baloo 2', 'Comic Sans MS', sans-serif";
 const MIN_DOTS = 10;
 const MAX_DOTS = 16; // aim for ~10–16 centre-line dots
 const SKEL_LONG = 130; // long axis of the binary grid used for thinning
-const COMPLETE_FRAC = 0.85; // light this fraction of waypoints to finish
+const COMPLETE_FRAC = 0.9; // light this fraction of waypoints (plus ALL endpoints) to finish
 const TOL_FRAC = 0.12; // tolerance radius = min(w, h) * this
 
 type Pt = { x: number; y: number };
+
+// Ordered waypoints plus a parallel flag marking which ones are stroke
+// EXTREMITIES (skeleton endpoints) that MUST be traced to complete.
+type Waypoints = { points: Pt[]; required: boolean[] };
+
+// Where the pen BEGINS for each lowercase letter in normal print stroke order,
+// as a NORMALISED position inside the glyph's bounding box (x: 0=left..1=right,
+// y: 0=top..1=bottom). The skeleton waypoint nearest this point becomes index 0
+// (the big red start dot). Letters not listed fall back to the top-most point.
+const START_POS: Record<string, Pt> = {
+  a: { x: 0.72, y: 0.42 },
+  b: { x: 0.3, y: 0.06 },
+  c: { x: 0.7, y: 0.34 },
+  d: { x: 0.72, y: 0.42 },
+  e: { x: 0.28, y: 0.55 },
+  f: { x: 0.7, y: 0.16 },
+  g: { x: 0.72, y: 0.42 },
+  h: { x: 0.3, y: 0.06 },
+  i: { x: 0.5, y: 0.34 },
+  j: { x: 0.55, y: 0.34 },
+  k: { x: 0.3, y: 0.06 },
+  l: { x: 0.5, y: 0.06 },
+  m: { x: 0.16, y: 0.36 },
+  n: { x: 0.2, y: 0.36 },
+  o: { x: 0.66, y: 0.3 },
+  p: { x: 0.28, y: 0.36 },
+  q: { x: 0.72, y: 0.42 },
+  r: { x: 0.28, y: 0.36 },
+  s: { x: 0.66, y: 0.32 },
+  t: { x: 0.5, y: 0.12 },
+  u: { x: 0.24, y: 0.36 },
+  v: { x: 0.2, y: 0.36 },
+  w: { x: 0.14, y: 0.36 },
+  x: { x: 0.24, y: 0.36 },
+  y: { x: 0.22, y: 0.36 },
+  z: { x: 0.24, y: 0.34 },
+};
 
 // Fit a bold font size so the letter sits comfortably inside the slate.
 function fitFont(ctx: CanvasRenderingContext2D, text: string, w: number, h: number): number {
@@ -108,11 +151,18 @@ function thin(grid: Uint8Array, w: number, h: number): void {
 }
 
 // Build the ordered centre-line waypoints from the glyph ink pixels.
-// Returns points ordered from the start (top) along the skeleton; index 0 is
-// the start point.
-function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
+// Returns points ordered from the start along the skeleton (index 0 is the
+// start — the skeleton pixel nearest `startNorm`, or the top-most pixel when
+// startNorm is null) together with a `required` flag per point marking the
+// stroke-extremity (skeleton endpoint) waypoints that MUST be traced.
+function buildWaypoints(
+  inkX: number[],
+  inkY: number[],
+  minDim: number,
+  startNorm: Pt | null,
+): Waypoints {
   const n = inkX.length;
-  if (n === 0) return [];
+  if (n === 0) return { points: [], required: [] };
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
@@ -170,7 +220,6 @@ function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
   let total = 0;
   let start = -1;
   let startY = Infinity;
-  let endTopY = Infinity;
   // First pass: total count, and the top-most skeleton pixel as a fallback start.
   for (let y = 0; y < gh; y++) {
     for (let x = 0; x < gw; x++) {
@@ -183,16 +232,22 @@ function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
       }
     }
   }
-  if (total === 0) return [];
-  // Prefer a skeleton ENDPOINT (degree 1) — the top-most one — as the start,
-  // since most lowercase letters begin at the top of a stroke.
-  for (let y = 0; y < gh; y++) {
-    for (let x = 0; x < gw; x++) {
-      const k = y * gw + x;
-      if (!grid[k]) continue;
-      if (neighbors(k).length === 1 && y < endTopY) {
-        endTopY = y;
-        start = k;
+  if (total === 0) return { points: [], required: [] };
+  // If we have a per-letter START position, pick the skeleton pixel NEAREST to
+  // it (mapped into grid coords) as index 0 — matching normal pen stroke order.
+  if (startNorm) {
+    const gxT = pad + startNorm.x * bw * factor;
+    const gyT = pad + startNorm.y * bh * factor;
+    let best = Infinity;
+    for (let y = 0; y < gh; y++) {
+      for (let x = 0; x < gw; x++) {
+        const k = y * gw + x;
+        if (!grid[k]) continue;
+        const d = (x - gxT) * (x - gxT) + (y - gyT) * (y - gyT);
+        if (d < best) {
+          best = d;
+          start = k;
+        }
       }
     }
   }
@@ -233,8 +288,19 @@ function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
     const gy = (k - gx) / gw;
     return { x: minX + (gx - pad + 0.5) / factor, y: minY + (gy - pad + 0.5) / factor };
   };
+
+  // Stroke EXTREMITIES: skeleton pixels of degree 1 that are part of the walked
+  // component (visited). These are the tips of every stroke — t's crossbar ends,
+  // j's hook, f's crossbar tip, the ends of stems. Isolated tittles live in a
+  // different component (never walked / not visited) so they are excluded here.
+  const endpointPts: Pt[] = [];
+  for (let k = 0; k < gw * gh; k++) {
+    if (!grid[k] || !visited[k]) continue;
+    if (neighbors(k).length === 1) endpointPts.push(toCss(k));
+  }
+
   const poly = path.map(toCss);
-  if (poly.length === 1) return [poly[0]];
+  if (poly.length === 1) return { points: [poly[0]], required: [false] };
 
   // Cumulative arc length.
   const cum: number[] = [0];
@@ -242,7 +308,7 @@ function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
     cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y));
   }
   const len = cum[cum.length - 1];
-  if (len <= 0) return [poly[0]];
+  if (len <= 0) return { points: [poly[0]], required: [false] };
 
   // How many evenly-spaced dots.
   const dots = Math.max(MIN_DOTS, Math.min(MAX_DOTS, Math.round(len / (minDim * 0.16))));
@@ -260,7 +326,33 @@ function buildWaypoints(inkX: number[], inkY: number[], minDim: number): Pt[] {
       y: poly[seg].y + (poly[seg + 1].y - poly[seg].y) * t,
     });
   }
-  return out;
+
+  // Guarantee a REQUIRED waypoint sits exactly on every stroke extremity, so a
+  // short stroke (crossbar / hook) registers with >=2 dots at its tips and the
+  // child must actually reach them. Snap the nearest even dot onto the tip when
+  // one is close (never the start dot, index 0); otherwise append a new dot.
+  const required: boolean[] = out.map(() => false);
+  const spacing = dots > 1 ? len / (dots - 1) : minDim * 0.16;
+  const snapNear = spacing * 0.6;
+  for (const e of endpointPts) {
+    let bi = -1;
+    let bd = Infinity;
+    for (let i = 0; i < out.length; i++) {
+      const d = Math.hypot(out[i].x - e.x, out[i].y - e.y);
+      if (d < bd) {
+        bd = d;
+        bi = i;
+      }
+    }
+    if (bi >= 0 && bd <= snapNear) {
+      required[bi] = true;
+      if (bi !== 0) out[bi] = { x: e.x, y: e.y };
+    } else {
+      out.push({ x: e.x, y: e.y });
+      required.push(true);
+    }
+  }
+  return { points: out, required };
 }
 
 export default function TraceSlate({ letter, width, height, onComplete }: Props) {
@@ -271,6 +363,7 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
   const dprRef = useRef(1);
   const fontPx = useRef(0);
   const waypoints = useRef<Pt[]>([]);
+  const required = useRef<boolean[]>([]); // which waypoints are stroke extremities
   const lit = useRef<boolean[]>([]);
   const litCount = useRef(0);
   const drawing = useRef(false);
@@ -426,7 +519,10 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
         }
       }
     }
-    waypoints.current = buildWaypoints(inkX, inkY, Math.min(width, height));
+    const startNorm = START_POS[letter.toLowerCase()] ?? null;
+    const built = buildWaypoints(inkX, inkY, Math.min(width, height), startNorm);
+    waypoints.current = built.points;
+    required.current = built.required;
     lit.current = waypoints.current.map(() => false);
     litCount.current = 0;
     lastPt.current = null;
@@ -455,11 +551,17 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
     if (doneRef.current) return;
     const total = waypoints.current.length;
     if (total === 0) return;
-    if (litCount.current / total >= COMPLETE_FRAC) {
-      doneRef.current = true;
-      setFlash(true);
-      window.setTimeout(() => onComplete(), 220);
+    // (a) enough of the whole centre-line covered.
+    if (litCount.current / total < COMPLETE_FRAC) return;
+    // (b) EVERY stroke-extremity (endpoint) waypoint traced — forces the child
+    // to cover short strokes like t's crossbar and j's hook, not just the stem.
+    const req = required.current;
+    for (let i = 0; i < total; i++) {
+      if (req[i] && !lit.current[i]) return;
     }
+    doneRef.current = true;
+    setFlash(true);
+    window.setTimeout(() => onComplete(), 220);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onComplete]);
 

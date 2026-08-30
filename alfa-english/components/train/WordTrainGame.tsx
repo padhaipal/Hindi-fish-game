@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CVC_WORDS, CvcWord } from "@/lib/lessons";
 import { stopSpeech, primeSpeech } from "@/lib/speech";
-import { speakLetterSound, speakWord } from "@/lib/sound";
+import { speakLetterSound, speakWord, playLose, stopAll } from "@/lib/sound";
 import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import JamIcon from "@/components/shared/JamIcon";
@@ -48,8 +48,8 @@ function shuffle<T>(input: T[]): T[] {
   return a;
 }
 
-// ONLY Lesson-1 phonic words — decodable with a, b, t, g, c, m:
-//   cat, bat, bag, cab, tag, mat. No other-lesson words appear.
+// ONLY Lesson-1 phonic words — decodable with a, b, t, g, c:
+//   cat, bat, bag, cab. (tag & mat were removed from the pool.)
 const LESSON1_WORDS: CvcWord[] = CVC_WORDS.filter((w) => w.lesson === 1);
 
 // One session: the Lesson-1 words, shuffled and cycled to SESSION_LENGTH so
@@ -97,6 +97,7 @@ export default function WordTrainGame() {
   } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const busyRef = useRef(false); // lock input while a word is resolving
+  const wrongCountRef = useRef(0); // wrong drops on the CURRENT word (resets per word)
   const timers = useRef<number[]>([]);
 
   const word = session[wordIdx];
@@ -119,6 +120,7 @@ export default function WordTrainGame() {
       setPlaced([]);
       setMoving(false);
       setWrongSlot(false);
+      wrongCountRef.current = 0; // fresh word -> fresh wrong-drop count
       busyRef.current = true; // locked during the intro
       const w = sess[idx];
       setTray(buildTray(w.word));
@@ -153,10 +155,23 @@ export default function WordTrainGame() {
       const slot = placed.length;
       const correct = ch === letters[slot];
       if (!correct) {
-        // wrong -> nothing sticks; flag the slot to shake red + buzz.
+        // wrong -> nothing sticks; flag the slot to shake red.
         setWrongSlot(true);
-        buzzWrong();
-        later(() => setWrongSlot(false), 480);
+        wrongCountRef.current += 1;
+        if (wrongCountRef.current >= 3) {
+          // Third mistake on this word: play wah-wah-wah instead of a buzz,
+          // then RESET the current word so the child can retry the SAME one.
+          stopAll();
+          playLose();
+          later(() => {
+            setPlaced([]); // coaches leave the train, slots empty again
+            setWrongSlot(false);
+            wrongCountRef.current = 0; // fresh count for the retry
+          }, 700);
+        } else {
+          buzzWrong();
+          later(() => setWrongSlot(false), 480);
+        }
         return;
       }
 

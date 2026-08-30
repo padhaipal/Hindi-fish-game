@@ -150,7 +150,15 @@ export default function RhymeGame() {
   const [cards, setCards] = useState<BoardCard[]>([]);
   // ids of the currently selected (up to 2) cards being compared.
   const [selected, setSelected] = useState<number[]>([]);
-  const busyRef = useRef(false);
+  // The INPUT LOCK. True while a word (or a matched pair's two-word sequence) is
+  // still speaking. While true, taps on other cards are ignored so a second word
+  // can never start over the first one. Released only by the audio's onEnd.
+  const speakingRef = useRef(false);
+  // Generation counter. Every new speech action bumps this; the onEnd callback
+  // captures the generation it was started with and does nothing if it no longer
+  // matches (i.e. it was superseded/cancelled — e.g. the stale onEnd that a
+  // browser fires when speechSynthesis.cancel() interrupts an old utterance).
+  const seqRef = useRef(0);
   // Any pending speech timers (e.g. the delayed 2nd word of a matched pair).
   // Kept so we can CANCEL leftover/queued speech before starting a new one.
   const speechTimers = useRef<number[]>([]);
@@ -164,30 +172,16 @@ export default function RhymeGame() {
     speechTimers.current = [];
   }, []);
 
-  // Speak a single word NOW: cancel anything queued from before, hard-stop any
-  // audio still playing, then speak. Used on every card tap so a new tap always
-  // wins over stale/queued speech.
-  const speakNow = useCallback(
-    (word: string) => {
-      clearSpeechTimers();
-      stopAll();
-      speakWord(word);
-    },
-    [clearSpeechTimers],
-  );
-
-  // Speak both words of a matched pair with a clear pause between them. The
-  // delayed 2nd word is tracked so a later interaction cancels it.
-  const speakPair = useCallback(
-    (a: string, b: string) => {
-      clearSpeechTimers();
-      stopAll();
-      speakWord(a);
-      const t = window.setTimeout(() => speakWord(b), PAIR_SPEAK_GAP_MS);
-      speechTimers.current.push(t);
-    },
-    [clearSpeechTimers],
-  );
+  // Open a fresh speech action: bump the generation FIRST (so any stale onEnd a
+  // cancel might fire is rejected), drop pending timers, then hard-stop audio.
+  // Returns the generation to hand to the onEnd guard.
+  const beginSpeech = useCallback(() => {
+    seqRef.current += 1;
+    const my = seqRef.current;
+    clearSpeechTimers();
+    stopAll();
+    return my;
+  }, [clearSpeechTimers]);
 
   const setCardStates = useCallback(
     (ids: number[], patch: Partial<BoardCard>) => {
@@ -198,13 +192,19 @@ export default function RhymeGame() {
     [],
   );
 
-  const startLevel = useCallback((idx: number) => {
-    busyRef.current = false;
-    setLevelIdx(idx);
-    setCards(buildBoard(LEVEL_PAIRS[idx]));
-    setSelected([]);
-    setPhase("playing");
-  }, []);
+  const startLevel = useCallback(
+    (idx: number) => {
+      // Invalidate any in-flight speech callbacks and release the lock.
+      clearSpeechTimers();
+      seqRef.current += 1;
+      speakingRef.current = false;
+      setLevelIdx(idx);
+      setCards(buildBoard(LEVEL_PAIRS[idx]));
+      setSelected([]);
+      setPhase("playing");
+    },
+    [clearSpeechTimers],
+  );
 
   const beginGame = useCallback(() => {
     unlockSfx();
@@ -214,72 +214,87 @@ export default function RhymeGame() {
 
   const handleTap = useCallback(
     (id: number) => {
-      if (phase !== "playing" || busyRef.current) return;
+      if (phase !== "playing") return;
+      // LOCK: ignore every tap while a word / pair sequence is still speaking.
+      if (speakingRef.current) return;
       const card = cards.find((c) => c.id === id);
       if (!card || card.gone || card.state === "correct") return;
       if (selected.includes(id)) return;
 
-      // Every tap says the word — cancelling anything still queued from before
-      // (including a matched pair's pending 2nd-word timeout).
-      speakNow(card.word);
-
-      // First selection.
+      // ---- First selection: speak the one word, unlock when it finishes -----
       if (selected.length === 0) {
         setSelected([id]);
         setCardStates([id], { state: "selected" });
+        speakingRef.current = true;
+        const my = beginSpeech();
+        speakWord(card.word, () => {
+          if (seqRef.current !== my) return; // superseded -> ignore
+          speakingRef.current = false;
+        });
         return;
       }
 
-      // Second selection -> compare.
+      // ---- Second selection -> compare (locked for the whole outcome) -------
       const firstId = selected[0];
       const first = cards.find((c) => c.id === firstId)!;
       const pair = [firstId, id];
       setSelected(pair);
       setCardStates([id], { state: "selected" });
-      busyRef.current = true;
+      speakingRef.current = true; // stays locked until the sequence's last onEnd
 
       const isRhyme = first.rime === card.rime;
 
       if (isRhyme) {
-        window.setTimeout(() => {
-          setCardStates(pair, { state: "correct" });
-          dingCorrect();
-          // Speak both rhyming words with a clear pause between them.
-          speakPair(first.word, card.word);
-          window.setTimeout(() => {
-            setCardStates(pair, { gone: true });
-            setSelected([]);
-            busyRef.current = false;
-            // Level complete?
-            setCards((prev) => {
-              const remaining = prev.filter((c) => !c.gone).length;
-              if (remaining === 0) {
-                window.setTimeout(() => {
-                  if (isLastLevel) {
-                    chimeWin();
-                    setPhase("win");
-                  } else {
-                    startLevel(levelIdx + 1);
-                  }
-                }, 500);
-              }
-              return prev;
+        setCardStates(pair, { state: "correct" });
+        dingCorrect();
+        // Speak word1 -> (pause) -> word2, then finalise the match & unlock.
+        // Nothing can replay in between: input is locked and each speak is
+        // preceded by stopAll(), with a generation guard on every onEnd.
+        const my = beginSpeech();
+        speakWord(first.word, () => {
+          if (seqRef.current !== my) return;
+          const t = window.setTimeout(() => {
+            if (seqRef.current !== my) return;
+            stopAll();
+            speakWord(card.word, () => {
+              if (seqRef.current !== my) return;
+              setCardStates(pair, { gone: true });
+              setSelected([]);
+              speakingRef.current = false;
+              // Level complete?
+              setCards((prev) => {
+                const remaining = prev.filter((c) => !c.gone).length;
+                if (remaining === 0) {
+                  const done = window.setTimeout(() => {
+                    if (isLastLevel) {
+                      chimeWin();
+                      setPhase("win");
+                    } else {
+                      startLevel(levelIdx + 1);
+                    }
+                  }, 500);
+                  speechTimers.current.push(done);
+                }
+                return prev;
+              });
             });
-          }, 900);
-        }, 260);
+          }, PAIR_SPEAK_GAP_MS);
+          speechTimers.current.push(t);
+        });
       } else {
-        window.setTimeout(() => {
-          setCardStates(pair, { state: "wrong" });
-          buzzWrong();
-          window.setTimeout(() => {
-            setCardStates(pair, { state: "idle" });
-            setSelected([]);
-            busyRef.current = false;
-          }, 650);
-        }, 200);
+        // Wrong: show both red + buzz, still let the second word play, unlock.
+        setCardStates(pair, { state: "wrong" });
+        buzzWrong();
+        const my = beginSpeech();
+        speakWord(card.word, () => {
+          if (seqRef.current !== my) return;
+          setCardStates(pair, { state: "idle" });
+          setSelected([]);
+          speakingRef.current = false;
+        });
       }
     },
-    [phase, cards, selected, setCardStates, isLastLevel, levelIdx, startLevel, speakNow, speakPair],
+    [phase, cards, selected, setCardStates, isLastLevel, levelIdx, startLevel, beginSpeech],
   );
 
   // Card grid layout:
