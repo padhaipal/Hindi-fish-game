@@ -56,7 +56,7 @@ function shuffleIds(ids: string[]): string[] {
   return a;
 }
 
-export default function PondHopGame({ lesson }: { lesson: number }) {
+export default function PondHopGame({ lesson, onFinish }: { lesson: number; onFinish?: () => void }) {
   const readingLesson = getReadingLesson(lesson) ?? READING_LESSONS[0];
   const pool = readingLesson.letters;
 
@@ -357,7 +357,12 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
             >
               Try again
             </button>
-            <a className="bigButton blue" href="/" style={{ marginTop: 12 }}>
+            <a
+              className="bigButton blue"
+              href="/"
+              style={{ marginTop: 12 }}
+              onClick={() => stopAll()}
+            >
               🏠 All games
             </a>
           </div>
@@ -369,26 +374,50 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
           <div className="overlayCard">
             <div className="overlayEmoji">🏆</div>
             <div className="overlayTitle">Well done!</div>
-            <button
-              type="button"
-              className="bigButton"
-              onClick={() => {
-                stopAll();
-                unlockSfx();
-                primeSpeech();
-                newGame();
-              }}
-            >
-              ▶ Play again
-            </button>
-            {nextLesson !== undefined && (
-              <a className="overlayLink" href={`/pond/lesson-${nextLesson}`}>
-                Next lesson →
-              </a>
+            {onFinish ? (
+              <button
+                type="button"
+                className="bigButton"
+                onClick={() => {
+                  stopAll();
+                  onFinish();
+                }}
+              >
+                ▶ Continue
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="bigButton"
+                  onClick={() => {
+                    stopAll();
+                    unlockSfx();
+                    primeSpeech();
+                    newGame();
+                  }}
+                >
+                  ▶ Play again
+                </button>
+                {nextLesson !== undefined && (
+                  <a
+                    className="overlayLink"
+                    href={`/pond/lesson-${nextLesson}`}
+                    onClick={() => stopAll()}
+                  >
+                    Next lesson →
+                  </a>
+                )}
+                <a
+                  className="bigButton blue"
+                  href="/"
+                  style={{ marginTop: 12 }}
+                  onClick={() => stopAll()}
+                >
+                  🏠 All games
+                </a>
+              </>
             )}
-            <a className="bigButton blue" href="/" style={{ marginTop: 12 }}>
-              🏠 All games
-            </a>
           </div>
         </div>
       )}

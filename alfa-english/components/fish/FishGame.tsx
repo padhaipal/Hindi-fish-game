@@ -98,7 +98,13 @@ function facingTransform(vx: number, vy: number): string {
   return `scaleX(-1) rotate(${180 - deg}deg)`;
 }
 
-export default function FishGame({ lesson }: { lesson: number }) {
+export default function FishGame({
+  lesson,
+  onFinish,
+}: {
+  lesson: number;
+  onFinish?: () => void;
+}) {
   // The lesson's letter pool (fall back to the first reading lesson).
   const pool = (getReadingLesson(lesson) ?? READING_LESSONS[0]).letters;
   // One round per letter in the lesson.
@@ -143,6 +149,8 @@ export default function FishGame({ lesson }: { lesson: number }) {
   const currentRoundRef = useRef(0); // roundId the intro effect is running for
   const introDoneForRound = useRef(-1); // ensures the intro speaks once per round
   const introTimerRef = useRef<number>(0); // the intro-freeze -> playing timeout
+  const introComboTimerRef = useRef<number>(0); // delayed speakCombo at round start
+  const nextComboDelayRef = useRef(0); // ms to wait before the next round's combo
 
   const registerRoot = useCallback((id: number, el: HTMLButtonElement | null) => {
     if (el) fishEls.current.set(id, el);
@@ -262,16 +270,29 @@ export default function FishGame({ lesson }: { lesson: number }) {
     // Speak the target combo (picture-word then its sound) once as the round
     // begins, then unfreeze into "playing". speakCombo has no onEnd hook here,
     // so we unfreeze after a fixed delay that covers the word+sound.
+    //
+    // When advancing from a previous round, nextComboDelayRef holds a ~1s pause
+    // so the just-caught letter's sound doesn't clash with this round's combo.
     if (introDoneForRound.current !== roundId) {
       introDoneForRound.current = roundId;
-      if (targetRef.current) speakCombo(targetRef.current.id);
+      const comboDelay = nextComboDelayRef.current;
+      nextComboDelayRef.current = 0;
+      window.clearTimeout(introComboTimerRef.current);
+      introComboTimerRef.current = window.setTimeout(() => {
+        if (currentRoundRef.current === roundId && targetRef.current) {
+          speakCombo(targetRef.current.id);
+        }
+      }, comboDelay);
       window.clearTimeout(introTimerRef.current);
       introTimerRef.current = window.setTimeout(() => {
         if (currentRoundRef.current === roundId) setPhase("playing");
-      }, 1800);
+      }, 1800 + comboDelay);
     }
 
-    return () => window.clearTimeout(introTimerRef.current);
+    return () => {
+      window.clearTimeout(introTimerRef.current);
+      window.clearTimeout(introComboTimerRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId]);
 
@@ -318,6 +339,9 @@ export default function FishGame({ lesson }: { lesson: number }) {
               setPhase("won");
             } else {
               // Advance to the next round (no applause between rounds).
+              // Pause ~1s so this catch's sound doesn't clash with the next
+              // round's picture-word combo.
+              nextComboDelayRef.current = 1000;
               startRound(roundIndexRef.current + 1);
             }
           }, 550);
@@ -565,16 +589,21 @@ export default function FishGame({ lesson }: { lesson: number }) {
               type="button"
               className="bigButton blue"
               onClick={() => {
+                stopAll(); // cut the wah-wah-wah the instant they tap
                 unlockSfx();
                 primeSpeech();
-                stopAll(); // cut the wah-wah-wah before restarting
                 // Restart the CURRENT round.
                 startRound(roundIndexRef.current);
               }}
             >
               🔁 Try again
             </button>
-            <a className="bigButton" href="/" style={{ marginTop: 12 }}>
+            <a
+              className="bigButton"
+              href="/"
+              style={{ marginTop: 12 }}
+              onClick={() => stopAll()}
+            >
               🏠 All games
             </a>
           </div>
@@ -587,29 +616,52 @@ export default function FishGame({ lesson }: { lesson: number }) {
             <div className="overlayEmoji">🏆</div>
             <div className="overlayTitle">Well done!</div>
             <div className="overlayStars">⭐⭐⭐</div>
-            <button
-              type="button"
-              className="bigButton"
-              onClick={() => {
-                unlockSfx();
-                primeSpeech();
-                newGame();
-              }}
-            >
-              ▶ Play again
-            </button>
-            {nextLessonN !== null && (
-              <a
-                className="bigButton blue"
-                href={`/fish/lesson-${nextLessonN}`}
-                style={{ marginTop: 12 }}
+            {onFinish ? (
+              // Embedded in a lesson flow: a single Continue hands control back.
+              <button
+                type="button"
+                className="bigButton"
+                onClick={() => {
+                  stopAll(); // cut the applause the instant they tap
+                  onFinish();
+                }}
               >
-                Next lesson →
-              </a>
+                ▶ Continue
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="bigButton"
+                  onClick={() => {
+                    stopAll(); // cut the applause the instant they tap
+                    unlockSfx();
+                    primeSpeech();
+                    newGame();
+                  }}
+                >
+                  ▶ Play again
+                </button>
+                {nextLessonN !== null && (
+                  <a
+                    className="bigButton blue"
+                    href={`/fish/lesson-${nextLessonN}`}
+                    style={{ marginTop: 12 }}
+                    onClick={() => stopAll()}
+                  >
+                    Next lesson →
+                  </a>
+                )}
+                <a
+                  className="bigButton"
+                  href="/"
+                  style={{ marginTop: 12 }}
+                  onClick={() => stopAll()}
+                >
+                  🏠 All games
+                </a>
+              </>
             )}
-            <a className="bigButton" href="/" style={{ marginTop: 12 }}>
-              🏠 All games
-            </a>
           </div>
         </div>
       )}
