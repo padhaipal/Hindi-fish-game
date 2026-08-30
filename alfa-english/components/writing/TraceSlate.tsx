@@ -3,15 +3,20 @@
 // ---------------------------------------------------------------------------
 // TRACE SLATE — the chalkboard the child traces a single letter on.
 // ---------------------------------------------------------------------------
-// The target LOWERCASE letter is drawn as a large FAINT grey guide on the
-// canvas. The child drags a finger over it; the finger path is drawn in bright
-// chalk. We track COVERAGE only (NO handwriting recognition): the guide glyph
-// is rendered to an offscreen canvas, its opaque pixels are bucketed into a
-// fine grid of "target" cells, and we mark ONLY the cells the finger passes
-// that are themselves glyph cells (points in the empty space don't count). Once
-// most of the target cells are covered — and the finger has crossed enough
-// distinct glyph cells — we flash green and call onComplete.
-// High-DPI aware (devicePixelRatio), like the Hindi slate.
+// The target LOWERCASE letter is drawn LARGE and FAINT as a guide. Over the
+// letter's ink we scatter a handful of WAYPOINT dots (guided-waypoint tracing,
+// like iTrace / LetterSchool / "Trace Letters"). As the child drags a finger,
+// the path is drawn in bright chalk and every waypoint the finger passes near
+// (within a generous tolerance band) lights up green. When ~all the waypoints
+// are lit the slate flashes green and we call onComplete. There is NO stroke-
+// order enforcement and NO fragile pixel-coverage test — any order is fine, a
+// genuine trace over the whole letter reliably completes, and a tap does not.
+//
+// Waypoints are derived from the glyph itself: we render it SOLID to an
+// offscreen canvas, read its opaque pixels, overlay a grid across the ink's
+// bounding box, and take the INK CENTROID of each grid cell that holds enough
+// ink. Centroids sit on the actual strokes, so a finger following the letter's
+// shape passes right over them. Both layers are high-DPI (dpr capped at 2).
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -20,140 +25,253 @@ interface Props {
   letter: string; // the lowercase letter to trace
   width: number;
   height: number;
-  onComplete: () => void; // called once enough of the guide has been traced
+  onComplete: () => void; // called once enough waypoints are lit
 }
 
-const GRID = 18; // coverage grid (cells per axis) — fine enough that off-glyph scribbles miss
-const COVER = 0.8; // complete once this fraction of the glyph is covered
-const MIN_CELLS = 10; // must cross at least this many DISTINCT glyph cells (a few taps won't do)
 const GUIDE_FONT = "'Baloo 2', 'Comic Sans MS', sans-serif";
+const TARGET_WAYPOINTS = 17; // aim for ~14–20 dots, well spread over the ink
+const MAX_WAYPOINTS = 20;
+const COMPLETE_FRAC = 0.85; // light this fraction of waypoints to finish
+const TOL_FRAC = 0.13; // tolerance radius = min(w, h) * this
+
+type Pt = { x: number; y: number };
 
 // Fit a bold font size so the letter sits comfortably inside the slate.
 function fitFont(ctx: CanvasRenderingContext2D, text: string, w: number, h: number): number {
   let fs = Math.floor(h * 0.72);
   const maxW = w * 0.72;
-  ctx.font = `700 ${fs}px ${GUIDE_FONT}`;
+  ctx.font = `800 ${fs}px ${GUIDE_FONT}`;
   while (fs > 12 && ctx.measureText(text).width > maxW) {
     fs -= 2;
-    ctx.font = `700 ${fs}px ${GUIDE_FONT}`;
+    ctx.font = `800 ${fs}px ${GUIDE_FONT}`;
   }
   return fs;
 }
 
+// Build the waypoints: grid over the glyph ink's bbox, keep the ink centroid of
+// each cell that holds enough ink, aiming for a well-spread ~TARGET_WAYPOINTS.
+function buildWaypoints(inkX: number[], inkY: number[]): Pt[] {
+  const n = inkX.length;
+  if (n === 0) return [];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < n; i++) {
+    if (inkX[i] < minX) minX = inkX[i];
+    if (inkX[i] > maxX) maxX = inkX[i];
+    if (inkY[i] < minY) minY = inkY[i];
+    if (inkY[i] > maxY) maxY = inkY[i];
+  }
+  const bw = Math.max(1, maxX - minX);
+  const bh = Math.max(1, maxY - minY);
+  const longAxis = Math.max(bw, bh);
+
+  // Try a few grid resolutions (divisions along the longer axis) and keep the
+  // one whose waypoint count lands closest to TARGET_WAYPOINTS.
+  let best: Pt[] = [];
+  let bestScore = Infinity;
+  for (let div = 2; div <= 8; div++) {
+    const cell = longAxis / div;
+    if (cell < 1) break;
+    const cols = Math.max(1, Math.ceil(bw / cell));
+    const rows = Math.max(1, Math.ceil(bh / cell));
+    const sumX = new Float64Array(cols * rows);
+    const sumY = new Float64Array(cols * rows);
+    const cnt = new Int32Array(cols * rows);
+    for (let i = 0; i < n; i++) {
+      let c = Math.floor((inkX[i] - minX) / cell);
+      let r = Math.floor((inkY[i] - minY) / cell);
+      if (c >= cols) c = cols - 1;
+      if (r >= rows) r = rows - 1;
+      const k = r * cols + c;
+      sumX[k] += inkX[i];
+      sumY[k] += inkY[i];
+      cnt[k]++;
+    }
+    const minInk = Math.max(6, cell * cell * 0.03); // ignore near-empty cells
+    const pts: Pt[] = [];
+    for (let k = 0; k < cnt.length; k++) {
+      if (cnt[k] >= minInk) pts.push({ x: sumX[k] / cnt[k], y: sumY[k] / cnt[k] });
+    }
+    const score = Math.abs(pts.length - TARGET_WAYPOINTS);
+    if (pts.length >= 8 && score < bestScore) {
+      bestScore = score;
+      best = pts;
+    }
+  }
+  // Fallback: if every grid was too sparse, use the densest attempt we have.
+  if (best.length === 0) {
+    const cell = longAxis / 6;
+    const cols = Math.max(1, Math.ceil(bw / cell));
+    const rows = Math.max(1, Math.ceil(bh / cell));
+    const sumX = new Float64Array(cols * rows);
+    const sumY = new Float64Array(cols * rows);
+    const cnt = new Int32Array(cols * rows);
+    for (let i = 0; i < n; i++) {
+      let c = Math.floor((inkX[i] - minX) / cell);
+      let r = Math.floor((inkY[i] - minY) / cell);
+      if (c >= cols) c = cols - 1;
+      if (r >= rows) r = rows - 1;
+      const k = r * cols + c;
+      sumX[k] += inkX[i];
+      sumY[k] += inkY[i];
+      cnt[k]++;
+    }
+    for (let k = 0; k < cnt.length; k++) {
+      if (cnt[k] > 0) best.push({ x: sumX[k] / cnt[k], y: sumY[k] / cnt[k] });
+    }
+  }
+
+  // Even-spread subsample if we overshot: sort top-to-bottom, left-to-right and
+  // keep evenly spaced indices so the survivors still cover the whole letter.
+  if (best.length > MAX_WAYPOINTS) {
+    best.sort((a, b) => a.y - b.y || a.x - b.x);
+    const keep: Pt[] = [];
+    const step = best.length / MAX_WAYPOINTS;
+    for (let i = 0; i < MAX_WAYPOINTS; i++) keep.push(best[Math.floor(i * step)]);
+    best = keep;
+  }
+  return best;
+}
+
 export default function TraceSlate({ letter, width, height, onComplete }: Props) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const targetCells = useRef<Set<number>>(new Set());
-  const drawnCells = useRef<Set<number>>(new Set());
+  const guideRef = useRef<HTMLCanvasElement>(null); // faint letter + waypoint dots
+  const traceRef = useRef<HTMLCanvasElement>(null); // bright chalk trail
   const fontPx = useRef(0);
+  const waypoints = useRef<Pt[]>([]);
+  const lit = useRef<boolean[]>([]);
+  const litCount = useRef(0);
   const drawing = useRef(false);
   const pointerId = useRef<number | null>(null);
-  const lastPt = useRef<{ x: number; y: number } | null>(null);
+  const lastPt = useRef<Pt | null>(null);
   const doneRef = useRef(false);
-  const [flash, setFlash] = useState<null | "green">(null);
+  const [flash, setFlash] = useState(false);
 
-  const cw = width / GRID;
-  const ch = height / GRID;
+  const tol = Math.min(width, height) * TOL_FRAC;
+  const dotR = Math.max(3.5, Math.min(width, height) * 0.014);
 
-  // Paint the faint grey guide letter onto the (already scaled) 2D context.
-  const paintGuide = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
-      ctx.clearRect(0, 0, width, height);
-      ctx.save();
-      ctx.font = `700 ${fontPx.current}px ${GUIDE_FONT}`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(233, 237, 234, 0.28)"; // light grey, faint
-      ctx.fillText(letter, width / 2, height / 2);
-      ctx.restore();
-    },
-    [letter, width, height]
-  );
-
-  // Wipe the child's chalk (keeps the guide) and reset coverage.
-  const wipe = useCallback(() => {
-    const c = canvasRef.current;
+  // Paint the faint guide letter and the waypoint dots (green where lit).
+  const paintGuide = useCallback(() => {
+    const c = guideRef.current;
     if (!c) return;
     const ctx = c.getContext("2d")!;
-    paintGuide(ctx);
-    drawnCells.current = new Set();
-    lastPt.current = null;
-  }, [paintGuide]);
+    ctx.clearRect(0, 0, width, height);
+    ctx.save();
+    ctx.font = `800 ${fontPx.current}px ${GUIDE_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(233, 237, 234, 0.26)"; // light grey, faint
+    ctx.fillText(letter, width / 2, height / 2);
+    const wps = waypoints.current;
+    for (let i = 0; i < wps.length; i++) {
+      const on = lit.current[i];
+      ctx.beginPath();
+      ctx.arc(wps[i].x, wps[i].y, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = on ? "rgba(86, 226, 122, 0.95)" : "rgba(233, 237, 234, 0.5)";
+      ctx.fill();
+      if (on) {
+        ctx.beginPath();
+        ctx.arc(wps[i].x, wps[i].y, dotR + 2, 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(86, 226, 122, 0.5)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }, [letter, width, height, dotR]);
 
-  // ---- (re)build the guide + target cells whenever letter/size changes ----
+  // Wipe the child's chalk and reset lit waypoints.
+  const wipe = useCallback(() => {
+    const t = traceRef.current;
+    if (t) t.getContext("2d")!.clearRect(0, 0, width, height);
+    lit.current = waypoints.current.map(() => false);
+    litCount.current = 0;
+    lastPt.current = null;
+    paintGuide();
+  }, [paintGuide, width, height]);
+
+  // ---- (re)build guide + waypoints whenever letter/size changes ----
   useEffect(() => {
     doneRef.current = false;
-    setFlash(null);
-    const c = canvasRef.current;
-    if (!c) return;
+    setFlash(false);
+    const g = guideRef.current;
+    const t = traceRef.current;
+    if (!g || !t) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    c.width = Math.round(width * dpr);
-    c.height = Math.round(height * dpr);
-    const ctx = c.getContext("2d")!;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
+    for (const c of [g, t]) {
+      c.width = Math.round(width * dpr);
+      c.height = Math.round(height * dpr);
+      const ctx = c.getContext("2d")!;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+    }
 
-    // Fit the font and remember it for guide + chalk sizing.
-    fontPx.current = fitFont(ctx, letter, width, height);
+    const gctx = g.getContext("2d")!;
+    fontPx.current = fitFont(gctx, letter, width, height);
 
-    // Render the glyph SOLID on an offscreen canvas (CSS resolution) and read
-    // its opaque pixels into a set of coarse grid cells = the trace target.
+    // Render the glyph SOLID offscreen (CSS resolution) and read its ink.
     const off = document.createElement("canvas");
     off.width = width;
     off.height = height;
     const octx = off.getContext("2d")!;
-    octx.font = `700 ${fontPx.current}px ${GUIDE_FONT}`;
+    octx.font = `800 ${fontPx.current}px ${GUIDE_FONT}`;
     octx.textAlign = "center";
     octx.textBaseline = "middle";
     octx.fillStyle = "#000";
     octx.fillText(letter, width / 2, height / 2);
     const data = octx.getImageData(0, 0, width, height).data;
-    const cells = new Set<number>();
-    for (let y = 0; y < height; y += 2) {
-      for (let x = 0; x < width; x += 2) {
+    const inkX: number[] = [];
+    const inkY: number[] = [];
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
         if (data[(y * width + x) * 4 + 3] > 80) {
-          cells.add(Math.floor(y / ch) * GRID + Math.floor(x / cw));
+          inkX.push(x);
+          inkY.push(y);
         }
       }
     }
-    targetCells.current = cells;
-    drawnCells.current = new Set();
+    waypoints.current = buildWaypoints(inkX, inkY);
+    lit.current = waypoints.current.map(() => false);
+    litCount.current = 0;
     lastPt.current = null;
-
-    paintGuide(ctx);
+    t.getContext("2d")!.clearRect(0, 0, width, height);
+    paintGuide();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [letter, width, height]);
 
-  const checkCoverage = useCallback(() => {
+  // Light up every waypoint within tolerance of a path point.
+  const lightAt = (x: number, y: number): boolean => {
+    let changed = false;
+    const wps = waypoints.current;
+    for (let i = 0; i < wps.length; i++) {
+      if (lit.current[i]) continue;
+      if (Math.hypot(wps[i].x - x, wps[i].y - y) <= tol) {
+        lit.current[i] = true;
+        litCount.current++;
+        changed = true;
+      }
+    }
+    return changed;
+  };
+
+  const checkComplete = useCallback(() => {
     if (doneRef.current) return;
-    const target = targetCells.current;
-    if (target.size === 0) return;
-    // The finger only ever marks cells that ARE target cells (see mark), so the
-    // covered count is simply how many distinct glyph cells have been touched.
-    let cov = 0;
-    target.forEach((cell) => {
-      if (drawnCells.current.has(cell)) cov++;
-    });
-    const needCells = Math.min(target.size, MIN_CELLS);
-    if (cov >= needCells && cov / target.size >= COVER) {
+    const total = waypoints.current.length;
+    if (total === 0) return;
+    if (litCount.current / total >= COMPLETE_FRAC) {
       doneRef.current = true;
-      setFlash("green");
-      window.setTimeout(() => onComplete(), 200);
+      setFlash(true);
+      window.setTimeout(() => onComplete(), 220);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onComplete]);
 
   // ---- drawing ------------------------------------------------------------
-  const toXY = (e: React.PointerEvent) => {
-    const r = canvasRef.current!.getBoundingClientRect();
+  const toXY = (e: React.PointerEvent): Pt => {
+    const r = traceRef.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
-  };
-  const mark = (x: number, y: number) => {
-    if (x < 0 || y < 0 || x >= width || y >= height) return;
-    const cell = Math.floor(y / ch) * GRID + Math.floor(x / cw);
-    // Only count a point that lands ON an actual glyph cell — scribbles in the
-    // empty space around the letter don't add coverage.
-    if (targetCells.current.has(cell)) drawnCells.current.add(cell);
   };
 
   const onDown = (e: React.PointerEvent) => {
@@ -164,36 +282,43 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
     drawing.current = true;
     const p = toXY(e);
     lastPt.current = p;
-    mark(p.x, p.y);
-    const ctx = canvasRef.current!.getContext("2d")!;
+    const ctx = traceRef.current!.getContext("2d")!;
     ctx.strokeStyle = "#fdf3d0"; // bright chalk
     ctx.lineWidth = Math.max(9, width * 0.03);
     ctx.beginPath();
     ctx.moveTo(p.x, p.y);
     ctx.lineTo(p.x + 0.1, p.y + 0.1);
     ctx.stroke();
-    checkCoverage();
+    if (lightAt(p.x, p.y)) paintGuide();
+    checkComplete();
   };
+
   const onMove = (e: React.PointerEvent) => {
     if (!drawing.current || e.pointerId !== pointerId.current) return;
     const p = toXY(e);
     const last = lastPt.current;
-    const ctx = canvasRef.current!.getContext("2d")!;
+    const ctx = traceRef.current!.getContext("2d")!;
     ctx.beginPath();
     if (last) ctx.moveTo(last.x, last.y);
     ctx.lineTo(p.x, p.y);
     ctx.stroke();
+    // Interpolate so fast swipes still catch every dot along the segment.
+    let changed = false;
     if (last) {
-      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 3));
+      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 4));
       for (let i = 1; i <= steps; i++) {
-        mark(last.x + ((p.x - last.x) * i) / steps, last.y + ((p.y - last.y) * i) / steps);
+        const ix = last.x + ((p.x - last.x) * i) / steps;
+        const iy = last.y + ((p.y - last.y) * i) / steps;
+        if (lightAt(ix, iy)) changed = true;
       }
-    } else {
-      mark(p.x, p.y);
+    } else if (lightAt(p.x, p.y)) {
+      changed = true;
     }
+    if (changed) paintGuide();
     lastPt.current = p;
-    checkCoverage();
+    checkComplete();
   };
+
   const onUp = (e: React.PointerEvent) => {
     if (e.pointerId !== pointerId.current) return;
     drawing.current = false;
@@ -203,12 +328,13 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
 
   return (
     <div
-      className={`slate ${flash ? `slate--${flash}` : ""}`}
+      className={`slate ${flash ? "slate--green" : ""}`}
       style={{ width, height }}
       data-text={letter}
     >
+      <canvas ref={guideRef} className="slateGuide" style={{ width, height }} />
       <canvas
-        ref={canvasRef}
+        ref={traceRef}
         className="slateCanvas"
         style={{ width, height }}
         onPointerDown={onDown}

@@ -3,19 +3,24 @@
 // ---------------------------------------------------------------------------
 // ALfA ENGLISH — BLOCKS GAME (spell the pictured word)
 // ---------------------------------------------------------------------------
-// A picture (a CVC word's emoji, e.g. cat 🐱) sits above a grid of letter blocks.
-// The child taps (or swipes) the word's letters IN ORDER, and they must form an
-// ADJACENT straight run — left→right or top→bottom — to spell it:
+// A picture (a CVC word's emoji, e.g. cat 🐱) sits above a board of letter
+// blocks. Each board is a SHAPE — a rows×cols grid with some corner cells cut
+// out — filled with several 3-letter words laid down as contiguous straight
+// runs, a mix of horizontal and vertical, plus random filler letters (see
+// lib/blocks/words.ts + levels.ts).
+//
+// The child is cued ONE word at a time by its picture + a Listen button. They
+// tap (or swipe) that word's letters IN ORDER along an ADJACENT straight run —
+// left→right or top→bottom — to spell it:
 //   - Each correct, adjacent letter lifts with an order number and a soft tick.
-//   - The final letter completes the run: the blocks pop with FIREWORKS, the
-//     whole word is spoken, a "ding" plays, those blocks vanish (the rest slide
-//     down under gravity), and the next picture appears.
+//   - The final letter completes the run: the blocks pop, the whole word is
+//     spoken, those cells become empty GAPS (no gravity — nothing shifts, which
+//     keeps the mixed-orientation boards always solvable), and the next picture
+//     appears.
 //   - A tap that isn't the next adjacent block of a valid run flashes red +
 //     buzzes and clears the current selection.
-// The board generator guarantees every word is present as a contiguous run (see
-// lib/blocks/words.ts). Levels grow (1 word → 5 words per board). Finishing the
-// last level shows the win overlay with applause. A first-word demo highlights
-// the run to tap.
+// Solve every cued word → next level. Finish the last level → applause + the win
+// overlay. A first-word demo highlights the run to tap.
 //
 // This restores the Hindi Blocks adjacency mechanic (see lib/blocks/*). Nothing
 // is imported from the Hindi app.
@@ -25,23 +30,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Block, { type BlockState } from "./Block";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import JamIcon from "@/components/shared/JamIcon";
-import { LEVELS } from "@/lib/blocks/levels";
-import { pickWords, buildBoardCols } from "@/lib/blocks/words";
+import { LEVELS, levelMask } from "@/lib/blocks/levels";
+import { pickWords, buildBoard } from "@/lib/blocks/words";
 import {
   type Board,
   type Occ,
   makeBoard,
   findBlock,
   removeByIds,
-  isEmpty,
   occurrences,
   occBlocks,
   runFromIds,
 } from "@/lib/blocks/engine";
 import { type CvcWord } from "@/lib/lessons";
 import { primeSpeech, stopSpeech } from "@/lib/speech";
-import { speakWord } from "@/lib/sound";
-import { dingCorrect, buzzWrong, chimeWin, tick, unlockSfx } from "@/lib/sfx";
+import { speakWord, playApplause } from "@/lib/sound";
+import { dingCorrect, buzzWrong, tick, unlockSfx } from "@/lib/sfx";
 
 // Layout — keep in sync with .block sizing in globals.css.
 const CELL = 64; // block cell incl. gap
@@ -81,16 +85,14 @@ export default function BlocksGame() {
   const target = words[targetIndex] ?? null;
   const isLastLevel = levelIdx >= LEVELS.length - 1;
 
-  // Pixel centre (within the board) of a run.
-  const center = useCallback(
-    (occ: Occ): { x: number; y: number } => {
-      const bx = occ.c * CELL + INSET + SIZE / 2;
-      const by = (cfg.rows - 1 - occ.L) * CELL + INSET + SIZE / 2;
-      if (occ.o === "h") return { x: bx + ((occ.len - 1) * CELL) / 2, y: by };
-      return { x: bx, y: by - ((occ.len - 1) * CELL) / 2 }; // vertical: run goes up
-    },
-    [cfg.rows]
-  );
+  // Pixel centre (within the board) of a run. row 0 = top, so both a horizontal
+  // run (grows right) and a vertical run (grows down) advance in the + direction.
+  const center = useCallback((occ: Occ): { x: number; y: number } => {
+    const bx = occ.col * CELL + INSET + SIZE / 2;
+    const by = occ.row * CELL + INSET + SIZE / 2;
+    if (occ.o === "h") return { x: bx + ((occ.len - 1) * CELL) / 2, y: by };
+    return { x: bx, y: by + ((occ.len - 1) * CELL) / 2 };
+  }, []);
 
   const clearHint = useCallback(() => {
     setHintIds(new Set());
@@ -112,9 +114,9 @@ export default function BlocksGame() {
     (idx: number) => {
       const lvl = LEVELS[idx];
       const picked = pickWords(lvl.words);
-      const cols = buildBoardCols(picked.map((w) => w.word), lvl.cols, lvl.rows);
+      const { grid } = buildBoard(levelMask(lvl), picked.map((w) => w.word));
       setLevelIdx(idx);
-      setBoard(makeBoard(cols));
+      setBoard(makeBoard(grid));
       setWords(picked);
       setTargetIndex(0);
       setSelectedIds([]);
@@ -175,20 +177,21 @@ export default function BlocksGame() {
     dingCorrect();
 
     window.setTimeout(() => {
-      const next = removeByIds(curBoard, ids);
+      const next = removeByIds(curBoard, ids); // solved cells become gaps (no gravity)
       setBoard(next);
       setCorrectIds(new Set());
       setFx(null);
-      if (isEmpty(next)) {
+      const ni = targetIndex + 1;
+      if (ni >= words.length) {
+        // every cued word on this board is solved
         if (isLastLevel) {
           setPhase("won");
-          chimeWin();
+          playApplause();
           busyRef.current = false;
         } else {
           startLevel(levelIdx + 1);
         }
       } else {
-        const ni = targetIndex + 1;
         setTargetIndex(ni);
         busyRef.current = false;
         window.setTimeout(() => announce(words[ni].word), 250);
@@ -206,7 +209,9 @@ export default function BlocksGame() {
     clearHint();
     const pos = findBlock(board, id);
     if (!pos) return;
-    const ch = board[pos.c][pos.L].char;
+    const cell = board[pos.row][pos.col];
+    if (!cell) return;
+    const ch = cell.char;
     const sel = selRef.current;
     if (sel.includes(id)) return;
 
@@ -238,18 +243,18 @@ export default function BlocksGame() {
   };
 
   // ---- board-level pointer handling (tap OR swipe the run) -----------------
-  // A pointer position → the block under it (null if that cell is empty).
+  // A pointer position → the block under it (null if that cell is a gap).
   const blockAt = (clientX: number, clientY: number): number | null => {
     const el = boardRef.current;
     if (!el) return null;
     const r = el.getBoundingClientRect();
-    const c = Math.floor((clientX - r.left) / CELL);
-    const rowTop = Math.floor((clientY - r.top) / CELL);
-    const L = cfg.rows - 1 - rowTop;
-    if (c < 0 || c >= board.length || L < 0) return null;
-    const col = board[c];
-    if (!col || L >= col.length) return null;
-    return col[L].id;
+    const col = Math.floor((clientX - r.left) / CELL);
+    const row = Math.floor((clientY - r.top) / CELL);
+    if (row < 0 || row >= board.length) return null;
+    const cols = board[row];
+    if (!cols || col < 0 || col >= cols.length) return null;
+    const cell = cols[col];
+    return cell ? cell.id : null;
   };
 
   const onBoardDown = (e: React.PointerEvent) => {
@@ -331,7 +336,7 @@ export default function BlocksGame() {
         </div>
       )}
 
-      {/* The block grid, anchored to the bottom */}
+      {/* The block grid */}
       <div className="blocksArea">
         <div
           ref={boardRef}
@@ -342,18 +347,19 @@ export default function BlocksGame() {
           onPointerUp={onBoardUp}
           onPointerCancel={onBoardUp}
         >
-          {board.map((col, c) =>
-            col.map((blk, L) => {
+          {board.map((row, r) =>
+            row.map((cell, c) => {
+              if (!cell) return null; // a gap — render nothing
               return (
                 <Block
-                  key={blk.id}
-                  char={blk.char}
+                  key={cell.id}
+                  char={cell.char}
                   x={c * CELL + INSET}
-                  y={(cfg.rows - 1 - L) * CELL + INSET}
+                  y={r * CELL + INSET}
                   size={SIZE}
-                  state={stateFor(blk.id)}
-                  order={selectOrder(blk.id)}
-                  hint={hintIds.has(blk.id)}
+                  state={stateFor(cell.id)}
+                  order={selectOrder(cell.id)}
+                  hint={hintIds.has(cell.id)}
                 />
               );
             })

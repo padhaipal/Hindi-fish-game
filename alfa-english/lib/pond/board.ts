@@ -65,6 +65,11 @@ export function buildHopBoard(targetId: string, pool: string[], cfg: HopConfig):
     const t = cfg.rows === 1 ? 0 : r / (cfg.rows - 1);
     const yBase = Y_BOTTOM - t * (Y_BOTTOM - Y_TOP);
 
+    // As the crossings grow taller the rows sit closer together, so shrink the
+    // vertical jitter to keep neighbouring rows from overlapping on screen.
+    const spacing = cfg.rows > 1 ? (Y_BOTTOM - Y_TOP) / (cfg.rows - 1) : Y_BOTTOM - Y_TOP;
+    const yJit = Math.min(3, spacing * 0.22);
+
     // spread the row's stones across the width, then jitter each a little
     const size = letters.length;
     const gap = 76 / size; // usable band is 12%..88%
@@ -75,7 +80,7 @@ export function buildHopBoard(targetId: string, pool: string[], cfg: HopConfig):
         letterId,
         isTarget: letterId === targetId,
         x: clamp(xBase + rand(-4, 4), 8, 92),
-        y: clamp(yBase + rand(-3, 3), 10, 88),
+        y: clamp(yBase + rand(-yJit, yJit), 10, 88),
       };
     });
     rows.push(row);

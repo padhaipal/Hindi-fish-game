@@ -9,21 +9,22 @@
 // target-letter stone plus distractors from the same lesson set.
 //
 //   - correct tap -> the frog hops up a row and we play the letter's SOUND;
-//     reaching the far bank finishes a crossing: we speak the word, pick a NEW
-//     target letter and send the frog back to the near bank for the next crossing.
-//   - wrong tap   -> the stone flashes red (buzzWrong) and the frog STAYS put.
-//     There is no drowning and no restart — young children simply try again.
+//     reaching the far bank finishes a crossing and (unless it was the last)
+//     picks a NEW target letter and sends the frog back for the next crossing.
+//   - wrong tap   -> the level is LOST: a sad "wah-wah-wah" plays and a lose
+//     overlay offers a fresh try from the very first crossing.
 //
-// After a handful of crossings the child wins (chimeWin). There is no hard
-// timer, on purpose: this is a low-stress, keep-them-happy game.
+// A 20-second countdown runs while the frog is crossing (never during the
+// intro speak). Running out of time also loses the level. Each crossing needs
+// one more hop than the last (3 → 8), and stones shrink as the rows grow.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getLetter, Letter } from "@/lib/letters";
 import { getReadingLesson, READING_LESSONS } from "@/lib/lessons";
-import { say, stopSpeech, primeSpeech } from "@/lib/speech";
-import { buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
-import { speakCombo, speakLetterSound } from "@/lib/sound";
+import { primeSpeech } from "@/lib/speech";
+import { buzzWrong, unlockSfx } from "@/lib/sfx";
+import { speakCombo, speakLetterSound, playApplause, playLose, stopAll } from "@/lib/sound";
 import { buildHopBoard, HopStone, HopConfig } from "@/lib/pond/board";
 import LetterPicture from "@/components/shared/LetterPicture";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
@@ -33,12 +34,18 @@ const START_POS = { x: 50, y: 96 };
 // Hop glide length — keep this in step with the CSS .hopFrog transition (0.48s).
 const HOP_MS = 480;
 // Number of crossings to win (each crossing uses a fresh target letter).
-const TOTAL_CROSSINGS = 5;
-// Board shape for every crossing.
-const CFG: HopConfig = { rows: 4, stonesPerRow: 3 };
-const STONE_SIZE = 60;
+const TOTAL_CROSSINGS = 6;
+// Seconds allowed to complete a single crossing.
+const TIME_MS = 20000;
+// Stones per row (1 target + distractors).
+const STONES_PER_ROW = 3;
 
-type Phase = "start" | "playing" | "won";
+// Hops needed for a crossing: 3, 4, 5, 6, 7, 8 …
+const rowsForCrossing = (idx: number) => 3 + idx;
+// Stones shrink as the rows grow so the taller boards still fit the screen.
+const stoneSizeForRows = (rows: number) => Math.max(34, 64 - (rows - 3) * 5);
+
+type Phase = "start" | "intro" | "playing" | "lost" | "won";
 
 function shuffleIds(ids: string[]): string[] {
   const a = [...ids];
@@ -61,9 +68,13 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
   const [hopCount, setHopCount] = useState(0); // bumps each hop to retrigger the arc
   const [redStoneId, setRedStoneId] = useState<number | null>(null);
   const [crossing, setCrossing] = useState(0); // completed crossings so far
+  const [roundId, setRoundId] = useState(0); // bumps at each crossing / restart
 
   const orderRef = useRef<string[]>([]);
   const busyRef = useRef(false); // true while a hop / transition is animating
+  const roundOverRef = useRef(false); // true once the crossing has ended (win/lose)
+  const remainingRef = useRef(TIME_MS);
+  const timerRef = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
 
   const clearTimers = () => {
@@ -75,48 +86,102 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
   };
   useEffect(() => () => clearTimers(), []);
 
-  // ---- start a crossing (idx = which completed-crossing we're heading into) --
+  // ---- start a crossing (idx = which crossing we're heading into) ----------
   const startCrossing = useCallback(
     (idx: number) => {
+      clearTimers();
       const order = orderRef.current;
       const targetId = order[idx % order.length];
       const tgt = getLetter(targetId);
-      const rows = buildHopBoard(targetId, pool, CFG);
+      const rows = rowsForCrossing(idx);
+      const cfg: HopConfig = { rows, stonesPerRow: STONES_PER_ROW };
 
       busyRef.current = false;
+      roundOverRef.current = false;
+      remainingRef.current = TIME_MS;
+
       setTarget(tgt);
-      setBoard(rows);
+      setBoard(buildHopBoard(targetId, pool, cfg));
       setPos(-1);
       setFrog(START_POS);
+      setHopCount(0);
       setRedStoneId(null);
       setCrossing(idx);
-      setPhase("playing");
+      setRoundId((r) => r + 1);
+      setPhase("intro");
 
-      // Speak the ALfA combo (picture-word then its sound) at the start of each crossing.
+      // Speak the ALfA combo (picture-word then its sound) at the START of the
+      // crossing, then unfreeze into "playing" so the timer begins.
       later(() => speakCombo(targetId), 260);
+      later(() => setPhase((p) => (p === "intro" ? "playing" : p)), 2000);
     },
     [pool]
   );
 
   const newGame = useCallback(() => {
-    clearTimers();
     orderRef.current = shuffleIds(pool);
-    setHopCount(0);
     startCrossing(0);
   }, [pool, startCrossing]);
+
+  // ---- keep the timer bar full while the intro is speaking ----------------
+  useEffect(() => {
+    if (phase !== "intro") return;
+    if (timerRef.current) {
+      timerRef.current.style.width = "100%";
+      timerRef.current.classList.remove("low");
+    }
+  }, [phase, roundId]);
+
+  // ---- the 20s countdown bar (runs ONLY while the frog is crossing) -------
+  useEffect(() => {
+    if (phase !== "playing") return;
+    let raf = 0;
+    let last = 0;
+    const loop = (t: number) => {
+      if (!last) last = t;
+      let dt = (t - last) / 1000;
+      last = t;
+      if (dt > 0.05) dt = 0.05; // clamp long frames (tab was backgrounded)
+
+      if (!roundOverRef.current) remainingRef.current -= dt * 1000;
+      const pct = Math.max(0, remainingRef.current / TIME_MS);
+      if (timerRef.current) {
+        timerRef.current.style.width = `${pct * 100}%`;
+        timerRef.current.classList.toggle("low", pct < 0.25);
+      }
+      if (remainingRef.current <= 0) {
+        if (!roundOverRef.current) {
+          roundOverRef.current = true;
+          clearTimers();
+          playLose(); // sad "wah-wah-wah"
+          setPhase("lost");
+        }
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, roundId]);
 
   // ---- tap a stone --------------------------------------------------------
   const handleStone = useCallback(
     (rowIndex: number, stone: HopStone) => {
-      if (phase !== "playing" || busyRef.current) return;
+      if (phase !== "playing" || busyRef.current || roundOverRef.current) return;
       const activeRow = pos + 1;
       if (rowIndex !== activeRow) return; // only the reachable (next) row is hoppable
 
       if (!stone.isTarget) {
-        // WRONG: flash the stone red, buzz, and leave the frog where it is.
+        // WRONG: the level is lost — flash the stone red, then the lose overlay.
+        roundOverRef.current = true;
+        busyRef.current = true;
         buzzWrong();
         setRedStoneId(stone.id);
-        later(() => setRedStoneId(null), 450);
+        later(() => {
+          playLose();
+          setPhase("lost");
+        }, 550);
         return;
       }
 
@@ -129,19 +194,17 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
       setPos(newPos);
 
       if (newPos >= board.length - 1) {
-        // Reached the far bank -> this crossing is done.
+        // Reached the far bank -> this crossing is done. (No word re-speak.)
+        roundOverRef.current = true;
         const completed = crossing + 1;
-        later(() => {
-          if (target) say(target.word); // celebrate the finished target word
-        }, HOP_MS + 150);
         if (completed >= TOTAL_CROSSINGS) {
           later(() => {
-            chimeWin();
+            playApplause(); // clapping
             setPhase("won");
-          }, HOP_MS + 700);
+          }, HOP_MS + 500);
         } else {
           // Pick a NEW target and send the frog back to the near bank.
-          later(() => startCrossing(completed), HOP_MS + 1200);
+          later(() => startCrossing(completed), HOP_MS + 900);
         }
       } else {
         // More rows to go — free up for the next tap once the hop lands.
@@ -155,6 +218,7 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
 
   const activeRow = pos + 1;
   const playing = phase === "playing";
+  const stoneSize = stoneSizeForRows(board.length || 3);
 
   // Next reading lesson (1,3,5,7,9) after this one, if any.
   const nextLesson = READING_LESSONS.map((l) => l.n).find((n) => n > lesson);
@@ -164,6 +228,13 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
       {phase !== "start" && (
         <div className="blocksLevelPill">
           🐸 {Math.min(crossing + 1, TOTAL_CROSSINGS)}/{TOTAL_CROSSINGS}
+        </div>
+      )}
+
+      {/* Countdown timer bar */}
+      {phase !== "start" && (
+        <div className="timerWrap hopTimer">
+          <div className="timerFill" ref={timerRef} style={{ width: "100%" }} />
         </div>
       )}
 
@@ -212,8 +283,8 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
                     style={{
                       left: `${stone.x}%`,
                       top: `${stone.y}%`,
-                      width: STONE_SIZE,
-                      height: STONE_SIZE,
+                      width: stoneSize,
+                      height: stoneSize,
                     }}
                     disabled={!reachable}
                     onPointerDown={(e) => {
@@ -231,7 +302,7 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
             {/* The frog — a single element that hops along an arc between stones. */}
             <div
               className="hopFrog"
-              key={`frog-${crossing}`}
+              key={`frog-${roundId}`}
               style={{ left: `${frog.x}%`, top: `${frog.y}%` }}
             >
               <span className="hopFrogBody" key={hopCount}>
@@ -269,6 +340,30 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
         </div>
       )}
 
+      {phase === "lost" && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">😅</div>
+            <div className="overlayTitle">Oops!</div>
+            <button
+              type="button"
+              className="bigButton"
+              onClick={() => {
+                stopAll();
+                unlockSfx();
+                primeSpeech();
+                newGame();
+              }}
+            >
+              Try again
+            </button>
+            <a className="bigButton blue" href="/" style={{ marginTop: 12 }}>
+              🏠 All games
+            </a>
+          </div>
+        </div>
+      )}
+
       {phase === "won" && (
         <div className="overlay">
           <div className="overlayCard">
@@ -278,7 +373,7 @@ export default function PondHopGame({ lesson }: { lesson: number }) {
               type="button"
               className="bigButton"
               onClick={() => {
-                stopSpeech();
+                stopAll();
                 unlockSfx();
                 primeSpeech();
                 newGame();

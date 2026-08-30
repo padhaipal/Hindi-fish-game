@@ -41,6 +41,16 @@ function playFile(src: string, onEnd?: () => void): void {
   }
 }
 
+// Applause when a level is won.
+export function playApplause(): void {
+  playFile("/audio/clap.mp3");
+}
+
+// The "wah wah wah" sad sound when a level is lost.
+export function playLose(): void {
+  playFile("/audio/wa-wa-wa.mp3");
+}
+
 export function stopAll(): void {
   stopSpeech();
   cache.forEach((a) => {

@@ -35,8 +35,14 @@ import { getLetter, Letter } from "@/lib/letters";
 import { getReadingLesson, READING_LESSONS } from "@/lib/lessons";
 import LetterPicture from "@/components/shared/LetterPicture";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
-import { buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
-import { speakCombo, speakLetterSound, stopAll } from "@/lib/sound";
+import { buzzWrong, unlockSfx } from "@/lib/sfx";
+import {
+  speakCombo,
+  speakLetterSound,
+  playApplause,
+  playLose,
+  stopAll,
+} from "@/lib/sound";
 import { primeSpeech } from "@/lib/speech";
 
 // Must match the .fish width/height in globals.css.
@@ -50,7 +56,23 @@ const SPEED = 46;
 const MIN_FISH = 3;
 const MAX_FISH = 7;
 
-type Phase = "start" | "playing" | "won";
+// Per-round countdown length (seconds). The timer bar drains over this time and
+// the round is LOST when it reaches 0.
+const ROUND_SECONDS = 20;
+// Lose the round after this many wrong (non-target) taps.
+const MAX_WRONG = 3;
+
+// Phases:
+//   start   — big Play button.
+//   intro   — fish placed but FROZEN, timer not running, while the target
+//             word+sound plays. Unfreezes to "playing" when it finishes.
+//   playing — fish swim, the countdown timer runs.
+//   lost    — timer ran out or 3 wrong taps: Try again (this round) / All games.
+//   won     — the last round was cleared: applause + trophy overlay.
+type Phase = "start" | "intro" | "playing" | "lost" | "won";
+
+// Why a round was lost — changes the lose overlay's emoji.
+type LoseReason = "time" | "wrong";
 
 interface Motion {
   x: number;
@@ -96,15 +118,16 @@ export default function FishGame({ lesson }: { lesson: number }) {
   const [caughtTargets, setCaughtTargets] = useState(0);
   const [bursts, setBursts] = useState<Burst[]>([]);
   const [roundId, setRoundId] = useState(0);
+  const [loseReason, setLoseReason] = useState<LoseReason>("time");
 
   // ---- refs used by the animation loop / tap handling --------------------
   const pondRef = useRef<HTMLDivElement>(null);
+  const timerRef = useRef<HTMLDivElement>(null); // the .timerFill countdown bar
   const fishEls = useRef<Map<number, HTMLButtonElement>>(new Map());
   const fishGraphics = useRef<Map<number, HTMLSpanElement>>(new Map());
   const motion = useRef<Map<number, Motion>>(new Map());
   const caughtRef = useRef<Set<number>>(new Set());
   const targetRef = useRef<Letter | null>(null);
-  const acceptRef = useRef(false); // ignore taps during a round transition
   const caughtTargetsRef = useRef(0);
   const targetsNeededRef = useRef(1);
   const roundIndexRef = useRef(0); // 0-based index into letterOrderRef
@@ -113,6 +136,13 @@ export default function FishGame({ lesson }: { lesson: number }) {
   const rafRef = useRef<number>(0);
   const lastRef = useRef<number>(0);
   const burstSeq = useRef(0);
+  const remainingRef = useRef(ROUND_SECONDS * 1000); // ms left on the timer
+  const totalTimeRef = useRef(ROUND_SECONDS * 1000); // ms the timer started at
+  const wrongTapsRef = useRef(0); // wrong taps this round (for the loss)
+  const roundOverRef = useRef(false); // true once the round is won or lost
+  const currentRoundRef = useRef(0); // roundId the intro effect is running for
+  const introDoneForRound = useRef(-1); // ensures the intro speaks once per round
+  const introTimerRef = useRef<number>(0); // the intro-freeze -> playing timeout
 
   const registerRoot = useCallback((id: number, el: HTMLButtonElement | null) => {
     if (el) fishEls.current.set(id, el);
@@ -142,7 +172,10 @@ export default function FishGame({ lesson }: { lesson: number }) {
       caughtRef.current = new Set();
       caughtTargetsRef.current = 0;
       targetsNeededRef.current = specs.filter((f) => f.isTarget).length;
-      acceptRef.current = true;
+      wrongTapsRef.current = 0;
+      roundOverRef.current = false;
+      remainingRef.current = ROUND_SECONDS * 1000;
+      totalTimeRef.current = ROUND_SECONDS * 1000;
       lastRef.current = 0;
       fishEls.current = new Map();
       fishGraphics.current = new Map();
@@ -152,7 +185,7 @@ export default function FishGame({ lesson }: { lesson: number }) {
       setFish(specs);
       setRoundNum(index + 1);
       setCaughtTargets(0);
-      setPhase("playing");
+      setPhase("intro"); // start FROZEN; the intro word+sound will unfreeze it
       setRoundId((r) => r + 1);
     },
     [pool]
@@ -167,11 +200,15 @@ export default function FishGame({ lesson }: { lesson: number }) {
     startRound(0);
   }, [pool, startRound]);
 
-  // ---- place fish + speak the target combo, each new round ---------------
+  // ---- place fish (FROZEN) + speak the target combo, each new round -------
+  // Runs once per round while the board is in the "intro" phase: the fish are
+  // positioned but not yet moving and the timer is not running. The target
+  // word+sound plays, and when it finishes we switch to "playing" so the fish
+  // start swimming and the countdown begins.
   useLayoutEffect(() => {
-    if (phase !== "playing") return;
     const pond = pondRef.current;
     if (!pond) return;
+    currentRoundRef.current = roundId;
 
     const rect = pond.getBoundingClientRect();
     const W = rect.width;
@@ -216,8 +253,25 @@ export default function FishGame({ lesson }: { lesson: number }) {
       }
     });
 
-    // Speak the target combo (picture-word then its sound) as the round begins.
-    if (targetRef.current) speakCombo(targetRef.current.id);
+    // Reset the timer bar to full for the frozen intro.
+    if (timerRef.current) {
+      timerRef.current.style.width = "100%";
+      timerRef.current.classList.remove("low");
+    }
+
+    // Speak the target combo (picture-word then its sound) once as the round
+    // begins, then unfreeze into "playing". speakCombo has no onEnd hook here,
+    // so we unfreeze after a fixed delay that covers the word+sound.
+    if (introDoneForRound.current !== roundId) {
+      introDoneForRound.current = roundId;
+      if (targetRef.current) speakCombo(targetRef.current.id);
+      window.clearTimeout(introTimerRef.current);
+      introTimerRef.current = window.setTimeout(() => {
+        if (currentRoundRef.current === roundId) setPhase("playing");
+      }, 1800);
+    }
+
+    return () => window.clearTimeout(introTimerRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId]);
 
@@ -234,7 +288,9 @@ export default function FishGame({ lesson }: { lesson: number }) {
   // ---- handle a tap on a fish --------------------------------------------
   const handleTap = useCallback(
     (spec: FishSpec, el: HTMLButtonElement) => {
-      if (!acceptRef.current) return;
+      // Only respond while actually playing (ignore taps during the frozen
+      // intro, overlays, or once the round is already won/lost).
+      if (phase !== "playing" || roundOverRef.current) return;
       const t = targetRef.current;
       if (!t) return;
       if (caughtRef.current.has(spec.id)) return;
@@ -251,27 +307,39 @@ export default function FishGame({ lesson }: { lesson: number }) {
         caughtTargetsRef.current += 1;
         setCaughtTargets(caughtTargetsRef.current);
 
-        // All target fish caught -> round complete.
+        // All target fish caught -> round complete (you win this round).
         if (caughtTargetsRef.current >= targetsNeededRef.current) {
-          acceptRef.current = false;
+          roundOverRef.current = true; // stops the timer from flipping to a loss
           const isLast = roundIndexRef.current >= totalRounds - 1;
           window.setTimeout(() => {
             if (isLast) {
-              chimeWin();
+              // Finished the last round -> big applause + trophy.
+              playApplause();
               setPhase("won");
             } else {
+              // Advance to the next round (no applause between rounds).
               startRound(roundIndexRef.current + 1);
             }
           }, 550);
         }
       } else {
-        // WRONG: the fish stays and shakes; play continues (no game over).
-        buzzWrong();
+        // WRONG: the fish stays and shakes.
         el.classList.add("shake");
         window.setTimeout(() => el.classList.remove("shake"), 450);
+
+        wrongTapsRef.current += 1;
+        if (wrongTapsRef.current >= MAX_WRONG) {
+          // Too many wrong taps -> the round is LOST.
+          roundOverRef.current = true;
+          setLoseReason("wrong");
+          playLose();
+          window.setTimeout(() => setPhase("lost"), 400);
+        } else {
+          buzzWrong();
+        }
       }
     },
-    [spawnBurst, startRound, totalRounds]
+    [phase, spawnBurst, startRound, totalRounds]
   );
 
   // ---- the animation loop (runs only while "playing") --------------------
@@ -369,6 +437,24 @@ export default function FishGame({ lesson }: { lesson: number }) {
         }
       }
 
+      // Countdown timer bar (drains from 100% to 0 over ROUND_SECONDS).
+      remainingRef.current -= dt * 1000;
+      const pct = Math.max(0, remainingRef.current / totalTimeRef.current);
+      if (timerRef.current) {
+        timerRef.current.style.width = `${pct * 100}%`;
+        if (pct < 0.25) timerRef.current.classList.add("low");
+        else timerRef.current.classList.remove("low");
+      }
+
+      // Time ran out -> the round is LOST.
+      if (remainingRef.current <= 0 && !roundOverRef.current) {
+        roundOverRef.current = true;
+        setLoseReason("time");
+        playLose(); // wah-wah-wah
+        setPhase("lost");
+        return; // stop the loop; the overlay takes over
+      }
+
       rafRef.current = requestAnimationFrame(loop);
     };
 
@@ -381,8 +467,6 @@ export default function FishGame({ lesson }: { lesson: number }) {
   useEffect(() => () => stopAll(), []);
 
   const targetsNeeded = fish.filter((f) => f.isTarget).length;
-  const progressPct =
-    targetsNeeded > 0 ? Math.min(100, (caughtTargets / targetsNeeded) * 100) : 0;
 
   return (
     <div className="app">
@@ -422,9 +506,9 @@ export default function FishGame({ lesson }: { lesson: number }) {
         </div>
       )}
 
-      {/* Progress bar */}
+      {/* Countdown timer bar (driven by the RAF loop while playing) */}
       <div className="timerWrap">
-        <div className="timerFill" style={{ width: `${progressPct}%` }} />
+        <div className="timerFill" ref={timerRef} style={{ width: "100%" }} />
       </div>
 
       {/* Pond with fish */}
@@ -466,6 +550,33 @@ export default function FishGame({ lesson }: { lesson: number }) {
             >
               ▶ Play
             </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "lost" && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">
+              {loseReason === "wrong" ? "😅" : "⏳"}
+            </div>
+            <div className="overlayTitle">Try again</div>
+            <button
+              type="button"
+              className="bigButton blue"
+              onClick={() => {
+                unlockSfx();
+                primeSpeech();
+                stopAll(); // cut the wah-wah-wah before restarting
+                // Restart the CURRENT round.
+                startRound(roundIndexRef.current);
+              }}
+            >
+              🔁 Try again
+            </button>
+            <a className="bigButton" href="/" style={{ marginTop: 12 }}>
+              🏠 All games
+            </a>
           </div>
         </div>
       )}
