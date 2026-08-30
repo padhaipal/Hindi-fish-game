@@ -77,7 +77,12 @@ const GROUPS: RhymeGroup[] = [
 
 // Number of rhyming PAIRS per level (each pair = 2 cards). Last level is the
 // final one -> win overlay.
-const LEVEL_PAIRS = [3, 4, 4];
+//   L1 = 3 pairs (6 cards), L2 = 4 pairs (8 cards),
+//   L3 = 6 pairs (12 cards) laid out 3 columns x 4 rows.
+const LEVEL_PAIRS = [3, 4, 6];
+
+// Gap between the two spoken words of a matched rhyming pair.
+const PAIR_SPEAK_GAP_MS = 600;
 
 // ---- palette ---------------------------------------------------------------
 const INK = "#0a3d57";
@@ -146,9 +151,43 @@ export default function RhymeGame() {
   // ids of the currently selected (up to 2) cards being compared.
   const [selected, setSelected] = useState<number[]>([]);
   const busyRef = useRef(false);
+  // Any pending speech timers (e.g. the delayed 2nd word of a matched pair).
+  // Kept so we can CANCEL leftover/queued speech before starting a new one.
+  const speechTimers = useRef<number[]>([]);
 
   const totalLevels = LEVEL_PAIRS.length;
   const isLastLevel = levelIdx >= totalLevels - 1;
+
+  // Cancel every queued speech timer (does not touch audio already playing).
+  const clearSpeechTimers = useCallback(() => {
+    speechTimers.current.forEach((t) => window.clearTimeout(t));
+    speechTimers.current = [];
+  }, []);
+
+  // Speak a single word NOW: cancel anything queued from before, hard-stop any
+  // audio still playing, then speak. Used on every card tap so a new tap always
+  // wins over stale/queued speech.
+  const speakNow = useCallback(
+    (word: string) => {
+      clearSpeechTimers();
+      stopAll();
+      speakWord(word);
+    },
+    [clearSpeechTimers],
+  );
+
+  // Speak both words of a matched pair with a clear pause between them. The
+  // delayed 2nd word is tracked so a later interaction cancels it.
+  const speakPair = useCallback(
+    (a: string, b: string) => {
+      clearSpeechTimers();
+      stopAll();
+      speakWord(a);
+      const t = window.setTimeout(() => speakWord(b), PAIR_SPEAK_GAP_MS);
+      speechTimers.current.push(t);
+    },
+    [clearSpeechTimers],
+  );
 
   const setCardStates = useCallback(
     (ids: number[], patch: Partial<BoardCard>) => {
@@ -180,9 +219,9 @@ export default function RhymeGame() {
       if (!card || card.gone || card.state === "correct") return;
       if (selected.includes(id)) return;
 
-      // Every tap says the word.
-      stopAll();
-      speakWord(card.word);
+      // Every tap says the word — cancelling anything still queued from before
+      // (including a matched pair's pending 2nd-word timeout).
+      speakNow(card.word);
 
       // First selection.
       if (selected.length === 0) {
@@ -205,9 +244,8 @@ export default function RhymeGame() {
         window.setTimeout(() => {
           setCardStates(pair, { state: "correct" });
           dingCorrect();
-          // Speak both rhyming words in turn.
-          stopAll();
-          speakWord(first.word, () => speakWord(card.word));
+          // Speak both rhyming words with a clear pause between them.
+          speakPair(first.word, card.word);
           window.setTimeout(() => {
             setCardStates(pair, { gone: true });
             setSelected([]);
@@ -241,12 +279,16 @@ export default function RhymeGame() {
         }, 200);
       }
     },
-    [phase, cards, selected, setCardStates, isLastLevel, levelIdx, startLevel],
+    [phase, cards, selected, setCardStates, isLastLevel, levelIdx, startLevel, speakNow, speakPair],
   );
 
-  // Card grid sizing: 3 columns for 6 cards, 4 columns for 8.
-  const cols = cards.length <= 6 ? 3 : 4;
-  const cardW = cols === 4 ? 78 : 100;
+  // Card grid layout:
+  //   6 cards  (L1) -> 3 cols x 2 rows
+  //   8 cards  (L2) -> 4 cols x 2 rows
+  //  12 cards  (L3) -> 3 cols x 4 rows
+  const cols = cards.length === 8 ? 4 : 3;
+  // Shrink cards a touch on the tall 12-card board so all 4 rows fit.
+  const cardW = cols === 4 ? 78 : cards.length >= 12 ? 84 : 100;
   const cardH = Math.round(cardW * 1.28);
 
   return (

@@ -320,56 +320,62 @@ export default function MagicEGame() {
             minHeight: 0,
           }}
         >
-          {/* picture: short emoji swaps to long emoji on reveal */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              minHeight: 118,
-            }}
-          >
-            <PictureCard emoji={pair.short.emoji} dim={revealed} />
-            {revealed && (
-              <>
-                <div style={{ fontSize: 34, color: "#ffffffcc", fontWeight: 800 }}>→</div>
-                <PictureCard emoji={pair.long.emoji} dim={false} glow />
-              </>
-            )}
-          </div>
-
-          {/* the word, built from letter tiles */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 7,
-              marginTop: 8,
-            }}
-          >
-            {tiles}
-          </div>
-
-          {/* transformation caption + sparkles */}
-          <div style={{ height: 30, display: "flex", alignItems: "center" }}>
-            {revealed ? (
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>
-                <span style={{ opacity: 0.75 }}>{shortWord}</span>
-                <span style={{ margin: "0 8px", color: GOLD }}>✨→✨</span>
-                <span style={{ color: "#fff" }}>
-                  {longWord}
-                  <span style={{ color: "#ffe9a8", fontSize: 15, marginLeft: 6 }}>
-                    ({vowelChar} says {VOWEL_NAME[vowelChar] ?? vowelChar.toUpperCase()})
-                  </span>
-                </span>
+          {/* transformation display — only during the transform phase; hidden
+              in the quiz so the child focuses on listening and choosing. */}
+          {phase === "transform" && (
+            <>
+              {/* picture: short emoji swaps to long emoji on reveal */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  minHeight: 118,
+                }}
+              >
+                <PictureCard emoji={pair.short.emoji} dim={revealed} />
+                {revealed && (
+                  <>
+                    <div style={{ fontSize: 34, color: "#ffffffcc", fontWeight: 800 }}>→</div>
+                    <PictureCard emoji={pair.long.emoji} dim={false} glow />
+                  </>
+                )}
               </div>
-            ) : (
-              <div style={{ fontSize: 18, fontWeight: 700, color: "#ffffffcc" }}>
-                A short word… add the magic e!
+
+              {/* the word, built from letter tiles */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 7,
+                  marginTop: 8,
+                }}
+              >
+                {tiles}
               </div>
-            )}
-          </div>
+
+              {/* transformation caption + sparkles */}
+              <div style={{ height: 30, display: "flex", alignItems: "center" }}>
+                {revealed ? (
+                  <div style={{ fontSize: 22, fontWeight: 800, color: "#fff" }}>
+                    <span style={{ opacity: 0.75 }}>{shortWord}</span>
+                    <span style={{ margin: "0 8px", color: GOLD }}>✨→✨</span>
+                    <span style={{ color: "#fff" }}>
+                      {longWord}
+                      <span style={{ color: "#ffe9a8", fontSize: 15, marginLeft: 6 }}>
+                        ({vowelChar} says {VOWEL_NAME[vowelChar] ?? vowelChar.toUpperCase()})
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 18, fontWeight: 700, color: "#ffffffcc" }}>
+                    A short word… add the magic e!
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* controls */}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, width: "100%", maxWidth: 360 }}>
@@ -444,9 +450,13 @@ export default function MagicEGame() {
                   Which word is this? 🎧
                 </div>
 
-                <button className="soundBtn" onClick={playQuiz} style={{ marginTop: 0 }}>
-                  <SpeakerIcon size={26} />
-                  ▶ Play again
+                <button
+                  className="soundBtn"
+                  onClick={playQuiz}
+                  style={{ marginTop: 0, fontSize: 22, padding: "16px 28px" }}
+                >
+                  <SpeakerIcon size={30} />
+                  ▶ Hear again
                 </button>
 
                 {/* two big tappable answer cards, random left/right order */}

@@ -23,19 +23,28 @@ import { primeSpeech } from "@/lib/speech";
 import { dingCorrect, buzzWrong, chimeWin, tick, unlockSfx } from "@/lib/sfx";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 
-// ---- The sentences: short, decodable, with a scene emoji ------------------
+// ---- The sentences: short, decodable, each with a little SCENE -------------
+// `scene` names a small composed picture (see <Scene/> below) — a coloured
+// background with ground/sky, the subject shown large and the object placed in
+// the scene — rather than a lone emoji.
 interface Sentence {
-  emoji: string;
+  scene: SceneKey;
   words: string[];
 }
 const SENTENCES: Sentence[] = [
-  { emoji: "🐱", words: ["The", "cat", "sat", "on", "the", "mat"] },
-  { emoji: "🐔🛏️", words: ["The", "hen", "sat", "on", "the", "bed"] },
-  { emoji: "🐜", words: ["The", "ant", "is", "red"] },
-  { emoji: "🐛", words: ["The", "bug", "is", "on", "the", "rug"] },
-  { emoji: "☀️", words: ["The", "sun", "is", "hot"] },
-  { emoji: "🦊📦", words: ["A", "fox", "is", "in", "the", "box"] },
+  { scene: "cat_mat", words: ["The", "cat", "sat", "on", "the", "mat"] },
+  { scene: "hen_bed", words: ["The", "hen", "sat", "on", "the", "bed"] },
+  { scene: "ant_red", words: ["The", "ant", "is", "red"] },
+  { scene: "bug_rug", words: ["The", "bug", "is", "on", "the", "rug"] },
+  { scene: "sun_hot", words: ["The", "sun", "is", "hot"] },
+  { scene: "fox_box", words: ["A", "fox", "is", "in", "the", "box"] },
 ];
+
+// Small function words are never spoken in ISOLATION on tap — saying "The" or
+// "on" alone sounds wrong. They place silently (tick only); the natural
+// pronunciation comes from reading the WHOLE sentence when it is complete.
+const FUNCTION_WORDS = new Set(["the", "a", "an", "on", "in", "is", "at"]);
+const isFunctionWord = (w: string): boolean => FUNCTION_WORDS.has(w.toLowerCase());
 
 // One tappable word: a unique instance so duplicate words (e.g. "the") are
 // tracked independently.
@@ -145,6 +154,147 @@ function chipBase(): React.CSSProperties {
   };
 }
 
+// ---------------------------------------------------------------------------
+// SCENES — each sentence gets a little composed picture instead of a lone
+// emoji: a coloured sky/room background with a ground line, the subject shown
+// large, and the object/place placed in the scene. Built from positioned
+// emojis + simple shapes (all inline styles), so it reads as a real scene.
+// ---------------------------------------------------------------------------
+type SceneKey = "cat_mat" | "hen_bed" | "ant_red" | "bug_rug" | "sun_hot" | "fox_box";
+
+// absolutely-positioned emoji with a soft drop shadow for depth
+function emo(size: number, extra: React.CSSProperties): React.CSSProperties {
+  return {
+    position: "absolute",
+    fontSize: size,
+    lineHeight: 1,
+    filter: "drop-shadow(0 3px 2px rgba(0,0,0,0.28))",
+    userSelect: "none",
+    ...extra,
+  };
+}
+
+function Scene({ scene, celebrate }: { scene: SceneKey; celebrate: boolean }) {
+  const wrap: React.CSSProperties = {
+    position: "absolute",
+    inset: 0,
+    overflow: "hidden",
+    borderRadius: 20,
+  };
+  // subject bobs a little when the sentence is celebrated
+  const bob: React.CSSProperties = celebrate ? { animation: "sentBob 0.6s ease" } : {};
+  const fill = (bg: string): React.CSSProperties => ({ position: "absolute", inset: 0, background: bg });
+
+  switch (scene) {
+    // The cat sat on the mat → a cat sitting on a striped mat on a wooden floor.
+    case "cat_mat":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#fde7d0 0%, #fde7d0 60%, #e6bd86 60%, #d6a566 100%)")} />
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: 7,
+              transform: "translateX(-50%)",
+              width: 98,
+              height: 22,
+              borderRadius: 12,
+              background: "repeating-linear-gradient(90deg,#e8615f 0 10px,#f6a63f 10px 20px)",
+              boxShadow: "0 3px 4px rgba(0,0,0,0.22)",
+            }}
+          />
+          <span style={emo(50, { left: "50%", bottom: 18, transform: "translateX(-50%)", ...bob })}>🐱</span>
+        </div>
+      );
+
+    // The hen sat on the bed → a hen sitting on a little bed with a pillow.
+    case "hen_bed":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#eaf3ff 0%, #eaf3ff 58%, #d7c19a 58%, #c6ac7f 100%)")} />
+          {/* headboard */}
+          <div style={{ position: "absolute", left: "calc(50% - 58px)", bottom: 8, width: 11, height: 46, borderRadius: 4, background: "#a9704a" }} />
+          {/* mattress */}
+          <div style={{ position: "absolute", left: "50%", bottom: 8, transform: "translateX(-50%)", width: 112, height: 28, borderRadius: "8px 8px 6px 6px", background: "#fff", boxShadow: "0 3px 4px rgba(0,0,0,0.2)" }} />
+          {/* blanket (right half) */}
+          <div style={{ position: "absolute", left: "50%", bottom: 8, transform: "translateX(-50%)", width: 112, height: 28, borderRadius: "8px", background: "linear-gradient(#7cc4f0,#4a97d6)", clipPath: "inset(0 0 0 48%)" }} />
+          {/* pillow */}
+          <div style={{ position: "absolute", left: "calc(50% - 46px)", bottom: 30, width: 30, height: 13, borderRadius: 7, background: "#ffe6a0", boxShadow: "0 2px 2px rgba(0,0,0,0.15)" }} />
+          <span style={emo(40, { left: "calc(50% + 6px)", bottom: 26, transform: "translateX(-50%)", ...bob })}>🐔</span>
+        </div>
+      );
+
+    // The ant is red → a big ant on grass, glowing red to stress the colour.
+    case "ant_red":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#eafcef 0%, #d5f4d8 55%, #8fd98a 100%)")} />
+          {/* grass blades */}
+          <div style={{ position: "absolute", left: 12, bottom: 0, width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: "20px solid #57b85f" }} />
+          <div style={{ position: "absolute", right: 16, bottom: 0, width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: "26px solid #57b85f" }} />
+          {/* red glow */}
+          <div style={{ position: "absolute", left: "50%", top: "48%", width: 82, height: 82, transform: "translate(-50%,-50%)", borderRadius: "50%", background: "radial-gradient(circle, rgba(238,80,72,0.6), rgba(238,80,72,0) 70%)" }} />
+          <span style={emo(54, { left: "50%", top: "48%", transform: "translate(-50%,-52%)", ...bob })}>🐜</span>
+        </div>
+      );
+
+    // The bug is on the rug → a bug on a patterned rug on the floor.
+    case "bug_rug":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#f3ecff 0%, #f3ecff 58%, #d9c4a0 58%, #c8ad82 100%)")} />
+          <div
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: 9,
+              transform: "translateX(-50%)",
+              width: 108,
+              height: 30,
+              borderRadius: 16,
+              background: "repeating-linear-gradient(45deg,#f2c14e 0 8px,#e07a5f 8px 16px)",
+              border: "3px solid #b23a48",
+              boxShadow: "0 3px 4px rgba(0,0,0,0.2)",
+            }}
+          />
+          <span style={emo(42, { left: "50%", bottom: 18, transform: "translateX(-50%)", ...bob })}>🐛</span>
+        </div>
+      );
+
+    // The sun is hot → a bright sun high in a blue sky with clouds.
+    case "sun_hot":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#3fa3e0 0%, #7bc5ee 60%, #bfe6ff 100%)")} />
+          {/* clouds */}
+          <div style={{ position: "absolute", left: 8, bottom: 16, width: 40, height: 15, borderRadius: 10, background: "#ffffffdd", boxShadow: "14px -6px 0 -2px #ffffffdd" }} />
+          <div style={{ position: "absolute", right: 6, top: 14, width: 34, height: 13, borderRadius: 9, background: "#ffffffcc" }} />
+          {/* heat shimmer */}
+          <div style={{ position: "absolute", left: "50%", top: 8, transform: "translateX(-50%)", width: 74, height: 74, borderRadius: "50%", background: "radial-gradient(circle, rgba(255,224,120,0.85), rgba(255,224,120,0) 70%)" }} />
+          <span style={emo(52, { left: "50%", top: 12, transform: "translateX(-50%)", ...bob })}>☀️</span>
+        </div>
+      );
+
+    // A fox is in the box → a fox peeking out of an open cardboard box.
+    case "fox_box":
+      return (
+        <div style={wrap}>
+          <div style={fill("linear-gradient(#eef2f7 0%, #eef2f7 60%, #cbb189 60%, #bb9d6f 100%)")} />
+          {/* open flaps behind */}
+          <div style={{ position: "absolute", left: "calc(50% - 40px)", bottom: 47, width: 40, height: 13, background: "#caa06a", borderRadius: 3, transform: "rotate(-20deg)", transformOrigin: "bottom right", zIndex: 0 }} />
+          <div style={{ position: "absolute", left: "calc(50% + 0px)", bottom: 47, width: 40, height: 13, background: "#d9b485", borderRadius: 3, transform: "rotate(20deg)", transformOrigin: "bottom left", zIndex: 0 }} />
+          {/* fox peeking (its lower half hidden behind the front panel) */}
+          <span style={emo(42, { left: "50%", bottom: 26, transform: "translateX(-50%)", zIndex: 1, ...bob })}>🦊</span>
+          {/* box front panel */}
+          <div style={{ position: "absolute", left: "50%", bottom: 7, transform: "translateX(-50%)", width: 86, height: 44, background: "linear-gradient(#d69a5c,#b9793d)", borderRadius: "4px 4px 5px 5px", boxShadow: "0 3px 4px rgba(0,0,0,0.25)", zIndex: 2 }} />
+          {/* packing tape */}
+          <div style={{ position: "absolute", left: "50%", bottom: 7, transform: "translateX(-50%)", width: 16, height: 44, background: "#eccfa4cc", zIndex: 3 }} />
+        </div>
+      );
+  }
+}
+
 export default function SentenceGame() {
   const [phase, setPhase] = useState<Phase>("start");
   const [sentenceIdx, setSentenceIdx] = useState(0);
@@ -216,7 +366,10 @@ export default function SentenceGame() {
       // Correct next word: it flies into the slot.
       const placed = [...placedIds, tile.id];
       setPlacedIds(placed);
-      speakWord(tile.word);
+      // Speak only CONTENT words (cat, sat, mat…) on tap. Function words
+      // (the, a, on, in, is…) place silently — spoken alone they sound wrong;
+      // they get their correct pronunciation from the whole-sentence read below.
+      if (!isFunctionWord(tile.word)) speakWord(tile.word);
       tick();
 
       if (placed.length < sentence.words.length) return;
@@ -268,12 +421,16 @@ export default function SentenceGame() {
               type="button"
               style={{
                 ...(S.scene as React.CSSProperties),
+                position: "relative",
+                overflow: "hidden",
+                padding: 0,
+                fontSize: 0,
                 animation: complete ? "pop 0.5s ease" : undefined,
               }}
               onClick={replay}
               aria-label="Listen to the sentence"
             >
-              {sentence.emoji}
+              <Scene scene={sentence.scene} celebrate={complete} />
             </button>
             <button
               type="button"
@@ -439,6 +596,15 @@ export default function SentenceGame() {
           40% { transform: translateX(7px) rotate(4deg); }
           60% { transform: translateX(-5px) rotate(-3deg); }
           80% { transform: translateX(5px) rotate(3deg); }
+        }
+        /* the scene's subject gives a happy hop when the sentence is finished.
+           Note: transforms here compose only relative to each subject's own
+           inline translate baseline, which each keyframe step restates. */
+        @keyframes sentBob {
+          0%,100% { translate: 0 0; }
+          30% { translate: 0 -10px; }
+          55% { translate: 0 0; }
+          75% { translate: 0 -4px; }
         }
       `}</style>
     </div>

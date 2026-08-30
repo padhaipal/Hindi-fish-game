@@ -38,6 +38,7 @@ const GROUPS: Group[] = [
       { href: "/rhyme", label: "Rhyme Time", emoji: "🎵", cls: "gbRhyme" },
       { href: "/detective", label: "Sound Detective", emoji: "🕵️", cls: "gbDetective" },
       { href: "/sentence", label: "Sentence Builder", emoji: "📝", cls: "gbSentence" },
+      { href: "/silly", label: "Silly Sentences", emoji: "🤪", cls: "gbSilly" },
       { href: "/magic-e", label: "Magic-e", emoji: "🪄", cls: "gbMagic" },
     ],
   },

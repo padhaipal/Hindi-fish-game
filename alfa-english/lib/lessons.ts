@@ -73,6 +73,8 @@ export const CVC_WORDS: CvcWord[] = [
   { word: "bat", emoji: "🦇", lesson: 1 },
   { word: "bag", emoji: "🎒", lesson: 1 },
   { word: "cab", emoji: "🚕", lesson: 1 },
+  { word: "tag", emoji: "🏷️", lesson: 1 },
+  { word: "mat", emoji: "🟫", lesson: 1 },
   // Lesson 3 (+ j e y s v)
   { word: "jet", emoji: "✈️", lesson: 3 },
   { word: "jam", emoji: "🍓", lesson: 3 },

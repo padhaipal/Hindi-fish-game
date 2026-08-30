@@ -1715,3 +1715,7 @@ body > div {
 .gameButton.gbDetective:active { transform: translateY(4px); box-shadow: 0 2px 0 #7d5c2c; }
 .gameButton.gbSentence { background: linear-gradient(#3fd0a6, #1fae86); box-shadow: 0 6px 0 #148063; }
 .gameButton.gbSentence:active { transform: translateY(4px); box-shadow: 0 2px 0 #148063; }
+
+/* Silly Sentences (Lesson 37 sentences game) button */
+.gameButton.gbSilly { background: linear-gradient(#ff9a5a, #f0742e); box-shadow: 0 6px 0 #bf5416; }
+.gameButton.gbSilly:active { transform: translateY(4px); box-shadow: 0 2px 0 #bf5416; }

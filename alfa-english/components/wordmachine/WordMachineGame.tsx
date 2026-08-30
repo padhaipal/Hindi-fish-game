@@ -1,14 +1,17 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// WORD MACHINE — rotate the first letter to build the picture word.
+// WORD MACHINE — spin the wheel to build the picture word.
 // ---------------------------------------------------------------------------
 // The PICTURE of the target word is shown (emoji). The last two letters are
-// FIXED tiles (the rime, e.g. "a" "t"). A ROTOR tile on the LEFT holds the
-// first letter; the child spins it with big ▲ / ▼ buttons (or a swipe) to
-// cycle through candidate consonants and BLEND the current word aloud with the
-// ▶ Read button. When the rotor lands on the correct first letter the word
-// matches the picture, glows, and says its name. Mobile-first, big tap targets.
+// FIXED tiles (the rime, e.g. "a" "t"). A VISIBLE SPINNING WHEEL / SLOT REEL on
+// the LEFT holds the first letter: the learner sees the letter ABOVE (faint),
+// the CURRENT letter (big, centred, framed in a window) and the letter BELOW
+// (faint), so they can see what is coming. They spin it with big ▲ / ▼ buttons
+// (or a swipe up / down) and the reel visibly scrolls. When the wheel lands on
+// the correct first letter the word matches the picture, glows, and says its
+// name. Targets are sequenced in RIME BATCHES: at least 3 words that share the
+// same last-two-letters play in a row before a fresh rime. Mobile-first.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef, useState, type CSSProperties, type TouchEvent as ReactTouchEvent } from "react";
@@ -25,27 +28,53 @@ interface Target {
   rotor: string[]; // correct first letter + distractor consonants
 }
 
-// ~12 CVC targets, grouped by rime, each with a clear emoji. Every rotor set is
-// the correct first letter plus 3-4 distractor consonants (shuffled at runtime).
-const TARGETS: Target[] = [
-  { word: "cat", emoji: "🐱", rime: "at", first: "c", rotor: ["c", "m", "r", "s", "f"] },
-  { word: "hat", emoji: "🎩", rime: "at", first: "h", rotor: ["h", "b", "r", "m", "p"] },
-  { word: "bat", emoji: "🦇", rime: "at", first: "b", rotor: ["b", "h", "m", "s", "r"] },
-  { word: "sun", emoji: "☀️", rime: "un", first: "s", rotor: ["s", "b", "f", "r", "n"] },
-  { word: "dog", emoji: "🐕", rime: "og", first: "d", rotor: ["d", "l", "f", "j", "h"] },
-  { word: "hen", emoji: "🐔", rime: "en", first: "h", rotor: ["h", "p", "t", "d", "m"] },
-  { word: "pen", emoji: "🖊️", rime: "en", first: "p", rotor: ["p", "h", "t", "d", "n"] },
-  { word: "box", emoji: "📦", rime: "ox", first: "b", rotor: ["b", "f", "s", "l", "r"] },
-  { word: "fox", emoji: "🦊", rime: "ox", first: "f", rotor: ["f", "b", "s", "p", "r"] },
-  { word: "cup", emoji: "☕", rime: "up", first: "c", rotor: ["c", "p", "s", "m", "t"] },
-  { word: "jet", emoji: "✈️", rime: "et", first: "j", rotor: ["j", "n", "p", "s", "w"] },
-  { word: "bug", emoji: "🐛", rime: "ug", first: "b", rotor: ["b", "m", "r", "h", "j"] },
+// ---------------------------------------------------------------------------
+// RIME GROUPS — each group has >=3 pictured words that share the same rime and
+// are kept CONSECUTIVE. Every rotor is the correct first letter plus a handful
+// of distractor consonants (shuffled at runtime). Because the whole list is
+// built group-by-group, the learner always hears at least three words on the
+// same rime in a row before the rime changes.
+// ---------------------------------------------------------------------------
+const RIME_GROUPS: Target[][] = [
+  // -at
+  [
+    { word: "cat", emoji: "🐱", rime: "at", first: "c", rotor: ["c", "m", "r", "f", "n"] },
+    { word: "hat", emoji: "🎩", rime: "at", first: "h", rotor: ["h", "p", "f", "d", "g"] },
+    { word: "bat", emoji: "🦇", rime: "at", first: "b", rotor: ["b", "g", "d", "w", "s"] },
+    { word: "rat", emoji: "🐀", rime: "at", first: "r", rotor: ["r", "n", "g", "w", "p"] },
+  ],
+  // -en
+  [
+    { word: "hen", emoji: "🐔", rime: "en", first: "h", rotor: ["h", "d", "m", "w", "b"] },
+    { word: "pen", emoji: "🖊️", rime: "en", first: "p", rotor: ["p", "d", "m", "w", "b"] },
+    { word: "ten", emoji: "🔟", rime: "en", first: "t", rotor: ["t", "d", "m", "w", "b"] },
+  ],
+  // -un
+  [
+    { word: "sun", emoji: "☀️", rime: "un", first: "s", rotor: ["s", "f", "g", "d", "n"] },
+    { word: "bun", emoji: "🍞", rime: "un", first: "b", rotor: ["b", "f", "g", "d", "n"] },
+    { word: "run", emoji: "🏃", rime: "un", first: "r", rotor: ["r", "f", "g", "d", "n"] },
+  ],
+  // -ug
+  [
+    { word: "bug", emoji: "🐛", rime: "ug", first: "b", rotor: ["b", "d", "h", "t", "n"] },
+    { word: "mug", emoji: "☕", rime: "ug", first: "m", rotor: ["m", "d", "h", "t", "n"] },
+    { word: "jug", emoji: "🥛", rime: "ug", first: "j", rotor: ["j", "d", "h", "t", "n"] },
+    { word: "rug", emoji: "🧶", rime: "ug", first: "r", rotor: ["r", "d", "h", "t", "n"] },
+  ],
 ];
+
+// Flattened play order: every group presented fully before the next.
+const TARGETS: Target[] = RIME_GROUPS.flat();
 
 // ---- palette ---------------------------------------------------------------
 const INK = "#123a4d";
 const TEAL = "#1f8bbf";
 const GREEN = "#1faa5a";
+
+// Reel geometry.
+const CELL_H = 60; // height of one letter cell in the wheel
+const REEL_W = 86;
 
 // A cheerful workshop / machine sky, layered over the .app frame.
 const rootStyle: CSSProperties = {
@@ -70,19 +99,24 @@ export default function WordMachineGame() {
   const [won, setWon] = useState(false);
   const [index, setIndex] = useState(0);
 
-  // Per-round rotor state.
+  // Per-round wheel state.
   const [options, setOptions] = useState<string[]>([]);
-  const [optIndex, setOptIndex] = useState(0);
+  // `pos` is a CONTINUOUS position into a tripled strip of the options so the
+  // reel can scroll seamlessly and always show a letter above and below the
+  // centred one. The logical (mod) index is derived from it.
+  const [pos, setPos] = useState(0);
+  const [animate, setAnimate] = useState(false);
   const [solved, setSolved] = useState(false);
-  const [spin, setSpin] = useState(0); // re-triggers the rotor flip animation
 
   const touchStartY = useRef<number | null>(null);
 
   const target = TARGETS[index];
-  const currentFirst = options[optIndex] ?? target.first;
+  const N = options.length;
+  const logical = N ? ((pos % N) + N) % N : 0;
+  const currentFirst = N ? options[logical] : target.first;
   const currentWord = currentFirst + target.rime;
 
-  // Build a shuffled rotor for round `i`, starting on a NON-correct letter so
+  // Build a shuffled wheel for round `i`, starting on a NON-correct letter so
   // there's always something to spin.
   function loadRound(i: number) {
     const t = TARGETS[i];
@@ -92,12 +126,12 @@ export default function WordMachineGame() {
     let start = correctAt === 0 ? 1 : correctAt - 1;
     if (start >= opts.length) start = 0;
     setOptions(opts);
-    setOptIndex(start);
+    setAnimate(false); // snap into place, no scroll on load
+    setPos(opts.length + start); // sit in the MIDDLE copy of the tripled strip
     setSolved(false);
-    setSpin((s) => s + 1);
   }
 
-  // Celebrate the moment the rotor lands on the correct first letter.
+  // Celebrate the moment the wheel lands on the correct first letter.
   function celebrate(i: number) {
     setSolved(true);
     dingCorrect();
@@ -106,13 +140,29 @@ export default function WordMachineGame() {
 
   function rotate(dir: 1 | -1) {
     if (solved || options.length === 0) return;
-    const n = (optIndex + dir + options.length) % options.length;
-    setOptIndex(n);
-    setSpin((s) => s + 1);
-    if (options[n] === target.first) {
+    setAnimate(true);
+    const newPos = pos + dir;
+    setPos(newPos);
+    const nl = ((newPos % options.length) + options.length) % options.length;
+    if (options[nl] === target.first) {
       celebrate(index);
     } else {
       tick();
+    }
+  }
+
+  // After a spin settles, silently hop back into the middle copy so the reel
+  // can keep scrolling forever without running off the ends (seamless because
+  // all three copies are identical).
+  function onReelSettle() {
+    const n = options.length;
+    if (!n) return;
+    if (pos < n) {
+      setAnimate(false);
+      setPos(pos + n);
+    } else if (pos >= 2 * n) {
+      setAnimate(false);
+      setPos(pos - n);
     }
   }
 
@@ -131,7 +181,7 @@ export default function WordMachineGame() {
     if (y0 == null) return;
     const dy = (e.changedTouches[0]?.clientY ?? y0) - y0;
     if (Math.abs(dy) < 24) return;
-    // Swipe up = next letter (▲), swipe down = previous (▼).
+    // Swipe up = spin to next letter (▲), swipe down = previous (▼).
     rotate(dy < 0 ? 1 : -1);
   }
 
@@ -176,6 +226,12 @@ export default function WordMachineGame() {
       {ch}
     </div>
   ));
+
+  // Tripled strip of option letters so neighbours are always present and the
+  // reel scrolls seamlessly across the seam.
+  const reelCells = N ? [...options, ...options, ...options] : [];
+  // translateY that places cell `pos` in the MIDDLE row of the 3-row window.
+  const stripY = CELL_H * (1 - pos);
 
   return (
     <div className="app" style={rootStyle}>
@@ -230,7 +286,7 @@ export default function WordMachineGame() {
             {solved ? "You built it! 🎉" : "Spin the wheel to build the word"}
           </div>
 
-          {/* The machine: rotor + fixed rime tiles */}
+          {/* The machine: spinning wheel + fixed rime tiles */}
           <div
             style={{
               display: "flex",
@@ -242,54 +298,130 @@ export default function WordMachineGame() {
               boxShadow: "inset 0 3px 10px #00000033, 0 6px 0 #093f61",
             }}
           >
-            {/* rotor column: ▲ / tile / ▼ */}
+            {/* wheel column: ▲ / reel window / ▼ */}
             <div
               style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
             >
               <button
                 onClick={() => rotate(1)}
                 disabled={solved}
-                aria-label="Next letter"
+                aria-label="Spin up"
                 style={arrowStyle(solved)}
               >
                 ▲
               </button>
 
+              {/* The VISIBLE spinning reel window (3 letters tall) */}
               <div
                 onTouchStart={onTouchStart}
                 onTouchEnd={onTouchEnd}
+                aria-label={`First letter wheel, showing ${currentFirst}`}
                 style={{
                   position: "relative",
-                  width: 74,
-                  height: 88,
+                  width: REEL_W,
+                  height: CELL_H * 3,
                   borderRadius: 18,
+                  overflow: "hidden",
                   background: solved
                     ? "linear-gradient(#fff7d6, #ffe27a)"
                     : "linear-gradient(#ffffff, #eaf6ff)",
                   border: `4px solid ${solved ? "#ffbf34" : "#ffffff"}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 52,
-                  fontWeight: 800,
-                  color: solved ? "#8a5b00" : TEAL,
                   boxShadow: solved
                     ? "0 6px 0 #00000026, 0 0 20px 4px #ffd23f88"
-                    : "0 6px 0 #00000026",
+                    : "0 6px 0 #00000026, inset 0 2px 6px #00000018",
                   touchAction: "none",
                   userSelect: "none",
-                  transition: "color .2s ease, background .2s ease, border-color .2s ease, box-shadow .2s ease",
                 }}
               >
-                <span key={spin} style={{ display: "block", animation: "pop .28s ease" }}>
-                  {currentFirst}
-                </span>
+                {/* scrolling strip of letters */}
+                <div
+                  onTransitionEnd={onReelSettle}
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    transform: `translateY(${stripY}px)`,
+                    transition: animate
+                      ? "transform .34s cubic-bezier(.2,.85,.25,1)"
+                      : "none",
+                    willChange: "transform",
+                  }}
+                >
+                  {reelCells.map((ch, k) => {
+                    const d = k - pos; // 0 = centre, -1 above, +1 below
+                    const centre = d === 0;
+                    return (
+                      <div
+                        key={k}
+                        style={{
+                          height: CELL_H,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: centre ? 50 : 30,
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          color: centre ? (solved ? "#8a5b00" : TEAL) : "#2a6f95",
+                          opacity: centre ? 1 : Math.abs(d) === 1 ? 0.42 : 0.12,
+                        }}
+                      >
+                        {ch}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* top & bottom edge fades — that "curved wheel" feel */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: CELL_H,
+                    pointerEvents: "none",
+                    background: solved
+                      ? "linear-gradient(#fff7d6, rgba(255,247,214,0))"
+                      : "linear-gradient(#f4fbff, rgba(244,251,255,0))",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: CELL_H,
+                    pointerEvents: "none",
+                    background: solved
+                      ? "linear-gradient(rgba(255,226,122,0), #ffe27a)"
+                      : "linear-gradient(rgba(234,246,255,0), #eaf6ff)",
+                  }}
+                />
+
+                {/* the centre window frame that marks the chosen letter */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: CELL_H,
+                    left: 4,
+                    right: 4,
+                    height: CELL_H,
+                    borderRadius: 12,
+                    border: `3px solid ${solved ? "#ffbf34" : "#ffd23f"}`,
+                    boxShadow: solved
+                      ? "0 0 16px 3px #ffd23faa, inset 0 0 10px #ffd23f55"
+                      : "0 0 8px 1px #ffd23f66",
+                    pointerEvents: "none",
+                  }}
+                />
               </div>
 
               <button
                 onClick={() => rotate(-1)}
                 disabled={solved}
-                aria-label="Previous letter"
+                aria-label="Spin down"
                 style={arrowStyle(solved)}
               >
                 ▼
@@ -404,7 +536,7 @@ const fixedTileStyle: CSSProperties = {
 
 function arrowStyle(solved: boolean): CSSProperties {
   return {
-    width: 74,
+    width: REEL_W,
     height: 44,
     borderRadius: 14,
     border: "none",
