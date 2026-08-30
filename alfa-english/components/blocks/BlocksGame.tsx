@@ -4,9 +4,9 @@
 // ALfA ENGLISH — BLOCKS GAME (spell the pictured word)
 // ---------------------------------------------------------------------------
 // A picture (a CVC word's emoji, e.g. cat 🐱) sits above a board of letter
-// blocks. Each board is a SHAPE — a rows×cols grid with some corner cells cut
-// out — filled with several 3-letter words laid down as contiguous straight
-// runs, a mix of horizontal and vertical, plus random filler letters (see
+// blocks. Each board is a FULL rows×cols rectangle packed almost entirely with
+// several 3-letter words laid down as contiguous straight runs, a mix of
+// horizontal and vertical, plus at most a couple of filler letters (see
 // lib/blocks/words.ts + levels.ts).
 //
 // The child is cued ONE word at a time by its picture + a Listen button. They
@@ -14,11 +14,14 @@
 // left→right or top→bottom — to spell it:
 //   - Each correct, adjacent letter lifts with an order number and a soft tick.
 //   - The final letter completes the run: the blocks pop, the whole word is
-//     spoken, those cells become empty GAPS (no gravity — nothing shifts, which
-//     keeps the mixed-orientation boards always solvable), and the next picture
-//     appears.
+//     spoken, those cells become empty GAPS, and then GRAVITY pulls the blocks
+//     above them straight down (per column) to fill the gaps — the letters slide
+//     down as space appears — and the next picture appears.
 //   - A tap that isn't the next adjacent block of a valid run flashes red +
 //     buzzes and clears the current selection.
+// Because gravity re-aligns the remaining words, the board is generated with a
+// proven gravity-safe SOLVE ORDER and the words are cued in exactly that order,
+// so the pictured word is always currently spellable as a run.
 // Solve every cued word → next level. Finish the last level → applause + the win
 // overlay. A first-word demo highlights the run to tap.
 //
@@ -30,14 +33,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Block, { type BlockState } from "./Block";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import JamIcon from "@/components/shared/JamIcon";
-import { LEVELS, levelMask } from "@/lib/blocks/levels";
-import { pickWords, buildBoard } from "@/lib/blocks/words";
+import { LEVELS } from "@/lib/blocks/levels";
+import { pickWords, buildSolvableBoard } from "@/lib/blocks/words";
 import {
   type Board,
   type Occ,
   makeBoard,
   findBlock,
   removeByIds,
+  applyGravity,
   occurrences,
   occBlocks,
   runFromIds,
@@ -114,10 +118,13 @@ export default function BlocksGame() {
     (idx: number) => {
       const lvl = LEVELS[idx];
       const picked = pickWords(lvl.words);
-      const { grid } = buildBoard(levelMask(lvl), picked.map((w) => w.word));
+      const { grid, order } = buildSolvableBoard(lvl.rows, lvl.cols, picked.map((w) => w.word));
+      // Cue the words in the proven gravity-safe order (see words.ts).
+      const byWord = new Map(picked.map((w) => [w.word, w] as const));
+      const ordered = order.map((w) => byWord.get(w)!);
       setLevelIdx(idx);
       setBoard(makeBoard(grid));
-      setWords(picked);
+      setWords(ordered);
       setTargetIndex(0);
       setSelectedIds([]);
       selRef.current = [];
@@ -129,7 +136,7 @@ export default function BlocksGame() {
       wantDemoRef.current = idx === 0 && !demoShownRef.current;
       busyRef.current = false;
       setPhase("playing");
-      announce(picked[0].word);
+      announce(ordered[0].word);
     },
     [clearHint, announce]
   );
@@ -177,7 +184,8 @@ export default function BlocksGame() {
     dingCorrect();
 
     window.setTimeout(() => {
-      const next = removeByIds(curBoard, ids); // solved cells become gaps (no gravity)
+      // Solved cells become gaps, then gravity pulls the blocks above them down.
+      const next = applyGravity(removeByIds(curBoard, ids));
       setBoard(next);
       setCorrectIds(new Set());
       setFx(null);

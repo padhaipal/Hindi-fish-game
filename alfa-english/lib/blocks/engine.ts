@@ -3,12 +3,13 @@
 // ---------------------------------------------------------------------------
 // The board is a FIXED grid of cells addressed as board[row][col] with row 0 at
 // the TOP. A cell is either a letter block { id, char } or `null` — a GAP. A gap
-// is either a cell the level's mask removed (a missing corner) or a cell whose
-// word has been solved and cleared. There is NO gravity: clearing a solved run
-// just turns those cells into gaps; every other block stays exactly where it is.
-// That keeps the mixed horizontal/vertical boards always solvable, because the
-// words are placed as non-overlapping runs (see words.ts) and clearing one run
-// can never disturb another.
+// is a cell whose word has been solved and cleared (the boards are now full
+// rectangles — no masked-out corners). Clearing a solved run turns those cells
+// into gaps and then GRAVITY pulls every block ABOVE straight down to fill them,
+// per column, like a candy/Tetris board (see applyGravity). Because gravity can
+// re-align the remaining words, the generator (words.ts) hands the game a proven
+// gravity-safe SOLVE ORDER and the game cues the words in exactly that order, so
+// the pictured word is always present as a run when it is asked for.
 //
 // A word appears as a straight RUN of adjacent, non-gap blocks, spelled in order:
 //   - HORIZONTAL: same row, consecutive columns, read left→right.
@@ -55,10 +56,35 @@ export function findBlock(board: Board, id: number): { row: number; col: number 
   return null;
 }
 
-// Clear the given block ids → those cells become gaps. Nothing else moves.
+// Clear the given block ids → those cells become gaps. Nothing else moves (call
+// applyGravity afterwards to let the blocks above fall into the new gaps).
 export function removeByIds(board: Board, ids: number[]): Board {
   const gone = new Set(ids);
   return board.map((row) => row.map((cell) => (cell && gone.has(cell.id) ? null : cell)));
+}
+
+// Per-column GRAVITY: within each column, every non-gap block falls straight
+// down until it rests on the floor or another block; the emptied cells collect
+// at the TOP. Block ids are preserved and the relative order within a column is
+// kept, so React reuses each block's DOM node and the CSS `.blockCell` transform
+// transition slides it smoothly down into its new cell.
+export function applyGravity(board: Board): Board {
+  const rows = board.length;
+  const cols = rows ? board[0].length : 0;
+  const next: Board = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => null as Cell)
+  );
+  for (let c = 0; c < cols; c++) {
+    let write = rows - 1; // fill from the floor upward
+    for (let r = rows - 1; r >= 0; r--) {
+      const cell = board[r][c];
+      if (cell) {
+        next[write][c] = cell;
+        write--;
+      }
+    }
+  }
+  return next;
 }
 
 // All occurrences of a word (given by its characters), horizontal + vertical.
