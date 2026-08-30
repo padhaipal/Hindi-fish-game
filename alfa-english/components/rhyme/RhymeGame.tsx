@@ -81,8 +81,6 @@ const GROUPS: RhymeGroup[] = [
 //   L3 = 6 pairs (12 cards) laid out 3 columns x 4 rows.
 const LEVEL_PAIRS = [3, 4, 6];
 
-// Gap between the two spoken words of a matched rhyming pair.
-const PAIR_SPEAK_GAP_MS = 600;
 
 // ---- palette ---------------------------------------------------------------
 const INK = "#0a3d57";
@@ -247,39 +245,31 @@ export default function RhymeGame() {
       if (isRhyme) {
         setCardStates(pair, { state: "correct" });
         dingCorrect();
-        // Speak word1 -> (pause) -> word2, then finalise the match & unlock.
-        // Nothing can replay in between: input is locked and each speak is
-        // preceded by stopAll(), with a generation guard on every onEnd.
+        // Speak ONLY the just-tapped word (the first card already spoke its own
+        // word when it was tapped), then finalise the match & unlock. This is
+        // why the first word is never replayed on the second tap.
         const my = beginSpeech();
-        speakWord(first.word, () => {
+        speakWord(card.word, () => {
           if (seqRef.current !== my) return;
-          const t = window.setTimeout(() => {
-            if (seqRef.current !== my) return;
-            stopAll();
-            speakWord(card.word, () => {
-              if (seqRef.current !== my) return;
-              setCardStates(pair, { gone: true });
-              setSelected([]);
-              speakingRef.current = false;
-              // Level complete?
-              setCards((prev) => {
-                const remaining = prev.filter((c) => !c.gone).length;
-                if (remaining === 0) {
-                  const done = window.setTimeout(() => {
-                    if (isLastLevel) {
-                      chimeWin();
-                      setPhase("win");
-                    } else {
-                      startLevel(levelIdx + 1);
-                    }
-                  }, 500);
-                  speechTimers.current.push(done);
+          setCardStates(pair, { gone: true });
+          setSelected([]);
+          speakingRef.current = false;
+          // Level complete?
+          setCards((prev) => {
+            const remaining = prev.filter((c) => !c.gone).length;
+            if (remaining === 0) {
+              const done = window.setTimeout(() => {
+                if (isLastLevel) {
+                  chimeWin();
+                  setPhase("win");
+                } else {
+                  startLevel(levelIdx + 1);
                 }
-                return prev;
-              });
-            });
-          }, PAIR_SPEAK_GAP_MS);
-          speechTimers.current.push(t);
+              }, 500);
+              speechTimers.current.push(done);
+            }
+            return prev;
+          });
         });
       } else {
         // Wrong: show both red + buzz, still let the second word play, unlock.

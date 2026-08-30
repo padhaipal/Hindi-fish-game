@@ -5,20 +5,20 @@
 // ---------------------------------------------------------------------------
 // The target LOWERCASE letter is drawn LARGE and FAINT as a guide. Over it we
 // place a single-file line of WAYPOINT dots that runs down the CENTRE-LINE
-// (skeleton) of the letter, plus one larger RED start dot placed where the pen
-// begins for that letter's normal print stroke order (per-letter table), so the
+// (skeleton) of the letter, plus one larger RED start dot placed on the stroke
+// TIP where the pen begins for that letter's normal print stroke order, so the
 // child knows where to begin. As the child drags a finger the path is drawn in
 // bright chalk — CLIPPED to the letter's silhouette so a mark can never appear
 // outside the outline — and every waypoint the finger passes near (within a
-// generous tolerance) lights green. Completion requires BOTH: (a) >=90% of the
-// waypoints lit, AND (b) EVERY stroke-EXTREMITY waypoint lit — a skeleton
-// ENDPOINT (degree-1 node): the two tips of t's crossbar, the end of j's hook,
-// f's crossbar tip, the ends of every stem. This forces the child to actually
-// cover the short strokes (crossbar / hook), not just the main stem, so a
-// partial trace that skips them does not complete. Isolated tittles of i/j sit
-// in a separate skeleton component and are never walked, so they stay excluded.
-// No stroke-order enforcement and no fragile pixel-coverage test: any order
-// works, a genuine full trace reliably completes, and a tap does not.
+// generous tolerance) lights green. Completion requires BOTH: (a) >=95% of the
+// waypoints lit, AND (b) EVERY REQUIRED waypoint lit — every stroke-EXTREMITY
+// (a skeleton ENDPOINT, degree-1 node: the two tips of t's crossbar, the end of
+// j's hook, f's crossbar tip, the ends of every stem) AND the isolated i/j
+// TITTLE dot. This forces the child to cover the short strokes (crossbar / hook)
+// and to place the tittle, not just the main stem, so a partial trace that skips
+// them does not complete. No stroke-order enforcement and no fragile pixel-
+// coverage test: any order works, a genuine full trace reliably completes, and a
+// tap does not.
 //
 // HOW THE WAYPOINTS ARE FOUND
 //   1. Render the glyph SOLID to an offscreen canvas and read its opaque pixels.
@@ -51,7 +51,7 @@ const GUIDE_FONT = "'Baloo 2', 'Comic Sans MS', sans-serif";
 const MIN_DOTS = 10;
 const MAX_DOTS = 16; // aim for ~10–16 centre-line dots
 const SKEL_LONG = 130; // long axis of the binary grid used for thinning
-const COMPLETE_FRAC = 0.9; // light this fraction of waypoints (plus ALL endpoints) to finish
+const COMPLETE_FRAC = 0.95; // light this fraction of waypoints (plus ALL required ones) to finish
 const TOL_FRAC = 0.12; // tolerance radius = min(w, h) * this
 
 type Pt = { x: number; y: number };
@@ -62,8 +62,9 @@ type Waypoints = { points: Pt[]; required: boolean[] };
 
 // Where the pen BEGINS for each lowercase letter in normal print stroke order,
 // as a NORMALISED position inside the glyph's bounding box (x: 0=left..1=right,
-// y: 0=top..1=bottom). The skeleton waypoint nearest this point becomes index 0
-// (the big red start dot). Letters not listed fall back to the top-most point.
+// y: 0=top..1=bottom). The skeleton stroke TIP (endpoint) nearest this point
+// becomes index 0 (the big red start dot); a closed loop with no tip falls back
+// to the nearest body pixel. Letters not listed fall back to the top-most tip.
 const START_POS: Record<string, Pt> = {
   a: { x: 0.72, y: 0.42 },
   b: { x: 0.3, y: 0.06 },
@@ -152,9 +153,10 @@ function thin(grid: Uint8Array, w: number, h: number): void {
 
 // Build the ordered centre-line waypoints from the glyph ink pixels.
 // Returns points ordered from the start along the skeleton (index 0 is the
-// start — the skeleton pixel nearest `startNorm`, or the top-most pixel when
-// startNorm is null) together with a `required` flag per point marking the
-// stroke-extremity (skeleton endpoint) waypoints that MUST be traced.
+// start — the stroke TIP / skeleton endpoint nearest `startNorm`, or the
+// top-most body pixel when startNorm is null) together with a `required` flag
+// per point marking the waypoints that MUST be traced: every stroke-extremity
+// (skeleton endpoint) plus each isolated i/j tittle.
 function buildWaypoints(
   inkX: number[],
   inkY: number[],
@@ -193,7 +195,7 @@ function buildWaypoints(
 
   thin(grid, gw, gh);
 
-  // Collect skeleton pixels and count how many there are.
+  // 8-neighbourhood helper over the skeleton grid.
   const dirs = [
     [-1, -1],
     [0, -1],
@@ -217,32 +219,72 @@ function buildWaypoints(
     return out;
   };
 
-  let total = 0;
-  let start = -1;
-  let startY = Infinity;
-  // First pass: total count, and the top-most skeleton pixel as a fallback start.
-  for (let y = 0; y < gh; y++) {
-    for (let x = 0; x < gw; x++) {
-      const k = y * gw + x;
-      if (!grid[k]) continue;
-      total++;
-      if (y < startY) {
-        startY = y;
-        start = k;
+  // Collect every skeleton pixel and label CONNECTED COMPONENTS. The letter body
+  // is one component; an isolated i/j TITTLE is a separate, much smaller one.
+  const skel: number[] = [];
+  for (let k = 0; k < gw * gh; k++) if (grid[k]) skel.push(k);
+  const total = skel.length;
+  if (total === 0) return { points: [], required: [] };
+
+  const comp = new Int32Array(gw * gh);
+  comp.fill(-1);
+  const compSize: number[] = [];
+  let nComp = 0;
+  for (const s of skel) {
+    if (comp[s] !== -1) continue;
+    const queue = [s];
+    comp[s] = nComp;
+    let size = 0;
+    while (queue.length) {
+      const cur = queue.pop()!;
+      size++;
+      for (const nb of neighbors(cur)) {
+        if (comp[nb] === -1) {
+          comp[nb] = nComp;
+          queue.push(nb);
+        }
       }
     }
+    compSize.push(size);
+    nComp++;
   }
-  if (total === 0) return { points: [], required: [] };
-  // If we have a per-letter START position, pick the skeleton pixel NEAREST to
-  // it (mapped into grid coords) as index 0 — matching normal pen stroke order.
+  // The MAIN component (letter body) is the largest; the rest are tittles.
+  let mainComp = 0;
+  for (let i = 1; i < nComp; i++) if (compSize[i] > compSize[mainComp]) mainComp = i;
+  const mainSize = compSize[mainComp];
+
+  // Skeleton ENDPOINTS (degree-1 nodes) inside the letter body — the actual
+  // stroke TIPS: t's two crossbar ends, j's hook, f's crossbar tip, stem ends.
+  const endpointIdx: number[] = [];
+  for (const k of skel) {
+    if (comp[k] !== mainComp) continue;
+    if (neighbors(k).length === 1) endpointIdx.push(k);
+  }
+
+  // Pick the START pixel as the stroke TIP (endpoint) NEAREST the per-letter
+  // START_POS, so the red dot sits where the pen begins rather than mid-stroke
+  // (e.g. v starts at its top-left tip). A closed loop (o) has no endpoint →
+  // fall back to the nearest body pixel; with no START_POS → top-most body pixel.
+  let start = -1;
   if (startNorm) {
     const gxT = pad + startNorm.x * bw * factor;
     const gyT = pad + startNorm.y * bh * factor;
     let best = Infinity;
-    for (let y = 0; y < gh; y++) {
-      for (let x = 0; x < gw; x++) {
-        const k = y * gw + x;
-        if (!grid[k]) continue;
+    for (const k of endpointIdx) {
+      const x = k % gw;
+      const y = (k - x) / gw;
+      const d = (x - gxT) * (x - gxT) + (y - gyT) * (y - gyT);
+      if (d < best) {
+        best = d;
+        start = k;
+      }
+    }
+    if (start === -1) {
+      best = Infinity;
+      for (const k of skel) {
+        if (comp[k] !== mainComp) continue;
+        const x = k % gw;
+        const y = (k - x) / gw;
         const d = (x - gxT) * (x - gxT) + (y - gyT) * (y - gyT);
         if (d < best) {
           best = d;
@@ -251,18 +293,29 @@ function buildWaypoints(
       }
     }
   }
+  if (start === -1) {
+    let startY = Infinity;
+    for (const k of skel) {
+      if (comp[k] !== mainComp) continue;
+      const y = (k - (k % gw)) / gw;
+      if (y < startY) {
+        startY = y;
+        start = k;
+      }
+    }
+  }
 
-  // Walk the skeleton into a continuous ordered path. DFS from the start; on
-  // backtrack we re-emit the parent so consecutive path points stay adjacent
-  // (continuous arc length). Stop as soon as every skeleton pixel is visited so
-  // we don't append a redundant return journey.
+  // Walk the letter-body skeleton into a continuous ordered path FROM the start
+  // tip. DFS; on backtrack we re-emit the parent so consecutive path points stay
+  // adjacent (continuous arc length). Stops once the whole body is visited (the
+  // tittle lives in another component and is never walked here).
   const visited = new Uint8Array(gw * gh);
   const path: number[] = [];
   visited[start] = 1;
   path.push(start);
   let seen = 1;
   const stack = [start];
-  while (stack.length && seen < total) {
+  while (stack.length && seen < mainSize) {
     const cur = stack[stack.length - 1];
     let next = -1;
     for (const nb of neighbors(cur)) {
@@ -289,18 +342,30 @@ function buildWaypoints(
     return { x: minX + (gx - pad + 0.5) / factor, y: minY + (gy - pad + 0.5) / factor };
   };
 
-  // Stroke EXTREMITIES: skeleton pixels of degree 1 that are part of the walked
-  // component (visited). These are the tips of every stroke — t's crossbar ends,
-  // j's hook, f's crossbar tip, the ends of stems. Isolated tittles live in a
-  // different component (never walked / not visited) so they are excluded here.
-  const endpointPts: Pt[] = [];
-  for (let k = 0; k < gw * gh; k++) {
-    if (!grid[k] || !visited[k]) continue;
-    if (neighbors(k).length === 1) endpointPts.push(toCss(k));
+  // REQUIRED stroke tips = the body endpoints (the start tip at index 0 among
+  // them). Each i/j TITTLE is a separate component: add its centroid as a
+  // REQUIRED waypoint so the child must place/touch the dot before finishing.
+  const endpointPts: Pt[] = endpointIdx.map(toCss);
+  const tittlePts: Pt[] = [];
+  for (let ci = 0; ci < nComp; ci++) {
+    if (ci === mainComp) continue;
+    let sx = 0;
+    let sy = 0;
+    let cnt = 0;
+    for (const k of skel) {
+      if (comp[k] !== ci) continue;
+      sx += k % gw;
+      sy += (k - (k % gw)) / gw;
+      cnt++;
+    }
+    if (cnt > 0) tittlePts.push(toCss(Math.round(sy / cnt) * gw + Math.round(sx / cnt)));
   }
 
   const poly = path.map(toCss);
-  if (poly.length === 1) return { points: [poly[0]], required: [false] };
+  if (poly.length === 1) {
+    const pts = [poly[0], ...tittlePts];
+    return { points: pts, required: pts.map((_, i) => i !== 0) };
+  }
 
   // Cumulative arc length.
   const cum: number[] = [0];
@@ -308,7 +373,10 @@ function buildWaypoints(
     cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y));
   }
   const len = cum[cum.length - 1];
-  if (len <= 0) return { points: [poly[0]], required: [false] };
+  if (len <= 0) {
+    const pts = [poly[0], ...tittlePts];
+    return { points: pts, required: pts.map((_, i) => i !== 0) };
+  }
 
   // How many evenly-spaced dots.
   const dots = Math.max(MIN_DOTS, Math.min(MAX_DOTS, Math.round(len / (minDim * 0.16))));
@@ -352,6 +420,14 @@ function buildWaypoints(
       required.push(true);
     }
   }
+
+  // Append each i/j TITTLE as a REQUIRED waypoint (its own separate dot), so the
+  // child must touch the dot for the letter to be marked correct.
+  for (const tp of tittlePts) {
+    out.push({ x: tp.x, y: tp.y });
+    required.push(true);
+  }
+
   return { points: out, required };
 }
 
@@ -553,8 +629,9 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
     if (total === 0) return;
     // (a) enough of the whole centre-line covered.
     if (litCount.current / total < COMPLETE_FRAC) return;
-    // (b) EVERY stroke-extremity (endpoint) waypoint traced — forces the child
-    // to cover short strokes like t's crossbar and j's hook, not just the stem.
+    // (b) EVERY required waypoint traced — the stroke extremities (t's crossbar
+    // tips, j's hook, f's crossbar tip, stem ends) AND the i/j tittle dot — so a
+    // partial trace that skips a short stroke or the dot does not complete.
     const req = required.current;
     for (let i = 0; i < total; i++) {
       if (req[i] && !lit.current[i]) return;
