@@ -1719,3 +1719,8 @@ body > div {
 /* Silly Sentences (Lesson 37 sentences game) button */
 .gameButton.gbSilly { background: linear-gradient(#ff9a5a, #f0742e); box-shadow: 0 6px 0 #bf5416; }
 .gameButton.gbSilly:active { transform: translateY(4px); box-shadow: 0 2px 0 #bf5416; }
+
+/* Lesson buttons on the home hub (Frog + Fish per lesson) */
+.gameButton.gbLesson { background: linear-gradient(#2fc2b6, #1b9d93); box-shadow: 0 6px 0 #12726b; }
+.gameButton.gbLesson:active { transform: translateY(4px); box-shadow: 0 2px 0 #12726b; }
+.gameButton.gbLesson .lessonBtnLetters { margin-left: auto; font-size: 14px; font-weight: 700; opacity: 0.9; letter-spacing: 1px; }
