@@ -17,7 +17,7 @@ import { useCallback, useRef, useState } from "react";
 import Card, { MemCard } from "./Card";
 import { getLetter } from "@/lib/letters";
 import { stopSpeech, primeSpeech } from "@/lib/speech";
-import { speakLetterSound, speakWord } from "@/lib/sound";
+import { speakLetterSound, speakWord, playLose, playApplause, stopAll } from "@/lib/sound";
 import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
 
 // Only letters with a CLEAR, child-friendly emoji picture are used, so tapping
@@ -41,7 +41,7 @@ const CARD_W = 78;
 const CARD_H = 96;
 const GAP = 10;
 
-type Phase = "start" | "playing" | "win";
+type Phase = "start" | "playing" | "win" | "lose";
 
 interface Flash {
   ids: number[];
@@ -135,12 +135,19 @@ export default function MemoryGame() {
             setFlippedIds([]);
             busyRef.current = false;
             if (nm.size === cards.length) {
+              // board cleared -> level won
               if (isLastLevel) {
+                playApplause();
                 chimeWin();
                 setPhase("win");
               } else {
+                playApplause();
                 startLevel(levelIdx + 1);
               }
+            } else if (moves >= movesAllowed) {
+              // last move used but board not cleared -> level lost
+              playLose();
+              setPhase("lose");
             }
           }, 550);
         }, 450);
@@ -152,11 +159,16 @@ export default function MemoryGame() {
             setFlash(null);
             setFlippedIds([]);
             busyRef.current = false;
+            if (moves >= movesAllowed) {
+              // last move used and this move did not clear the board -> lost
+              playLose();
+              setPhase("lose");
+            }
           }, 750);
         }, 450);
       }
     },
-    [phase, cards, flippedIds, matchedIds, movesUsed, isLastLevel, levelIdx, startLevel]
+    [phase, cards, flippedIds, matchedIds, movesUsed, movesAllowed, isLastLevel, levelIdx, startLevel]
   );
 
   const movesPct = Math.max(0, (movesAllowed - movesUsed) / movesAllowed);
@@ -236,6 +248,7 @@ export default function MemoryGame() {
               type="button"
               className="bigButton"
               onClick={() => {
+                stopAll();
                 unlockSfx();
                 stopSpeech();
                 startLevel(0);
@@ -243,7 +256,31 @@ export default function MemoryGame() {
             >
               ▶ Play again
             </button>
-            <a className="bigButton" href="/">
+            <a className="bigButton" href="/" onClick={() => stopAll()}>
+              🏠 All games
+            </a>
+          </div>
+        </div>
+      )}
+
+      {phase === "lose" && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">😅</div>
+            <div className="overlayTitle">Out of moves!</div>
+            <button
+              type="button"
+              className="bigButton"
+              onClick={() => {
+                stopAll();
+                unlockSfx();
+                stopSpeech();
+                startLevel(levelIdx);
+              }}
+            >
+              ▶ Try again
+            </button>
+            <a className="bigButton" href="/" onClick={() => stopAll()}>
               🏠 All games
             </a>
           </div>

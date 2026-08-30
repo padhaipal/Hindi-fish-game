@@ -12,7 +12,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import { primeSpeech } from "@/lib/speech";
-import { speakWord, stopAll } from "@/lib/sound";
+import { speakWord, stopAll, playLose } from "@/lib/sound";
 import { dingCorrect, buzzWrong, chimeWin, unlockSfx } from "@/lib/sfx";
 
 // ---- word data -------------------------------------------------------------
@@ -37,7 +37,6 @@ const LEVEL1_WORDS: WordItem[] = [
   { word: "flag", emoji: "🚩", answer: "fl", options: ["fl", "fr", "bl"] },
   { word: "drum", emoji: "🥁", answer: "dr", options: ["dr", "tr", "gr"] },
   { word: "crab", emoji: "🦀", answer: "cr", options: ["cr", "cl", "gr"] },
-  { word: "sled", emoji: "🛷", answer: "sl", options: ["sl", "sn", "sk"] },
 ];
 
 // LEVEL 2 — DIGRAPHS (ng, sh, ch, th, ph). Options are always drawn from that
@@ -58,6 +57,9 @@ const LEVEL2_WORDS: WordItem[] = [
 ];
 
 const ROUNDS_PER_LEVEL = 8;
+
+// The child loses after this many wrong taps across the WHOLE game.
+const MAX_WRONG = 3;
 
 interface Round {
   word: string;
@@ -106,6 +108,8 @@ const rootStyle: CSSProperties = {
 export default function DetectiveGame() {
   const [started, setStarted] = useState(false);
   const [won, setWon] = useState(false);
+  const [lost, setLost] = useState(false);
+  const [wrongCount, setWrongCount] = useState(0);
   const [level, setLevel] = useState<0 | 1>(0);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [roundIndex, setRoundIndex] = useState(0);
@@ -117,10 +121,10 @@ export default function DetectiveGame() {
 
   // Auto-speak the mystery word whenever a fresh round appears.
   useEffect(() => {
-    if (!started || won || !round) return;
+    if (!started || won || lost || !round) return;
     const id = setTimeout(() => speakWord(round.word), 260);
     return () => clearTimeout(id);
-  }, [started, won, level, roundIndex, round]);
+  }, [started, won, lost, level, roundIndex, round]);
 
   function startGame() {
     unlockSfx();
@@ -131,6 +135,8 @@ export default function DetectiveGame() {
     setSolved(false);
     setWrongOption(null);
     setWon(false);
+    setLost(false);
+    setWrongCount(0);
     setStarted(true);
   }
 
@@ -139,7 +145,7 @@ export default function DetectiveGame() {
   }
 
   function pick(opt: string) {
-    if (solved || !round) return;
+    if (solved || lost || !round) return;
     if (opt === round.answer) {
       dingCorrect();
       setWrongOption(null);
@@ -147,6 +153,16 @@ export default function DetectiveGame() {
       // Say the word again with the blank now filled in.
       setTimeout(() => speakWord(round.word), 220);
     } else {
+      const nextWrong = wrongCount + 1;
+      setWrongCount(nextWrong);
+      // The 3rd wrong tap across the whole game loses it — discourages guessing.
+      if (nextWrong >= MAX_WRONG) {
+        stopAll();
+        playLose();
+        setWrongOption(null);
+        setLost(true);
+        return;
+      }
       buzzWrong();
       setWrongOption(opt);
       setWrongNonce((n) => n + 1);
@@ -444,7 +460,37 @@ export default function DetectiveGame() {
             >
               ▶ Play again
             </button>
-            <a className="bigButton blue" href="/">
+            <a className="bigButton blue" href="/" onClick={stopAll}>
+              🏠 All games
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- Lose overlay ---------------- */}
+      {lost && (
+        <div className="overlay">
+          <div className="overlayCard" style={{ textAlign: "center" }}>
+            <div className="overlayEmoji">😅</div>
+            <div className="overlayTitle">Case gone cold!</div>
+            <p
+              style={{
+                margin: "2px 0 18px",
+                fontSize: 18,
+                fontWeight: 700,
+                color: "#1f8bbf",
+              }}
+            >
+              Too many wrong sounds — listen closely and try again. 🔍
+            </p>
+            <button
+              className="bigButton"
+              onClick={playAgain}
+              style={{ marginBottom: 12 }}
+            >
+              😅 Try again
+            </button>
+            <a className="bigButton blue" href="/" onClick={stopAll}>
               🏠 All games
             </a>
           </div>
