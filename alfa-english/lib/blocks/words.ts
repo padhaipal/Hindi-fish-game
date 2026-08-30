@@ -237,15 +237,23 @@ export function buildSolvableBoard(
 ): SolvableBoard {
   const k = words.length;
   let fallback: SolvableBoard | null = null;
+  let sinceFallback = 0;
 
-  for (let attempt = 0; attempt < 6000; attempt++) {
+  // A solvable board turns up almost immediately; a MIX is only a preference (and
+  // is geometrically impossible on a 3×3), so once we have a solvable fallback we
+  // keep looking for a mixed one only a bounded number of extra tries, then stop.
+  for (let attempt = 0; attempt < 4000; attempt++) {
     const packing = findPacking(rows, cols, k);
     if (!packing) continue;
     const grid = paint(rows, cols, packing, words);
     const order = findOrder(grid, words);
     if (!order) continue;
     if (isMixed(packing)) return { grid, order };
-    if (!fallback) fallback = { grid, order };
+    if (!fallback) {
+      fallback = { grid, order };
+    } else if (++sinceFallback >= 250) {
+      break;
+    }
   }
 
   if (fallback) return fallback;
