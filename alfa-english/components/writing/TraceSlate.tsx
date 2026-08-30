@@ -1,709 +1,365 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// TRACE SLATE — the chalkboard the child traces a single letter on.
+// TRACE SLATE — order-enforced, per-letter STROKE tracing (iTrace / LetterSchool
+// style).
 // ---------------------------------------------------------------------------
-// The target LOWERCASE letter is drawn LARGE and FAINT as a guide. Over it we
-// place a single-file line of WAYPOINT dots that runs down the CENTRE-LINE
-// (skeleton) of the letter, plus one larger RED start dot placed on the stroke
-// TIP where the pen begins for that letter's normal print stroke order, so the
-// child knows where to begin. As the child drags a finger the path is drawn in
-// bright chalk — CLIPPED to the letter's silhouette so a mark can never appear
-// outside the outline — and every waypoint the finger passes near (within a
-// generous tolerance) lights green. Completion requires BOTH: (a) >=95% of the
-// waypoints lit, AND (b) EVERY REQUIRED waypoint lit — every stroke-EXTREMITY
-// (a skeleton ENDPOINT, degree-1 node: the two tips of t's crossbar, the end of
-// j's hook, f's crossbar tip, the ends of every stem) AND the isolated i/j
-// TITTLE dot. This forces the child to cover the short strokes (crossbar / hook)
-// and to place the tittle, not just the main stem, so a partial trace that skips
-// them does not complete. No stroke-order enforcement and no fragile pixel-
-// coverage test: any order works, a genuine full trace reliably completes, and a
-// tap does not.
+// The letter is described in lib/writing/strokes.ts as an ORDERED list of
+// strokes; each stroke is a polyline in a 0..100 box (y downward) whose FIRST
+// point is where the pen goes down. We draw EVERY stroke as a thick, faint,
+// rounded guide on the dark slate. The child must trace the strokes IN ORDER,
+// each one starting from its red start dot:
 //
-// HOW THE WAYPOINTS ARE FOUND
-//   1. Render the glyph SOLID to an offscreen canvas and read its opaque pixels.
-//   2. Rasterise that ink into a small binary grid (long axis ~130 px).
-//   3. Zhang–Suen morphological THINNING reduces every stroke to a 1-px-wide
-//      skeleton (the centre-line).
-//   4. Walk the skeleton as a connected path (DFS from the top-most endpoint,
-//      re-emitting parents on backtrack so the path stays continuous) and
-//      resample it into evenly-spaced, ORDERED waypoints — one neat line of
-//      dots through the middle of each stroke, not a cloud.
+//   • Only the CURRENT stroke accepts input. Earlier strokes stay green; later
+//     strokes are inert until reached.
+//   • The finger point is PROJECTED onto the current stroke's polyline, giving
+//     the nearest arc-length fraction t and the perpendicular distance d.
+//   • Input only counts while d <= TOL (generous, for small fingers). Progress
+//     begins only after the finger has been near the stroke START (t within the
+//     start gate); then progress = max(progress, t) as the finger sweeps
+//     forward, ignoring big forward jumps (> JUMP_AHEAD past current progress)
+//     and backward moves.
+//   • We render the traced portion by FILLING the stroke path green from the
+//     start up to `progress`. The raw finger trail is never drawn — because the
+//     green fills along the letter's own path, a mark can never fall outside it.
+//   • When progress reaches the done threshold the stroke is complete (drawn
+//     fully green); `current` advances and progress resets. Progress persists
+//     across pointer-ups, so a stroke can be traced in several touches.
+//   • When the LAST stroke completes the slate flashes green and onComplete()
+//     fires.
 //
-// CLIPPING
-//   The letter is also rendered OPAQUE into a persistent MASK canvas. The raw
-//   chalk accumulates on an offscreen TRAIL canvas; each frame we composite
-//   trail → visible, then globalCompositeOperation "destination-in" with the
-//   mask, so only the parts of the stroke INSIDE the letter are ever shown.
-// All layers are high-DPI (dpr capped at 2).
+// Because every stroke must be traced in order, t requires its crossbar, i and j
+// require their dot, x requires both diagonals, k requires all three strokes.
+// All canvases are high-DPI (devicePixelRatio capped at 2).
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getStrokes } from "@/lib/writing/strokes";
 
 interface Props {
   letter: string; // the lowercase letter to trace
   width: number;
   height: number;
-  onComplete: () => void; // called once enough waypoints are lit
+  onComplete: () => void; // called once the last stroke is traced
 }
-
-const GUIDE_FONT = "'Baloo 2', 'Comic Sans MS', sans-serif";
-const MIN_DOTS = 10;
-const MAX_DOTS = 16; // aim for ~10–16 centre-line dots
-const SKEL_LONG = 130; // long axis of the binary grid used for thinning
-const COMPLETE_FRAC = 0.95; // light this fraction of waypoints (plus ALL required ones) to finish
-const TOL_FRAC = 0.12; // tolerance radius = min(w, h) * this
 
 type Pt = { x: number; y: number };
+// A stroke mapped into canvas pixels, with cumulative arc lengths.
+type StrokeC = { pts: Pt[]; cum: number[]; len: number };
 
-// Ordered waypoints plus a parallel flag marking which ones are stroke
-// EXTREMITIES (skeleton endpoints) that MUST be traced to complete.
-type Waypoints = { points: Pt[]; required: boolean[] };
+const MARGIN = 0.12; // fraction of the slate kept as empty margin around the glyph
+const TOL_FRAC = 0.14; // tolerance radius = min(w, h) * this (generous for kids)
+const START_GATE = 0.2; // must touch within this arc fraction of the start to begin
+const JUMP_AHEAD = 0.25; // ignore forward jumps more than this far past current progress
+const DONE_THRESH = 0.9; // progress at/above this completes the current stroke
+const GUIDE_W_FRAC = 0.13; // guide line width = min(w, h) * this
 
-// Where the pen BEGINS for each lowercase letter in normal print stroke order,
-// as a NORMALISED position inside the glyph's bounding box (x: 0=left..1=right,
-// y: 0=top..1=bottom). The skeleton stroke TIP (endpoint) nearest this point
-// becomes index 0 (the big red start dot); a closed loop with no tip falls back
-// to the nearest body pixel. Letters not listed fall back to the top-most tip.
-const START_POS: Record<string, Pt> = {
-  a: { x: 0.72, y: 0.42 },
-  b: { x: 0.3, y: 0.06 },
-  c: { x: 0.7, y: 0.34 },
-  d: { x: 0.72, y: 0.42 },
-  e: { x: 0.28, y: 0.55 },
-  f: { x: 0.7, y: 0.16 },
-  g: { x: 0.72, y: 0.42 },
-  h: { x: 0.3, y: 0.06 },
-  i: { x: 0.5, y: 0.34 },
-  j: { x: 0.55, y: 0.34 },
-  k: { x: 0.3, y: 0.06 },
-  l: { x: 0.5, y: 0.06 },
-  m: { x: 0.16, y: 0.36 },
-  n: { x: 0.2, y: 0.36 },
-  o: { x: 0.66, y: 0.3 },
-  p: { x: 0.28, y: 0.36 },
-  q: { x: 0.72, y: 0.42 },
-  r: { x: 0.28, y: 0.36 },
-  s: { x: 0.66, y: 0.32 },
-  t: { x: 0.5, y: 0.12 },
-  u: { x: 0.24, y: 0.36 },
-  v: { x: 0.2, y: 0.36 },
-  w: { x: 0.14, y: 0.36 },
-  x: { x: 0.24, y: 0.36 },
-  y: { x: 0.22, y: 0.36 },
-  z: { x: 0.24, y: 0.34 },
-};
+const COL_FAINT = "rgba(226, 236, 230, 0.18)"; // every stroke, faint
+const COL_CURRENT = "rgba(226, 236, 230, 0.42)"; // current stroke, brighter
+const COL_GREEN = "rgba(86, 226, 122, 0.96)"; // completed / traced portion
+const COL_RED = "rgba(233, 66, 55, 0.97)"; // current start dot
 
-// Fit a bold font size so the letter sits comfortably inside the slate.
-function fitFont(ctx: CanvasRenderingContext2D, text: string, w: number, h: number): number {
-  let fs = Math.floor(h * 0.72);
-  const maxW = w * 0.72;
-  ctx.font = `800 ${fs}px ${GUIDE_FONT}`;
-  while (fs > 12 && ctx.measureText(text).width > maxW) {
-    fs -= 2;
-    ctx.font = `800 ${fs}px ${GUIDE_FONT}`;
+// Nearest point on the polyline: returns the arc-length fraction t in [0,1] and
+// the perpendicular distance d from P to the stroke.
+function project(stroke: StrokeC, p: Pt): { t: number; d: number } {
+  const { pts, cum, len } = stroke;
+  if (pts.length === 1 || len <= 0) {
+    return { t: 0, d: Math.hypot(p.x - pts[0].x, p.y - pts[0].y) };
   }
-  return fs;
+  let bestD = Infinity;
+  let bestArc = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const seg2 = dx * dx + dy * dy;
+    let tt = seg2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / seg2 : 0;
+    if (tt < 0) tt = 0;
+    else if (tt > 1) tt = 1;
+    const cx = a.x + dx * tt;
+    const cy = a.y + dy * tt;
+    const d = Math.hypot(p.x - cx, p.y - cy);
+    if (d < bestD) {
+      bestD = d;
+      bestArc = cum[i] + tt * (cum[i + 1] - cum[i]);
+    }
+  }
+  return { t: bestArc / len, d: bestD };
 }
 
-// Zhang–Suen thinning: reduce a binary grid (0/1) to a 1-px-wide skeleton.
-function thin(grid: Uint8Array, w: number, h: number): void {
-  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : grid[y * w + x]);
-  const toClear: number[] = [];
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (let step = 0; step < 2; step++) {
-      toClear.length = 0;
-      for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-          if (!grid[y * w + x]) continue;
-          const p2 = at(x, y - 1);
-          const p3 = at(x + 1, y - 1);
-          const p4 = at(x + 1, y);
-          const p5 = at(x + 1, y + 1);
-          const p6 = at(x, y + 1);
-          const p7 = at(x - 1, y + 1);
-          const p8 = at(x - 1, y);
-          const p9 = at(x - 1, y - 1);
-          const nb = [p2, p3, p4, p5, p6, p7, p8, p9];
-          let b = 0;
-          for (let i = 0; i < 8; i++) b += nb[i];
-          if (b < 2 || b > 6) continue;
-          let a = 0;
-          for (let i = 0; i < 8; i++) if (nb[i] === 0 && nb[(i + 1) % 8] === 1) a++;
-          if (a !== 1) continue;
-          if (step === 0) {
-            if (p2 * p4 * p6 !== 0) continue;
-            if (p4 * p6 * p8 !== 0) continue;
-          } else {
-            if (p2 * p4 * p8 !== 0) continue;
-            if (p2 * p6 * p8 !== 0) continue;
-          }
-          toClear.push(y * w + x);
-        }
-      }
-      if (toClear.length) {
-        changed = true;
-        for (const k of toClear) grid[k] = 0;
-      }
+// The stroke polyline from its start up to arc-length fraction `frac`.
+function partialPoints(stroke: StrokeC, frac: number): Pt[] {
+  const { pts, cum, len } = stroke;
+  if (len <= 0 || pts.length === 1) return [pts[0]];
+  const target = frac * len;
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    if (cum[i] <= target) {
+      out.push(pts[i]);
+    } else {
+      const segLen = cum[i] - cum[i - 1];
+      const tt = segLen > 0 ? (target - cum[i - 1]) / segLen : 0;
+      out.push({
+        x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * tt,
+        y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * tt,
+      });
+      break;
     }
   }
+  return out;
 }
 
-// Build the ordered centre-line waypoints from the glyph ink pixels.
-// Returns points ordered from the start along the skeleton (index 0 is the
-// start — the stroke TIP / skeleton endpoint nearest `startNorm`, or the
-// top-most body pixel when startNorm is null) together with a `required` flag
-// per point marking the waypoints that MUST be traced: every stroke-extremity
-// (skeleton endpoint) plus each isolated i/j tittle.
-function buildWaypoints(
-  inkX: number[],
-  inkY: number[],
-  minDim: number,
-  startNorm: Pt | null,
-): Waypoints {
-  const n = inkX.length;
-  if (n === 0) return { points: [], required: [] };
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (let i = 0; i < n; i++) {
-    if (inkX[i] < minX) minX = inkX[i];
-    if (inkX[i] > maxX) maxX = inkX[i];
-    if (inkY[i] < minY) minY = inkY[i];
-    if (inkY[i] > maxY) maxY = inkY[i];
+// Stroke a smoothed rounded polyline (quadratic curves through segment
+// midpoints). A single-point stroke is drawn as a filled dot.
+function strokePath(ctx: CanvasRenderingContext2D, pts: Pt[], color: string, lw: number): void {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  if (pts.length === 1) {
+    ctx.beginPath();
+    ctx.arc(pts[0].x, pts[0].y, lw / 2, 0, Math.PI * 2);
+    ctx.fill();
+    return;
   }
-  const bw = Math.max(1, maxX - minX);
-  const bh = Math.max(1, maxY - minY);
-  const longAxis = Math.max(bw, bh);
-  const factor = Math.min(1, SKEL_LONG / longAxis);
-  const pad = 2;
-  const gw = Math.ceil(bw * factor) + pad * 2 + 1;
-  const gh = Math.ceil(bh * factor) + pad * 2 + 1;
-  const grid = new Uint8Array(gw * gh);
-  for (let i = 0; i < n; i++) {
-    let gx = pad + Math.floor((inkX[i] - minX) * factor);
-    let gy = pad + Math.floor((inkY[i] - minY) * factor);
-    if (gx < 0) gx = 0;
-    if (gy < 0) gy = 0;
-    if (gx >= gw) gx = gw - 1;
-    if (gy >= gh) gy = gh - 1;
-    grid[gy * gw + gx] = 1;
-  }
-
-  thin(grid, gw, gh);
-
-  // 8-neighbourhood helper over the skeleton grid.
-  const dirs = [
-    [-1, -1],
-    [0, -1],
-    [1, -1],
-    [-1, 0],
-    [1, 0],
-    [-1, 1],
-    [0, 1],
-    [1, 1],
-  ];
-  const neighbors = (k: number): number[] => {
-    const x = k % gw;
-    const y = (k - x) / gw;
-    const out: number[] = [];
-    for (const [dx, dy] of dirs) {
-      const nx = x + dx;
-      const ny = y + dy;
-      if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue;
-      if (grid[ny * gw + nx]) out.push(ny * gw + nx);
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  if (pts.length === 2) {
+    ctx.lineTo(pts[1].x, pts[1].y);
+  } else {
+    for (let i = 1; i < pts.length - 1; i++) {
+      const xc = (pts[i].x + pts[i + 1].x) / 2;
+      const yc = (pts[i].y + pts[i + 1].y) / 2;
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc);
     }
-    return out;
-  };
-
-  // Collect every skeleton pixel and label CONNECTED COMPONENTS. The letter body
-  // is one component; an isolated i/j TITTLE is a separate, much smaller one.
-  const skel: number[] = [];
-  for (let k = 0; k < gw * gh; k++) if (grid[k]) skel.push(k);
-  const total = skel.length;
-  if (total === 0) return { points: [], required: [] };
-
-  const comp = new Int32Array(gw * gh);
-  comp.fill(-1);
-  const compSize: number[] = [];
-  let nComp = 0;
-  for (const s of skel) {
-    if (comp[s] !== -1) continue;
-    const queue = [s];
-    comp[s] = nComp;
-    let size = 0;
-    while (queue.length) {
-      const cur = queue.pop()!;
-      size++;
-      for (const nb of neighbors(cur)) {
-        if (comp[nb] === -1) {
-          comp[nb] = nComp;
-          queue.push(nb);
-        }
-      }
-    }
-    compSize.push(size);
-    nComp++;
+    ctx.quadraticCurveTo(
+      pts[pts.length - 2].x,
+      pts[pts.length - 2].y,
+      pts[pts.length - 1].x,
+      pts[pts.length - 1].y,
+    );
   }
-  // The MAIN component (letter body) is the largest; the rest are tittles.
-  let mainComp = 0;
-  for (let i = 1; i < nComp; i++) if (compSize[i] > compSize[mainComp]) mainComp = i;
-  const mainSize = compSize[mainComp];
-
-  // Skeleton ENDPOINTS (degree-1 nodes) inside the letter body — the actual
-  // stroke TIPS: t's two crossbar ends, j's hook, f's crossbar tip, stem ends.
-  const endpointIdx: number[] = [];
-  for (const k of skel) {
-    if (comp[k] !== mainComp) continue;
-    if (neighbors(k).length === 1) endpointIdx.push(k);
-  }
-
-  // Pick the START pixel as the stroke TIP (endpoint) NEAREST the per-letter
-  // START_POS, so the red dot sits where the pen begins rather than mid-stroke
-  // (e.g. v starts at its top-left tip). A closed loop (o) has no endpoint →
-  // fall back to the nearest body pixel; with no START_POS → top-most body pixel.
-  let start = -1;
-  if (startNorm) {
-    const gxT = pad + startNorm.x * bw * factor;
-    const gyT = pad + startNorm.y * bh * factor;
-    let best = Infinity;
-    for (const k of endpointIdx) {
-      const x = k % gw;
-      const y = (k - x) / gw;
-      const d = (x - gxT) * (x - gxT) + (y - gyT) * (y - gyT);
-      if (d < best) {
-        best = d;
-        start = k;
-      }
-    }
-    if (start === -1) {
-      best = Infinity;
-      for (const k of skel) {
-        if (comp[k] !== mainComp) continue;
-        const x = k % gw;
-        const y = (k - x) / gw;
-        const d = (x - gxT) * (x - gxT) + (y - gyT) * (y - gyT);
-        if (d < best) {
-          best = d;
-          start = k;
-        }
-      }
-    }
-  }
-  if (start === -1) {
-    let startY = Infinity;
-    for (const k of skel) {
-      if (comp[k] !== mainComp) continue;
-      const y = (k - (k % gw)) / gw;
-      if (y < startY) {
-        startY = y;
-        start = k;
-      }
-    }
-  }
-
-  // Walk the letter-body skeleton into a continuous ordered path FROM the start
-  // tip. DFS; on backtrack we re-emit the parent so consecutive path points stay
-  // adjacent (continuous arc length). Stops once the whole body is visited (the
-  // tittle lives in another component and is never walked here).
-  const visited = new Uint8Array(gw * gh);
-  const path: number[] = [];
-  visited[start] = 1;
-  path.push(start);
-  let seen = 1;
-  const stack = [start];
-  while (stack.length && seen < mainSize) {
-    const cur = stack[stack.length - 1];
-    let next = -1;
-    for (const nb of neighbors(cur)) {
-      if (!visited[nb]) {
-        next = nb;
-        break;
-      }
-    }
-    if (next >= 0) {
-      visited[next] = 1;
-      seen++;
-      path.push(next);
-      stack.push(next);
-    } else {
-      stack.pop();
-      if (stack.length) path.push(stack[stack.length - 1]);
-    }
-  }
-
-  // Convert path (grid coords) to CSS coords.
-  const toCss = (k: number): Pt => {
-    const gx = k % gw;
-    const gy = (k - gx) / gw;
-    return { x: minX + (gx - pad + 0.5) / factor, y: minY + (gy - pad + 0.5) / factor };
-  };
-
-  // REQUIRED stroke tips = the body endpoints (the start tip at index 0 among
-  // them). Each i/j TITTLE is a separate component: add its centroid as a
-  // REQUIRED waypoint so the child must place/touch the dot before finishing.
-  const endpointPts: Pt[] = endpointIdx.map(toCss);
-  const tittlePts: Pt[] = [];
-  for (let ci = 0; ci < nComp; ci++) {
-    if (ci === mainComp) continue;
-    let sx = 0;
-    let sy = 0;
-    let cnt = 0;
-    for (const k of skel) {
-      if (comp[k] !== ci) continue;
-      sx += k % gw;
-      sy += (k - (k % gw)) / gw;
-      cnt++;
-    }
-    if (cnt > 0) tittlePts.push(toCss(Math.round(sy / cnt) * gw + Math.round(sx / cnt)));
-  }
-
-  const poly = path.map(toCss);
-  if (poly.length === 1) {
-    const pts = [poly[0], ...tittlePts];
-    return { points: pts, required: pts.map((_, i) => i !== 0) };
-  }
-
-  // Cumulative arc length.
-  const cum: number[] = [0];
-  for (let i = 1; i < poly.length; i++) {
-    cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y));
-  }
-  const len = cum[cum.length - 1];
-  if (len <= 0) {
-    const pts = [poly[0], ...tittlePts];
-    return { points: pts, required: pts.map((_, i) => i !== 0) };
-  }
-
-  // How many evenly-spaced dots.
-  const dots = Math.max(MIN_DOTS, Math.min(MAX_DOTS, Math.round(len / (minDim * 0.16))));
-
-  // Resample the polyline at evenly-spaced arc-length positions.
-  const out: Pt[] = [];
-  let seg = 0;
-  for (let i = 0; i < dots; i++) {
-    const target = (len * i) / (dots - 1);
-    while (seg < cum.length - 2 && cum[seg + 1] < target) seg++;
-    const segLen = cum[seg + 1] - cum[seg];
-    const t = segLen > 0 ? (target - cum[seg]) / segLen : 0;
-    out.push({
-      x: poly[seg].x + (poly[seg + 1].x - poly[seg].x) * t,
-      y: poly[seg].y + (poly[seg + 1].y - poly[seg].y) * t,
-    });
-  }
-
-  // Guarantee a REQUIRED waypoint sits exactly on every stroke extremity, so a
-  // short stroke (crossbar / hook) registers with >=2 dots at its tips and the
-  // child must actually reach them. Snap the nearest even dot onto the tip when
-  // one is close (never the start dot, index 0); otherwise append a new dot.
-  const required: boolean[] = out.map(() => false);
-  const spacing = dots > 1 ? len / (dots - 1) : minDim * 0.16;
-  const snapNear = spacing * 0.6;
-  for (const e of endpointPts) {
-    let bi = -1;
-    let bd = Infinity;
-    for (let i = 0; i < out.length; i++) {
-      const d = Math.hypot(out[i].x - e.x, out[i].y - e.y);
-      if (d < bd) {
-        bd = d;
-        bi = i;
-      }
-    }
-    if (bi >= 0 && bd <= snapNear) {
-      required[bi] = true;
-      if (bi !== 0) out[bi] = { x: e.x, y: e.y };
-    } else {
-      out.push({ x: e.x, y: e.y });
-      required.push(true);
-    }
-  }
-
-  // Append each i/j TITTLE as a REQUIRED waypoint (its own separate dot), so the
-  // child must touch the dot for the letter to be marked correct.
-  for (const tp of tittlePts) {
-    out.push({ x: tp.x, y: tp.y });
-    required.push(true);
-  }
-
-  return { points: out, required };
+  ctx.stroke();
 }
 
 export default function TraceSlate({ letter, width, height, onComplete }: Props) {
-  const guideRef = useRef<HTMLCanvasElement>(null); // faint letter + waypoint dots
-  const traceRef = useRef<HTMLCanvasElement>(null); // bright chalk trail (clipped)
-  const maskRef = useRef<HTMLCanvasElement | null>(null); // opaque glyph silhouette
-  const trailRef = useRef<HTMLCanvasElement | null>(null); // raw (unclipped) chalk
-  const dprRef = useRef(1);
-  const fontPx = useRef(0);
-  const waypoints = useRef<Pt[]>([]);
-  const required = useRef<boolean[]>([]); // which waypoints are stroke extremities
-  const lit = useRef<boolean[]>([]);
-  const litCount = useRef(0);
-  const drawing = useRef(false);
+  const guideRef = useRef<HTMLCanvasElement>(null); // everything is drawn here
+  const inputRef = useRef<HTMLCanvasElement>(null); // transparent pointer surface
+
+  const strokesRef = useRef<StrokeC[]>([]);
+  const currentRef = useRef(0); // index of the stroke being traced
+  const progressRef = useRef(0); // max arc fraction reached on the current stroke
+  const startedRef = useRef(false); // has the finger been near the current start?
+  const drawingRef = useRef(false);
   const pointerId = useRef<number | null>(null);
-  const lastPt = useRef<Pt | null>(null);
   const doneRef = useRef(false);
   const [flash, setFlash] = useState(false);
 
-  const tol = Math.min(width, height) * TOL_FRAC;
-  const dotR = Math.max(3.5, Math.min(width, height) * 0.013);
-  const startR = dotR * 1.75;
+  const minDim = Math.min(width, height);
+  const tol = minDim * TOL_FRAC;
+  const guideW = minDim * GUIDE_W_FRAC;
+  const startR = guideW * 0.55;
 
-  // Paint the faint guide letter and the waypoint dots. Index 0 is the START:
-  // a larger RED dot until traced. Others are faint grey until lit green.
-  const paintGuide = useCallback(() => {
+  // Draw the whole slate from the current state.
+  const render = useCallback(() => {
     const c = guideRef.current;
     if (!c) return;
-    const ctx = c.getContext("2d")!;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
-    ctx.save();
-    ctx.font = `800 ${fontPx.current}px ${GUIDE_FONT}`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(233, 237, 234, 0.26)"; // light grey, faint
-    ctx.fillText(letter, width / 2, height / 2);
-    const wps = waypoints.current;
-    for (let i = 0; i < wps.length; i++) {
-      const on = lit.current[i];
-      const isStart = i === 0;
-      const r = isStart ? startR : dotR;
-      ctx.beginPath();
-      ctx.arc(wps[i].x, wps[i].y, r, 0, Math.PI * 2);
-      if (on) ctx.fillStyle = "rgba(86, 226, 122, 0.95)"; // lit green
-      else if (isStart) ctx.fillStyle = "rgba(233, 66, 55, 0.95)"; // red start
-      else ctx.fillStyle = "rgba(233, 237, 234, 0.5)"; // faint grey
-      ctx.fill();
-      if (on || isStart) {
+    const strokes = strokesRef.current;
+    const cur = currentRef.current;
+    const prog = progressRef.current;
+
+    // 1. every stroke, faint.
+    for (const s of strokes) strokePath(ctx, s.pts, COL_FAINT, guideW);
+    // 2. current stroke, a bit brighter.
+    if (cur < strokes.length) strokePath(ctx, strokes[cur].pts, COL_CURRENT, guideW);
+    // 3. completed strokes, fully green.
+    for (let s = 0; s < cur && s < strokes.length; s++) {
+      strokePath(ctx, strokes[s].pts, COL_GREEN, guideW * 0.86);
+    }
+    // 4. current stroke, green from the start up to progress.
+    if (cur < strokes.length && prog > 0) {
+      strokePath(ctx, partialPoints(strokes[cur], prog), COL_GREEN, guideW * 0.86);
+    }
+    // 5. start indicator for the current stroke: a big red dot + direction arrow.
+    if (cur < strokes.length) {
+      const st = strokes[cur];
+      const p0 = st.pts[0];
+      // faint arrow along the first segment.
+      if (st.pts.length > 1) {
+        const p1 = st.pts[1];
+        const ang = Math.atan2(p1.y - p0.y, p1.x - p0.x);
+        const alen = guideW * 1.5;
+        const ax = p0.x + Math.cos(ang) * alen;
+        const ay = p0.y + Math.sin(ang) * alen;
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.55)";
+        ctx.lineWidth = Math.max(2, guideW * 0.14);
+        ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.arc(wps[i].x, wps[i].y, r + 2, 0, Math.PI * 2);
-        ctx.strokeStyle = on ? "rgba(86, 226, 122, 0.5)" : "rgba(255, 255, 255, 0.7)";
-        ctx.lineWidth = 2;
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(ax, ay);
+        const head = guideW * 0.5;
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - Math.cos(ang - 0.5) * head, ay - Math.sin(ang - 0.5) * head);
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - Math.cos(ang + 0.5) * head, ay - Math.sin(ang + 0.5) * head);
         ctx.stroke();
       }
+      ctx.beginPath();
+      ctx.arc(p0.x, p0.y, startR, 0, Math.PI * 2);
+      ctx.fillStyle = COL_RED;
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.stroke();
     }
-    ctx.restore();
-  }, [letter, width, height, dotR, startR]);
+  }, [width, height, guideW, startR]);
 
-  // Composite the accumulated (unclipped) trail onto the visible canvas, then
-  // intersect it with the glyph mask so nothing outside the letter is shown.
-  const composite = useCallback(() => {
-    const t = traceRef.current;
-    const trail = trailRef.current;
-    const mask = maskRef.current;
-    if (!t || !trail || !mask) return;
-    const ctx = t.getContext("2d")!;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, t.width, t.height);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.drawImage(trail, 0, 0);
-    ctx.globalCompositeOperation = "destination-in";
-    ctx.drawImage(mask, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.restore();
-  }, []);
-
-  // Wipe the child's chalk and reset lit waypoints.
-  const wipe = useCallback(() => {
-    const trail = trailRef.current;
-    if (trail) {
-      const tc = trail.getContext("2d")!;
-      tc.save();
-      tc.setTransform(1, 0, 0, 1, 0, 0);
-      tc.clearRect(0, 0, trail.width, trail.height);
-      tc.restore();
-    }
-    const t = traceRef.current;
-    if (t) {
-      const ctx = t.getContext("2d")!;
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.clearRect(0, 0, t.width, t.height);
-      ctx.restore();
-    }
-    lit.current = waypoints.current.map(() => false);
-    litCount.current = 0;
-    lastPt.current = null;
-    paintGuide();
-  }, [paintGuide]);
-
-  // ---- (re)build guide + waypoints + mask whenever letter/size changes ----
+  // (Re)build the mapped strokes and reset state whenever letter/size changes.
   useEffect(() => {
     doneRef.current = false;
     setFlash(false);
+    currentRef.current = 0;
+    progressRef.current = 0;
+    startedRef.current = false;
+    drawingRef.current = false;
+    pointerId.current = null;
+
     const g = guideRef.current;
-    const t = traceRef.current;
-    if (!g || !t) return;
+    const inp = inputRef.current;
+    if (!g || !inp) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    dprRef.current = dpr;
-    for (const c of [g, t]) {
+    for (const c of [g, inp]) {
       c.width = Math.round(width * dpr);
       c.height = Math.round(height * dpr);
-      const ctx = c.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineJoin = "round";
-      ctx.lineCap = "round";
+      const ctx = c.getContext("2d");
+      if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    const gctx = g.getContext("2d")!;
-    fontPx.current = fitFont(gctx, letter, width, height);
+    // Bounding box of ALL points, then fit into the slate with a margin,
+    // preserving aspect ratio.
+    const raw = getStrokes(letter);
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const stroke of raw) {
+      for (const [x, y] of stroke) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+    const bw = Math.max(1e-3, maxX - minX);
+    const bh = Math.max(1e-3, maxY - minY);
+    const availW = width * (1 - 2 * MARGIN);
+    const availH = height * (1 - 2 * MARGIN);
+    const scale = Math.min(availW / bw, availH / bh);
+    const offX = (width - bw * scale) / 2;
+    const offY = (height - bh * scale) / 2;
+    const map = ([x, y]: [number, number]): Pt => ({
+      x: offX + (x - minX) * scale,
+      y: offY + (y - minY) * scale,
+    });
 
-    // Offscreen TRAIL layer (accumulates raw chalk, high-DPI, CSS-coord draws).
-    const trail = document.createElement("canvas");
-    trail.width = Math.round(width * dpr);
-    trail.height = Math.round(height * dpr);
-    const trctx = trail.getContext("2d")!;
-    trctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    trctx.lineJoin = "round";
-    trctx.lineCap = "round";
-    trailRef.current = trail;
+    strokesRef.current = raw.map((stroke) => {
+      const pts = stroke.map(map);
+      const cum = [0];
+      for (let i = 1; i < pts.length; i++) {
+        cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+      }
+      return { pts, cum, len: cum[cum.length - 1] };
+    });
 
-    // Persistent MASK: the glyph rendered OPAQUE (silhouette to clip against).
-    const mask = document.createElement("canvas");
-    mask.width = Math.round(width * dpr);
-    mask.height = Math.round(height * dpr);
-    const mctx = mask.getContext("2d")!;
-    mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    mctx.font = `800 ${fontPx.current}px ${GUIDE_FONT}`;
-    mctx.textAlign = "center";
-    mctx.textBaseline = "middle";
-    mctx.fillStyle = "#000";
-    mctx.fillText(letter, width / 2, height / 2);
-    maskRef.current = mask;
+    render();
+  }, [letter, width, height, render]);
 
-    // Read the glyph ink (CSS resolution) for skeleton extraction.
-    const off = document.createElement("canvas");
-    off.width = width;
-    off.height = height;
-    const octx = off.getContext("2d")!;
-    octx.font = `800 ${fontPx.current}px ${GUIDE_FONT}`;
-    octx.textAlign = "center";
-    octx.textBaseline = "middle";
-    octx.fillStyle = "#000";
-    octx.fillText(letter, width / 2, height / 2);
-    const data = octx.getImageData(0, 0, width, height).data;
-    const inkX: number[] = [];
-    const inkY: number[] = [];
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        if (data[(y * width + x) * 4 + 3] > 80) {
-          inkX.push(x);
-          inkY.push(y);
+  // Advance state from one finger sample on the CURRENT stroke.
+  const handlePoint = useCallback(
+    (p: Pt) => {
+      if (doneRef.current) return;
+      const strokes = strokesRef.current;
+      const cur = currentRef.current;
+      if (cur >= strokes.length) return;
+
+      const { t, d } = project(strokes[cur], p);
+      if (d > tol) {
+        render();
+        return;
+      }
+
+      if (!startedRef.current) {
+        // Only begin once the finger is near the stroke START.
+        if (t <= START_GATE) {
+          startedRef.current = true;
+          progressRef.current = Math.max(progressRef.current, t);
+        } else {
+          return;
+        }
+      } else if (t <= progressRef.current + JUMP_AHEAD) {
+        // Roughly monotonic: advance, ignore big forward jumps and backward moves.
+        progressRef.current = Math.max(progressRef.current, t);
+      }
+
+      // Current stroke complete?
+      if (progressRef.current >= DONE_THRESH) {
+        currentRef.current += 1;
+        progressRef.current = 0;
+        startedRef.current = false;
+        if (currentRef.current >= strokes.length) {
+          doneRef.current = true;
+          render();
+          setFlash(true);
+          window.setTimeout(() => onComplete(), 220);
+          return;
         }
       }
-    }
-    const startNorm = START_POS[letter.toLowerCase()] ?? null;
-    const built = buildWaypoints(inkX, inkY, Math.min(width, height), startNorm);
-    waypoints.current = built.points;
-    required.current = built.required;
-    lit.current = waypoints.current.map(() => false);
-    litCount.current = 0;
-    lastPt.current = null;
-    // clear visible chalk
-    t.getContext("2d")!.clearRect(0, 0, width, height);
-    paintGuide();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [letter, width, height]);
+      render();
+    },
+    [tol, render, onComplete],
+  );
 
-  // Light up every waypoint within tolerance of a path point.
-  const lightAt = (x: number, y: number): boolean => {
-    let changed = false;
-    const wps = waypoints.current;
-    for (let i = 0; i < wps.length; i++) {
-      if (lit.current[i]) continue;
-      if (Math.hypot(wps[i].x - x, wps[i].y - y) <= tol) {
-        lit.current[i] = true;
-        litCount.current++;
-        changed = true;
-      }
-    }
-    return changed;
-  };
-
-  const checkComplete = useCallback(() => {
-    if (doneRef.current) return;
-    const total = waypoints.current.length;
-    if (total === 0) return;
-    // (a) enough of the whole centre-line covered.
-    if (litCount.current / total < COMPLETE_FRAC) return;
-    // (b) EVERY required waypoint traced — the stroke extremities (t's crossbar
-    // tips, j's hook, f's crossbar tip, stem ends) AND the i/j tittle dot — so a
-    // partial trace that skips a short stroke or the dot does not complete.
-    const req = required.current;
-    for (let i = 0; i < total; i++) {
-      if (req[i] && !lit.current[i]) return;
-    }
-    doneRef.current = true;
-    setFlash(true);
-    window.setTimeout(() => onComplete(), 220);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onComplete]);
-
-  // ---- drawing ------------------------------------------------------------
   const toXY = (e: React.PointerEvent): Pt => {
-    const r = traceRef.current!.getBoundingClientRect();
+    const r = inputRef.current!.getBoundingClientRect();
     return { x: e.clientX - r.left, y: e.clientY - r.top };
   };
 
-  const strokeTo = (from: Pt | null, to: Pt) => {
-    const trail = trailRef.current;
-    if (!trail) return;
-    const ctx = trail.getContext("2d")!;
-    ctx.strokeStyle = "#fdf3d0"; // bright chalk
-    ctx.lineWidth = Math.max(9, width * 0.03);
-    ctx.beginPath();
-    if (from) ctx.moveTo(from.x, from.y);
-    else ctx.moveTo(to.x - 0.1, to.y - 0.1);
-    ctx.lineTo(to.x, to.y);
-    ctx.stroke();
-  };
-
   const onDown = (e: React.PointerEvent) => {
-    if (doneRef.current || flash) return;
+    if (doneRef.current) return;
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     pointerId.current = e.pointerId;
-    drawing.current = true;
-    const p = toXY(e);
-    lastPt.current = p;
-    strokeTo(null, p);
-    composite();
-    if (lightAt(p.x, p.y)) paintGuide();
-    checkComplete();
+    drawingRef.current = true;
+    handlePoint(toXY(e));
   };
 
   const onMove = (e: React.PointerEvent) => {
-    if (!drawing.current || e.pointerId !== pointerId.current) return;
-    const p = toXY(e);
-    const last = lastPt.current;
-    strokeTo(last, p);
-    composite();
-    // Interpolate so fast swipes still catch every dot along the segment.
-    let changed = false;
-    if (last) {
-      const steps = Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / 4));
-      for (let i = 1; i <= steps; i++) {
-        const ix = last.x + ((p.x - last.x) * i) / steps;
-        const iy = last.y + ((p.y - last.y) * i) / steps;
-        if (lightAt(ix, iy)) changed = true;
-      }
-    } else if (lightAt(p.x, p.y)) {
-      changed = true;
-    }
-    if (changed) paintGuide();
-    lastPt.current = p;
-    checkComplete();
+    if (!drawingRef.current || e.pointerId !== pointerId.current) return;
+    handlePoint(toXY(e));
   };
 
   const onUp = (e: React.PointerEvent) => {
     if (e.pointerId !== pointerId.current) return;
-    drawing.current = false;
-    lastPt.current = null;
+    drawingRef.current = false;
     pointerId.current = null;
+    // progress persists across pointer-ups so a stroke can span several touches.
   };
+
+  const clear = useCallback(() => {
+    currentRef.current = 0;
+    progressRef.current = 0;
+    startedRef.current = false;
+    drawingRef.current = false;
+    pointerId.current = null;
+    doneRef.current = false;
+    setFlash(false);
+    render();
+  }, [render]);
 
   return (
     <div
@@ -713,7 +369,7 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
     >
       <canvas ref={guideRef} className="slateGuide" style={{ width, height }} />
       <canvas
-        ref={traceRef}
+        ref={inputRef}
         className="slateCanvas"
         style={{ width, height }}
         onPointerDown={onDown}
@@ -721,7 +377,7 @@ export default function TraceSlate({ letter, width, height, onComplete }: Props)
         onPointerUp={onUp}
         onPointerCancel={onUp}
       />
-      <button type="button" className="slateClear" onClick={wipe} aria-label="Clear">
+      <button type="button" className="slateClear" onClick={clear} aria-label="Clear">
         ↺
       </button>
     </div>
