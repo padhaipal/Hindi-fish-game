@@ -18,7 +18,7 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { speakWord, stopAll } from "@/lib/sound";
+import { speakWord, playLose, stopAll } from "@/lib/sound";
 import { primeSpeech } from "@/lib/speech";
 import { dingCorrect, buzzWrong, chimeWin, tick, unlockSfx } from "@/lib/sfx";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
@@ -39,12 +39,6 @@ const SENTENCES: Sentence[] = [
   { scene: "sun_hot", words: ["The", "sun", "is", "hot"] },
   { scene: "fox_box", words: ["A", "fox", "is", "in", "the", "box"] },
 ];
-
-// Small function words are never spoken in ISOLATION on tap — saying "The" or
-// "on" alone sounds wrong. They place silently (tick only); the natural
-// pronunciation comes from reading the WHOLE sentence when it is complete.
-const FUNCTION_WORDS = new Set(["the", "a", "an", "on", "in", "is", "at"]);
-const isFunctionWord = (w: string): boolean => FUNCTION_WORDS.has(w.toLowerCase());
 
 // One tappable word: a unique instance so duplicate words (e.g. "the") are
 // tracked independently.
@@ -235,7 +229,19 @@ function Scene({ scene, celebrate }: { scene: SceneKey; celebrate: boolean }) {
           <div style={{ position: "absolute", right: 16, bottom: 0, width: 0, height: 0, borderLeft: "5px solid transparent", borderRight: "5px solid transparent", borderBottom: "26px solid #57b85f" }} />
           {/* red glow */}
           <div style={{ position: "absolute", left: "50%", top: "48%", width: 82, height: 82, transform: "translate(-50%,-50%)", borderRadius: "50%", background: "radial-gradient(circle, rgba(238,80,72,0.6), rgba(238,80,72,0) 70%)" }} />
-          <span style={emo(54, { left: "50%", top: "48%", transform: "translate(-50%,-52%)", ...bob })}>🐜</span>
+          {/* the ant itself is tinted distinctly RED via a colour filter */}
+          <span
+            style={emo(54, {
+              left: "50%",
+              top: "48%",
+              transform: "translate(-50%,-52%)",
+              filter:
+                "drop-shadow(0 3px 2px rgba(0,0,0,0.28)) sepia(1) saturate(9) hue-rotate(-32deg) brightness(1.05)",
+              ...bob,
+            })}
+          >
+            🐜
+          </span>
         </div>
       );
 
@@ -297,17 +303,22 @@ function Scene({ scene, celebrate }: { scene: SceneKey; celebrate: boolean }) {
 
 export default function SentenceGame() {
   const [phase, setPhase] = useState<Phase>("start");
+  // The order the sentences are played in — shuffled at the start of each game
+  // so a second play differs from the first.
+  const [order, setOrder] = useState<Sentence[]>(SENTENCES);
   const [sentenceIdx, setSentenceIdx] = useState(0);
   const [tray, setTray] = useState<Tile[]>([]);
   const [placedIds, setPlacedIds] = useState<number[]>([]); // tile ids, in order
   const [wrongId, setWrongId] = useState<number | null>(null); // tile to shake
   const [complete, setComplete] = useState(false); // sentence finished + celebrating
+  const [lost, setLost] = useState(false); // 3 wrong taps → game lost
 
   const busyRef = useRef(false); // lock taps while resolving
+  const wrongRef = useRef(0); // total wrong taps across the whole game
   const timers = useRef<number[]>([]);
 
-  const sentence = SENTENCES[sentenceIdx];
-  const isLast = sentenceIdx >= SENTENCES.length - 1;
+  const sentence = order[sentenceIdx];
+  const isLast = sentenceIdx >= order.length - 1;
 
   const clearTimers = () => {
     timers.current.forEach((t) => window.clearTimeout(t));
@@ -322,8 +333,8 @@ export default function SentenceGame() {
 
   // ---- load a sentence -----------------------------------------------------
   const loadSentence = useCallback(
-    (idx: number) => {
-      const s = SENTENCES[idx];
+    (idx: number, ord: Sentence[]) => {
+      const s = ord[idx];
       setSentenceIdx(idx);
       setTray(buildTray(s.words));
       setPlacedIds([]);
@@ -337,8 +348,14 @@ export default function SentenceGame() {
 
   const startGame = useCallback(() => {
     clearTimers();
+    // Shuffle the sentence order for this game, reset the wrong-tap counter and
+    // the lose state, then play from the (new) first sentence.
+    const newOrder = shuffle(SENTENCES);
+    setOrder(newOrder);
+    wrongRef.current = 0;
+    setLost(false);
     setPhase("playing");
-    loadSentence(0);
+    loadSentence(0, newOrder);
   }, [loadSentence]);
 
   // ---- replay the whole sentence when the scene / Listen is tapped ---------
@@ -350,13 +367,21 @@ export default function SentenceGame() {
   // ---- a tray tile was tapped ---------------------------------------------
   const onTileTap = useCallback(
     (tile: Tile) => {
-      if (phase !== "playing" || busyRef.current || complete) return;
+      if (phase !== "playing" || busyRef.current || complete || lost) return;
       if (placedIds.includes(tile.id)) return; // already placed
       const nextSlot = placedIds.length;
       const expected = sentence.words[nextSlot];
 
       if (tile.word !== expected) {
-        // Wrong word: buzz + shake this tile, nothing is placed.
+        // Wrong word. Count it against the whole-game total; the 3rd wrong tap
+        // loses the game. Earlier wrong taps just buzz + shake in place.
+        wrongRef.current += 1;
+        if (wrongRef.current >= 3) {
+          stopAll();
+          playLose();
+          setLost(true);
+          return;
+        }
         buzzWrong();
         setWrongId(tile.id);
         later(() => setWrongId((w) => (w === tile.id ? null : w)), 480);
@@ -366,10 +391,10 @@ export default function SentenceGame() {
       // Correct next word: it flies into the slot.
       const placed = [...placedIds, tile.id];
       setPlacedIds(placed);
-      // Speak only CONTENT words (cat, sat, mat…) on tap. Function words
-      // (the, a, on, in, is…) place silently — spoken alone they sound wrong;
-      // they get their correct pronunciation from the whole-sentence read below.
-      if (!isFunctionWord(tile.word)) speakWord(tile.word);
+      // Speak EVERY word on tap — content words and function words (the, a,
+      // on, in, is…) alike — so each tap that lands a word plays that word's
+      // audio. The whole sentence is still read aloud on completion below.
+      speakWord(tile.word);
       tick();
 
       if (placed.length < sentence.words.length) return;
@@ -383,7 +408,7 @@ export default function SentenceGame() {
         busyRef.current = false;
       }, 320);
     },
-    [phase, complete, placedIds, sentence, later]
+    [phase, complete, lost, placedIds, sentence, later]
   );
 
   // ---- advance to the next sentence (or the win overlay) -------------------
@@ -395,8 +420,8 @@ export default function SentenceGame() {
       return;
     }
     stopAll();
-    loadSentence(sentenceIdx + 1);
-  }, [isLast, sentenceIdx, loadSentence]);
+    loadSentence(sentenceIdx + 1, order);
+  }, [isLast, sentenceIdx, order, loadSentence]);
 
   // Map placed tile ids back to their words for rendering the slots.
   const wordById = (id: number): string => tray.find((t) => t.id === id)?.word ?? "";
@@ -574,6 +599,7 @@ export default function SentenceGame() {
               type="button"
               className="bigButton"
               onClick={() => {
+                stopAll();
                 unlockSfx();
                 primeSpeech();
                 startGame();
@@ -581,7 +607,42 @@ export default function SentenceGame() {
             >
               ▶ Play again
             </button>
-            <a className="bigButton" href="/" style={{ marginTop: 12 }}>
+            <a
+              className="bigButton"
+              href="/"
+              style={{ marginTop: 12 }}
+              onClick={() => stopAll()}
+            >
+              🏠 All games
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* ---- Lose overlay (3 wrong taps) ---- */}
+      {lost && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div className="overlayEmoji">😅</div>
+            <div className="overlayTitle">Try again</div>
+            <button
+              type="button"
+              className="bigButton"
+              onClick={() => {
+                stopAll();
+                unlockSfx();
+                primeSpeech();
+                startGame();
+              }}
+            >
+              ▶ Try again
+            </button>
+            <a
+              className="bigButton"
+              href="/"
+              style={{ marginTop: 12 }}
+              onClick={() => stopAll()}
+            >
               🏠 All games
             </a>
           </div>

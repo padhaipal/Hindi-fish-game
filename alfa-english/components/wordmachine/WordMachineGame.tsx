@@ -1,20 +1,23 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// WORD MACHINE — spin the wheel to build the picture word.
+// WORD MACHINE — DRAG the wheel to build the picture word.
 // ---------------------------------------------------------------------------
 // The PICTURE of the target word is shown (emoji). The last two letters are
-// FIXED tiles (the rime, e.g. "a" "t"). A VISIBLE SPINNING WHEEL / SLOT REEL on
-// the LEFT holds the first letter: the learner sees the letter ABOVE (faint),
-// the CURRENT letter (big, centred, framed in a window) and the letter BELOW
-// (faint), so they can see what is coming. They spin it with big ▲ / ▼ buttons
-// (or a swipe up / down) and the reel visibly scrolls. When the wheel lands on
-// the correct first letter the word matches the picture, glows, and says its
-// name. Targets are sequenced in RIME BATCHES: at least 3 words that share the
-// same last-two-letters play in a row before a fresh rime. Mobile-first.
+// FIXED tiles (the rime, e.g. "a" "t"). A VISIBLE LETTER STRIP on the LEFT
+// holds the first letter. The learner DRAGS the strip up / down with a finger
+// (Pointer Events + setPointerCapture) — exactly like physically spinning a
+// wheel: the strip follows the finger 1:1 (drag DOWN and the letters move down,
+// revealing letters from above). On release the strip SNAPS so exactly one
+// letter sits in the centre window, aligned with the fixed rime tiles. That
+// centred letter + the rime make the current word (shown below); ▶ Read speaks
+// it. When the SNAPPED (settled) letter is the correct first letter, the word
+// glows, is spoken, dings, and Next appears — the win only fires on the settled
+// letter, never mid-drag. Targets are sequenced in RIME BATCHES: at least 3
+// words that share the same last-two-letters play in a row. Mobile-first.
 // ---------------------------------------------------------------------------
 
-import { useEffect, useRef, useState, type CSSProperties, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import { primeSpeech } from "@/lib/speech";
 import { speakWord, stopAll } from "@/lib/sound";
@@ -75,6 +78,10 @@ const GREEN = "#1faa5a";
 // Reel geometry.
 const CELL_H = 60; // height of one letter cell in the wheel
 const REEL_W = 86;
+// The strip is rendered as COPIES identical copies so the drag can travel a long
+// way in either direction without running off the ends. We keep the live letter
+// parked in the middle copy and silently recentre after every settle.
+const COPIES = 5;
 
 // A cheerful workshop / machine sky, layered over the .app frame.
 const rootStyle: CSSProperties = {
@@ -101,23 +108,30 @@ export default function WordMachineGame() {
 
   // Per-round wheel state.
   const [options, setOptions] = useState<string[]>([]);
-  // `pos` is a CONTINUOUS position into a tripled strip of the options so the
-  // reel can scroll seamlessly and always show a letter above and below the
-  // centred one. The logical (mod) index is derived from it.
+  // `pos` is a CONTINUOUS position into the copied strip. During a drag it holds
+  // a fractional value that follows the finger 1:1; on release it snaps to the
+  // nearest integer so exactly one letter is centred. The logical (mod) index —
+  // the chosen letter — is derived from it.
   const [pos, setPos] = useState(0);
   const [animate, setAnimate] = useState(false);
   const [solved, setSolved] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
-  const touchStartY = useRef<number | null>(null);
+  // Live drag bookkeeping (refs so pointer handlers always read fresh values and
+  // never fight React's async state batching).
+  const dragRef = useRef<{ startY: number; startPos: number; curPos: number } | null>(null);
 
   const target = TARGETS[index];
   const N = options.length;
-  const logical = N ? ((pos % N) + N) % N : 0;
+  const logical = N ? ((Math.round(pos) % N) + N) % N : 0;
   const currentFirst = N ? options[logical] : target.first;
   const currentWord = currentFirst + target.rime;
 
+  // Base offset of the MIDDLE copy of the strip.
+  const mid = N * Math.floor(COPIES / 2);
+
   // Build a shuffled wheel for round `i`, starting on a NON-correct letter so
-  // there's always something to spin.
+  // there's always something to spin to.
   function loadRound(i: number) {
     const t = TARGETS[i];
     const opts = shuffle(t.rotor);
@@ -125,25 +139,58 @@ export default function WordMachineGame() {
     // Start one step away from the answer.
     let start = correctAt === 0 ? 1 : correctAt - 1;
     if (start >= opts.length) start = 0;
+    dragRef.current = null;
     setOptions(opts);
+    setDragging(false);
     setAnimate(false); // snap into place, no scroll on load
-    setPos(opts.length + start); // sit in the MIDDLE copy of the tripled strip
+    setPos(opts.length * Math.floor(COPIES / 2) + start); // sit in the MIDDLE copy
     setSolved(false);
   }
 
-  // Celebrate the moment the wheel lands on the correct first letter.
+  // Celebrate the moment the wheel SETTLES on the correct first letter.
   function celebrate(i: number) {
     setSolved(true);
     dingCorrect();
     setTimeout(() => speakWord(TARGETS[i].word), 260);
   }
 
-  function rotate(dir: 1 | -1) {
-    if (solved || options.length === 0) return;
-    setAnimate(true);
-    const newPos = pos + dir;
+  // ---- direct drag (pointer events) ------------------------------------
+  function onPointerDown(e: ReactPointerEvent) {
+    if (solved || N === 0) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { startY: e.clientY, startPos: pos, curPos: pos };
+    setDragging(true);
+    setAnimate(false); // follow the finger 1:1, no easing
+  }
+
+  function onPointerMove(e: ReactPointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    // Natural: dragging DOWN (dy > 0) moves the strip down, which lowers `pos`
+    // and reveals earlier letters from above.
+    const dy = e.clientY - d.startY;
+    let newPos = d.startPos - dy / CELL_H;
+    // Keep at least one full copy of headroom on each side so the window always
+    // has a letter above and below and never shows blank space.
+    newPos = Math.max(N, Math.min(N * (COPIES - 1), newPos));
+    d.curPos = newPos;
     setPos(newPos);
-    const nl = ((newPos % options.length) + options.length) % options.length;
+  }
+
+  function endDrag(e: ReactPointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    setDragging(false);
+
+    // SNAP to the nearest letter so exactly one sits centred in the window.
+    const snapped = Math.round(d.curPos);
+    setAnimate(true);
+    setPos(snapped);
+
+    // WIN is judged only here, on the settled letter — never mid-drag.
+    const nl = ((snapped % N) + N) % N;
     if (options[nl] === target.first) {
       celebrate(index);
     } else {
@@ -151,38 +198,23 @@ export default function WordMachineGame() {
     }
   }
 
-  // After a spin settles, silently hop back into the middle copy so the reel
-  // can keep scrolling forever without running off the ends (seamless because
-  // all three copies are identical).
+  // After the snap animation ends, silently hop back into the middle copy so the
+  // strip can keep being dragged forever (seamless — every copy is identical).
   function onReelSettle() {
-    const n = options.length;
-    if (!n) return;
-    if (pos < n) {
+    if (!N || dragging) return;
+    if (pos < mid) {
       setAnimate(false);
-      setPos(pos + n);
-    } else if (pos >= 2 * n) {
+      setPos(pos + N);
+    } else if (pos >= mid + N) {
       setAnimate(false);
-      setPos(pos - n);
+      setPos(pos - N);
     }
   }
 
-  // Read the CURRENT word aloud so the child can blend as they spin.
+  // Read the CURRENT word aloud so the child can blend the letter to the rime.
   function readWord() {
     tick();
     speakWord(currentWord);
-  }
-
-  function onTouchStart(e: ReactTouchEvent) {
-    touchStartY.current = e.touches[0]?.clientY ?? null;
-  }
-  function onTouchEnd(e: ReactTouchEvent) {
-    const y0 = touchStartY.current;
-    touchStartY.current = null;
-    if (y0 == null) return;
-    const dy = (e.changedTouches[0]?.clientY ?? y0) - y0;
-    if (Math.abs(dy) < 24) return;
-    // Swipe up = spin to next letter (▲), swipe down = previous (▼).
-    rotate(dy < 0 ? 1 : -1);
   }
 
   function startGame() {
@@ -227,9 +259,10 @@ export default function WordMachineGame() {
     </div>
   ));
 
-  // Tripled strip of option letters so neighbours are always present and the
-  // reel scrolls seamlessly across the seam.
-  const reelCells = N ? [...options, ...options, ...options] : [];
+  // Copied strip of option letters so neighbours are always present and the
+  // drag scrolls seamlessly across the seams.
+  const reelCells: string[] = [];
+  for (let c = 0; c < COPIES; c++) reelCells.push(...options);
   // translateY that places cell `pos` in the MIDDLE row of the 3-row window.
   const stripY = CELL_H * (1 - pos);
 
@@ -283,10 +316,10 @@ export default function WordMachineGame() {
           </div>
 
           <div style={{ fontSize: 16, fontWeight: 800, color: "#eaf8ff", height: 20 }}>
-            {solved ? "You built it! 🎉" : "Spin the wheel to build the word"}
+            {solved ? "You built it! 🎉" : "Drag the wheel to build the word"}
           </div>
 
-          {/* The machine: spinning wheel + fixed rime tiles */}
+          {/* The machine: draggable letter strip + fixed rime tiles */}
           <div
             style={{
               display: "flex",
@@ -298,134 +331,119 @@ export default function WordMachineGame() {
               boxShadow: "inset 0 3px 10px #00000033, 0 6px 0 #093f61",
             }}
           >
-            {/* wheel column: ▲ / reel window / ▼ */}
+            {/* The VISIBLE draggable reel window (3 letters tall) */}
             <div
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              role="slider"
+              aria-label={`First letter wheel, showing ${currentFirst}. Drag up or down to change it.`}
+              aria-valuetext={currentFirst}
+              style={{
+                position: "relative",
+                width: REEL_W,
+                height: CELL_H * 3,
+                borderRadius: 18,
+                overflow: "hidden",
+                background: solved
+                  ? "linear-gradient(#fff7d6, #ffe27a)"
+                  : "linear-gradient(#ffffff, #eaf6ff)",
+                border: `4px solid ${solved ? "#ffbf34" : "#ffffff"}`,
+                boxShadow: solved
+                  ? "0 6px 0 #00000026, 0 0 20px 4px #ffd23f88"
+                  : "0 6px 0 #00000026, inset 0 2px 6px #00000018",
+                touchAction: "none",
+                userSelect: "none",
+                WebkitUserSelect: "none",
+                cursor: solved ? "default" : dragging ? "grabbing" : "grab",
+                WebkitTapHighlightColor: "transparent",
+              }}
             >
-              <button
-                onClick={() => rotate(1)}
-                disabled={solved}
-                aria-label="Spin up"
-                style={arrowStyle(solved)}
-              >
-                ▲
-              </button>
-
-              {/* The VISIBLE spinning reel window (3 letters tall) */}
+              {/* draggable strip of letters */}
               <div
-                onTouchStart={onTouchStart}
-                onTouchEnd={onTouchEnd}
-                aria-label={`First letter wheel, showing ${currentFirst}`}
+                onTransitionEnd={onReelSettle}
                 style={{
-                  position: "relative",
-                  width: REEL_W,
-                  height: CELL_H * 3,
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  background: solved
-                    ? "linear-gradient(#fff7d6, #ffe27a)"
-                    : "linear-gradient(#ffffff, #eaf6ff)",
-                  border: `4px solid ${solved ? "#ffbf34" : "#ffffff"}`,
-                  boxShadow: solved
-                    ? "0 6px 0 #00000026, 0 0 20px 4px #ffd23f88"
-                    : "0 6px 0 #00000026, inset 0 2px 6px #00000018",
-                  touchAction: "none",
-                  userSelect: "none",
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  transform: `translateY(${stripY}px)`,
+                  transition: animate
+                    ? "transform .28s cubic-bezier(.2,.85,.25,1)"
+                    : "none",
+                  willChange: "transform",
                 }}
               >
-                {/* scrolling strip of letters */}
-                <div
-                  onTransitionEnd={onReelSettle}
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    right: 0,
-                    top: 0,
-                    transform: `translateY(${stripY}px)`,
-                    transition: animate
-                      ? "transform .34s cubic-bezier(.2,.85,.25,1)"
-                      : "none",
-                    willChange: "transform",
-                  }}
-                >
-                  {reelCells.map((ch, k) => {
-                    const d = k - pos; // 0 = centre, -1 above, +1 below
-                    const centre = d === 0;
-                    return (
-                      <div
-                        key={k}
-                        style={{
-                          height: CELL_H,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: centre ? 50 : 30,
-                          fontWeight: 800,
-                          lineHeight: 1,
-                          color: centre ? (solved ? "#8a5b00" : TEAL) : "#2a6f95",
-                          opacity: centre ? 1 : Math.abs(d) === 1 ? 0.42 : 0.12,
-                        }}
-                      >
-                        {ch}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* top & bottom edge fades — that "curved wheel" feel */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: CELL_H,
-                    pointerEvents: "none",
-                    background: solved
-                      ? "linear-gradient(#fff7d6, rgba(255,247,214,0))"
-                      : "linear-gradient(#f4fbff, rgba(244,251,255,0))",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: CELL_H,
-                    pointerEvents: "none",
-                    background: solved
-                      ? "linear-gradient(rgba(255,226,122,0), #ffe27a)"
-                      : "linear-gradient(rgba(234,246,255,0), #eaf6ff)",
-                  }}
-                />
-
-                {/* the centre window frame that marks the chosen letter */}
-                <div
-                  style={{
-                    position: "absolute",
-                    top: CELL_H,
-                    left: 4,
-                    right: 4,
-                    height: CELL_H,
-                    borderRadius: 12,
-                    border: `3px solid ${solved ? "#ffbf34" : "#ffd23f"}`,
-                    boxShadow: solved
-                      ? "0 0 16px 3px #ffd23faa, inset 0 0 10px #ffd23f55"
-                      : "0 0 8px 1px #ffd23f66",
-                    pointerEvents: "none",
-                  }}
-                />
+                {reelCells.map((ch, k) => {
+                  const d = k - pos; // ~0 = centre, ~-1 above, ~+1 below
+                  const centre = Math.abs(d) < 0.5;
+                  const neighbour = Math.abs(d) < 1.5;
+                  return (
+                    <div
+                      key={k}
+                      style={{
+                        height: CELL_H,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: centre ? 50 : 30,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                        color: centre ? (solved ? "#8a5b00" : TEAL) : "#2a6f95",
+                        opacity: centre ? 1 : neighbour ? 0.42 : 0.12,
+                      }}
+                    >
+                      {ch}
+                    </div>
+                  );
+                })}
               </div>
 
-              <button
-                onClick={() => rotate(-1)}
-                disabled={solved}
-                aria-label="Spin down"
-                style={arrowStyle(solved)}
-              >
-                ▼
-              </button>
+              {/* top & bottom edge fades — that "curved wheel" feel */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: CELL_H,
+                  pointerEvents: "none",
+                  background: solved
+                    ? "linear-gradient(#fff7d6, rgba(255,247,214,0))"
+                    : "linear-gradient(#f4fbff, rgba(244,251,255,0))",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: CELL_H,
+                  pointerEvents: "none",
+                  background: solved
+                    ? "linear-gradient(rgba(255,226,122,0), #ffe27a)"
+                    : "linear-gradient(rgba(234,246,255,0), #eaf6ff)",
+                }}
+              />
+
+              {/* the centre window frame that marks the chosen letter */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: CELL_H,
+                  left: 4,
+                  right: 4,
+                  height: CELL_H,
+                  borderRadius: 12,
+                  border: `3px solid ${solved ? "#ffbf34" : "#ffd23f"}`,
+                  boxShadow: solved
+                    ? "0 0 16px 3px #ffd23faa, inset 0 0 10px #ffd23f55"
+                    : "0 0 8px 1px #ffd23f66",
+                  pointerEvents: "none",
+                }}
+              />
             </div>
 
             {/* fixed rime tiles */}
@@ -485,7 +503,7 @@ export default function WordMachineGame() {
             <div className="overlayEmoji">⚙️</div>
             <div className="overlayTitle">Word Machine</div>
             <p style={{ margin: "4px 0 18px", fontSize: 17, fontWeight: 700, color: TEAL }}>
-              Spin the wheel to change the first letter and build the picture word!
+              Drag the wheel to change the first letter and build the picture word!
               <br />
               <span style={{ color: INK }}>_at → cat 🐱</span>
             </p>
@@ -533,21 +551,3 @@ const fixedTileStyle: CSSProperties = {
   color: GREEN,
   boxShadow: "0 5px 0 #00000022",
 };
-
-function arrowStyle(solved: boolean): CSSProperties {
-  return {
-    width: REEL_W,
-    height: 44,
-    borderRadius: 14,
-    border: "none",
-    background: solved ? "#7fb8d6" : "linear-gradient(#ffe27a, #ffc21f)",
-    color: solved ? "#eaf8ff" : "#7a5200",
-    fontSize: 26,
-    fontWeight: 800,
-    lineHeight: 1,
-    cursor: solved ? "default" : "pointer",
-    boxShadow: solved ? "none" : "0 4px 0 #b98700",
-    WebkitTapHighlightColor: "transparent",
-    touchAction: "manipulation",
-  };
-}
