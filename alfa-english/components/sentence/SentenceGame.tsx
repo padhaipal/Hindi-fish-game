@@ -31,7 +31,7 @@ interface Sentence {
 const SENTENCES: Sentence[] = [
   { emoji: "🐱", words: ["The", "cat", "sat", "on", "the", "mat"] },
   { emoji: "🐔🛏️", words: ["The", "hen", "sat", "on", "the", "bed"] },
-  { emoji: "🐷", words: ["The", "pig", "is", "big"] },
+  { emoji: "🐜", words: ["The", "ant", "is", "red"] },
   { emoji: "🐛", words: ["The", "bug", "is", "on", "the", "rug"] },
   { emoji: "☀️", words: ["The", "sun", "is", "hot"] },
   { emoji: "🦊📦", words: ["A", "fox", "is", "in", "the", "box"] },
