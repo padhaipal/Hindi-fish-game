@@ -1444,6 +1444,29 @@ body > div {
   transform: translateY(2px);
   box-shadow: 0 1px 0 #00000030;
 }
+/* "skip" button — appears under the slate if a child lingers on one item */
+.lekhanSkip {
+  margin-top: 16px;
+  padding: 11px 26px;
+  border: none;
+  border-radius: 999px;
+  background: #ffcf33;
+  color: #0a3d57;
+  font-size: 19px;
+  font-weight: 800;
+  box-shadow: 0 4px 0 #d29e00;
+  cursor: pointer;
+  animation: skipPop 0.3s ease;
+}
+.lekhanSkip:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #d29e00;
+}
+@keyframes skipPop {
+  0% { transform: scale(0.6); opacity: 0; }
+  60% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); }
+}
 /* right / wrong flashes */
 .slate--red {
   animation: slateRed 0.48s ease;
