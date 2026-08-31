@@ -307,9 +307,14 @@ def main():
     lo, hi = min(all_dates), max(all_dates)
     dates = [lo + datetime.timedelta(days=i) for i in range((hi - lo).days + 1)]
 
-    # Clear old data rows.
+    # Clear old data rows -- but only the Date column and the class columns
+    # (Start/End/Total/Prize). Leave any other columns (e.g. "Daily Totals" /
+    # "Weekly" summary columns the user maintains) untouched.
+    clear_cols = {1}
+    for c in classes:
+        clear_cols.update(range(c["col"], c["col"] + 4))
     for r in range(date_row + 1, ws.max_row + 1):
-        for c in range(1, ws.max_column + 1):
+        for c in clear_cols:
             ws.cell(row=r, column=c).value = None
             ws.cell(row=r, column=c).fill = NOFILL
 
