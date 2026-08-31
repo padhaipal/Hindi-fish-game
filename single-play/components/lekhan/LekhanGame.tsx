@@ -3,21 +3,24 @@
 // ---------------------------------------------------------------------------
 // LEKHAN (WRITING) GAME
 // ---------------------------------------------------------------------------
-// The child writes letters (L1-L2) then 2-letter words (L3-L4) on a blank
-// slate. A picture (+ letter/word, depending on the level) shows at the top and
-// its sound plays. The slate recognises the letter/word the child wrote (see
-// Slate.tsx). Each level finishes after 5 items, then applause; the last screen
-// links to PadhaiPal. Letter/word order is randomised each level.
+// The child TRACES letters (L1-L2) then short words (L3-L4) on a chalkboard
+// slate, one stroke at a time. A picture (+ letter/word, depending on the level)
+// shows at the top and its sound plays. The slate draws every stroke as a faint
+// guide with a red start dot, and the child must trace each stroke IN ORDER,
+// from its start (see TraceSlate.tsx + lib/lekhan/hindiStrokes.ts) — so the head
+// line (शिरोरेखा), the डंडा and every matra are all mandatory. Each level
+// finishes after 5 items, then applause; the last screen shows the reward video.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Slate from "./Slate";
+import TraceSlate from "./TraceSlate";
 import { LEKHAN_LEVELS, TOTAL_LEKHAN_LEVELS } from "@/lib/lekhan/levels";
 import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
 import LetterPicture from "@/components/shared/LetterPicture";
 import EndVideo from "@/components/shared/EndVideo";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
+import { getLetterStrokes, getWordStrokes, type Stroke } from "@/lib/lekhan/hindiStrokes";
 import {
   playLetterSound,
   playWordSound,
@@ -28,13 +31,7 @@ import {
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
 
-// The closed vocabulary for the word levels — the drawing is recognised against
-// these and only accepted if the nearest match is the target word.
-const WORD_CANDIDATES = BLOCK_WORDS.map((w) => w.word);
-// For the letter writing levels (L2, L3) we recognise WHICH letter was drawn,
-// instead of measuring distance from a template. Candidates are the full
-// alphabet; matching is lenient (a child's scrawl is easily confused).
-const LETTER_CANDIDATES = LETTERS.map((l) => l.char);
+const SKIP_AFTER_MS = 15000; // offer "आगे बढ़ें" if a child is stuck this long
 
 type Phase = "start" | "playing" | "levelComplete" | "allDone";
 
@@ -45,6 +42,7 @@ interface Item {
   glyph: string; // the letter / word shown at top (when visible)
   isLa: boolean; // draw the lattu SVG instead of an emoji
   kab: boolean; // the kab picture needs a smaller font
+  strokes: Stroke[]; // ordered pen strokes to trace
   play: () => void; // its spoken audio
 }
 
@@ -68,6 +66,7 @@ function buildSequence(mode: "letter" | "word", items: number): Item[] {
         glyph: l.char,
         isLa: id === "la",
         kab: false,
+        strokes: getLetterStrokes(id),
         play: () => playLetterSound(letterWordAudio(id)),
       };
     });
@@ -80,6 +79,7 @@ function buildSequence(mode: "letter" | "word", items: number): Item[] {
     glyph: w.word,
     isLa: false,
     kab: w.id === "kab",
+    strokes: getWordStrokes(w.letters),
     play: () => playWordSound(w.audio),
   }));
 }
@@ -90,7 +90,7 @@ export default function LekhanGame() {
   const [seq, setSeq] = useState<Item[]>([]);
   const [itemIdx, setItemIdx] = useState(0);
   const [vw, setVw] = useState(390);
-  const [mistakes, setMistakes] = useState(0); // wrong tries on the current item
+  const [showSkip, setShowSkip] = useState(false); // offer "next" if stuck a while
   const introRef = useRef("");
 
   const cfg = LEKHAN_LEVELS[level - 1];
@@ -112,7 +112,7 @@ export default function LekhanGame() {
     setLevel(levelNumber);
     setSeq(buildSequence(lvl.mode, lvl.items));
     setItemIdx(0);
-    setMistakes(0);
+    setShowSkip(false);
     setPhase("playing");
     trackLevelReached(levelNumber);
   }, []);
@@ -129,11 +129,20 @@ export default function LekhanGame() {
     return () => window.clearTimeout(t);
   }, [phase, level, itemIdx, item]);
 
-  // Move to the next item. `skip` = they gave up on this one (after a few wrong
-  // tries) rather than getting it right — no celebratory "bing" in that case.
+  // Offer a gentle "आगे बढ़ें" only after the child has lingered on one item —
+  // tracing can't be "failed", so this is the escape hatch if they get stuck.
+  useEffect(() => {
+    if (phase !== "playing") return;
+    setShowSkip(false);
+    const t = window.setTimeout(() => setShowSkip(true), SKIP_AFTER_MS);
+    return () => window.clearTimeout(t);
+  }, [phase, level, itemIdx]);
+
+  // Move to the next item. `skip` = they moved on without finishing tracing, so
+  // there's no celebratory "bing".
   const goNext = useCallback(
     (skip: boolean) => {
-      setMistakes(0);
+      setShowSkip(false);
       const next = itemIdx + 1;
       if (next >= seq.length) {
         playWinSound(); // applause
@@ -146,7 +155,6 @@ export default function LekhanGame() {
     [itemIdx, seq.length, isLastLevel]
   );
   const onComplete = useCallback(() => goNext(false), [goNext]);
-  const onMistake = useCallback(() => setMistakes((m) => m + 1), []);
 
   return (
     <div className="lekhanApp" style={{ background: cfg.bg }}>
@@ -190,21 +198,17 @@ export default function LekhanGame() {
 
           {/* The slate */}
           <div className="lekhanSlateWrap">
-            <Slate
+            <TraceSlate
               key={`${level}-${itemIdx}`}
-              text={item.write}
-              showGuide={false}
+              strokes={item.strokes}
               width={slateW}
               height={slateH}
               onComplete={onComplete}
-              onMistake={onMistake}
-              recognizeAgainst={cfg.mode === "word" ? WORD_CANDIDATES : LETTER_CANDIDATES}
-              acceptTopK={cfg.mode === "word" ? 1 : 5}
             />
           </div>
 
-          {/* After a couple of wrong tries (or restarts), let them move on. */}
-          {mistakes >= 2 && (
+          {/* If a child lingers on one item, let them move on. */}
+          {showSkip && (
             <button type="button" className="lekhanSkip" onClick={() => goNext(true)}>
               आगे बढ़ें →
             </button>
