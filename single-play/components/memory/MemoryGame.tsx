@@ -15,8 +15,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Card, { MemCard } from "./Card";
 import { MEMORY_LEVELS } from "@/lib/memory/levels";
-import { LETTERS, getLetter } from "@/lib/letters";
+import { getLetter } from "@/lib/letters";
 import { hasLetterVideo, letterVideoSrc } from "@/lib/letterVideos";
+import EndVideo from "@/components/shared/EndVideo";
 import {
   playPictureSound,
   playLetterSound,
@@ -28,7 +29,11 @@ import {
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
 
-const PADHAIPAL_URL = "https://wa.me/918528097842";
+// The memory game draws ONLY from the letters that have a spoken picture-name
+// recording (/audio/pictures/<id>.mp3), so tapping a picture card always says
+// its name. There are exactly 8 — enough for the biggest board (4×4 = 8 pairs).
+const MEMORY_LETTER_IDS = ["ka", "cha", "ta", "ba", "pa", "ra", "la", "sa"];
+
 const CARD_W = 78;
 const CARD_H = 96;
 const GAP = 10;
@@ -70,7 +75,7 @@ export default function MemoryGame() {
     const lvl = MEMORY_LEVELS[idx];
     const pairs = (lvl.cols * lvl.rows) / 2;
     // pick `pairs` distinct letters
-    const ids = LETTERS.map((l) => l.id);
+    const ids = [...MEMORY_LETTER_IDS];
     for (let i = ids.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [ids[i], ids[j]] = [ids[j], ids[i]];
@@ -345,20 +350,7 @@ export default function MemoryGame() {
         </div>
       )}
 
-      {phase === "allDone" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सभी स्तर पूरे!
-            </div>
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "allDone" && <EndVideo />}
     </div>
   );
 }

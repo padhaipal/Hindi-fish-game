@@ -20,6 +20,8 @@ import { HOP_LEVELS, TOTAL_HOP_LEVELS } from "@/lib/pondhop/levels";
 import { buildHopBoard, HopStone } from "@/lib/pondhop/board";
 import { LETTERS, getLetter, letterWordAudio, Letter } from "@/lib/letters";
 import LetterPicture from "@/components/shared/LetterPicture";
+import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWrongSound,
@@ -29,8 +31,6 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
-
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // Where the frog stands before its first hop (% of the water area).
 const START_POS = { x: 50, y: 95 };
@@ -241,7 +241,7 @@ export default function PondHopGame() {
               }}
               aria-label="सुनो"
             >
-              🔊 सुनो
+              <SpeakerIcon /> सुनो
             </button>
           </div>
 
@@ -370,20 +370,7 @@ export default function PondHopGame() {
         </div>
       )}
 
-      {phase === "allDone" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सभी स्तर पूरे!
-            </div>
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "allDone" && <EndVideo />}
     </div>
   );
 }

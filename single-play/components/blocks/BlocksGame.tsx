@@ -23,6 +23,8 @@ import Block, { BlockState } from "./Block";
 import { LEVELS } from "@/lib/blocks/levels";
 import { getWord } from "@/lib/blocks/words";
 import WordPicture from "@/components/shared/WordPicture";
+import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   Board,
   Occ,
@@ -43,9 +45,6 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
-
-// Sends the child back to PadhaiPal on WhatsApp (same as the fish game).
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // Layout (keep in sync with .block sizing in globals.css).
 const CELL = 64; // block cell incl. gap
@@ -312,7 +311,7 @@ export default function BlocksGame() {
             }}
             aria-label="सुनो"
           >
-            🔊 सुनो
+            <SpeakerIcon /> सुनो
           </button>
           <div className="progressDots">
             {order.map((_, i) => (
@@ -422,23 +421,7 @@ export default function BlocksGame() {
         </div>
       )}
 
-      {phase === "won" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 16px" }}>
-              सभी स्तर पूरे!
-            </div>
-            {/* Back to PadhaiPal on WhatsApp (like the fish game's finish screen).
-                NB: we deliberately do NOT stop the applause here, so it keeps
-                playing through the redirect. */}
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "won" && <EndVideo />}
     </div>
   );
 }

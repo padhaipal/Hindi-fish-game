@@ -28,20 +28,17 @@ import { buildRound, FishSpec, RoundPlan } from "@/lib/fish/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/fish/levels";
 import { getLetter, letterWordAudio, Letter, LETTERS } from "@/lib/letters";
 import LetterPicture from "@/components/shared/LetterPicture";
+import EndVideo from "@/components/shared/EndVideo";
+import SpeakerIcon from "@/components/shared/SpeakerIcon";
 import {
   playLetterSound,
   playWrongSound,
   playWinSound,
   playLoseSound,
-  playEndgameSound,
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
 import { trackLevelReached } from "@/lib/analytics";
-
-// Where the final "पाठ पर जाएं" button sends the child: a WhatsApp chat with the
-// PadhaiPal number (+91 8528097842). No text param = no auto-filled message.
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // Must match the .fish width/height in globals.css.
 const FISH = 88;
@@ -448,10 +445,8 @@ export default function PondGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundId, phase]);
 
-  // ---- play the spoken finish message on the final screen ----------------
-  useEffect(() => {
-    if (phase === "allDone") playEndgameSound();
-  }, [phase]);
+  // The end-of-game reward video (with its own audio) now plays on the final
+  // screen — see <EndVideo /> — so we no longer play the spoken finish message.
 
   // ---- render -------------------------------------------------------------
   const target = round?.target;
@@ -486,7 +481,7 @@ export default function PondGame() {
             }}
             aria-label="play target letter sound"
           >
-            🔊 सुनो
+            <SpeakerIcon /> सुनो
           </button>
         </div>
       )}
@@ -586,24 +581,7 @@ export default function PondGame() {
         </div>
       )}
 
-      {phase === "allDone" && (
-        <div className="overlay">
-          <div className="overlayCard">
-            <div className="overlayEmoji">🏆</div>
-            <div className="overlayTitle">शाबाश!</div>
-            <div
-              style={{ fontSize: 18, color: "#0a3d57", margin: "2px 0 12px" }}
-            >
-              सभी स्तर पूरे!
-            </div>
-            <PadhaipalImage />
-            {/* Sends the child back to the PadhaiPal app / lesson. */}
-            <a className="bigButton" href={PADHAIPAL_URL}>
-              पाठ पर जाएं
-            </a>
-          </div>
-        </div>
-      )}
+      {phase === "allDone" && <EndVideo />}
     </div>
   );
 }
@@ -621,32 +599,5 @@ function WordPicture({ letter }: { letter: Letter }) {
     <div className="wordPic" aria-label={letter.word}>
       <LetterPicture letter={letter} size={78} className="wordEmoji" />
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// PADHAIPAL IMAGE — shown on the final "all done" screen above the link button.
-// Loads the shared /images/shared/padhaipal.jpeg; falls back to a simple branded
-// badge if it's missing so the screen is never broken.
-// ---------------------------------------------------------------------------
-function PadhaipalImage() {
-  const [failed, setFailed] = useState(false);
-  if (failed) {
-    return (
-      <div className="brandBadge">
-        <span style={{ fontSize: 40 }}>🐟</span>
-        <span>PadhaiPal</span>
-      </div>
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      className="padhaipalImg"
-      src="/images/shared/padhaipal.jpeg"
-      alt="PadhaiPal"
-      onError={() => setFailed(true)}
-      draggable={false}
-    />
   );
 }
