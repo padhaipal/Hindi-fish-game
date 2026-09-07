@@ -40,6 +40,7 @@ import {
   speakCombo,
   speakLetterSound,
   playApplause,
+  playApplauseShort,
   playLose,
   stopAll,
 } from "@/lib/sound";
@@ -338,10 +339,11 @@ export default function FishGame({
               playApplause();
               setPhase("won");
             } else {
-              // Advance to the next round (no applause between rounds).
-              // Pause ~1s so this catch's sound doesn't clash with the next
-              // round's picture-word combo.
-              nextComboDelayRef.current = 1000;
+              // Clap for finishing this round, then advance. Hold the next
+              // round's picture-word combo until the short clap has played so
+              // they don't clash.
+              playApplauseShort();
+              nextComboDelayRef.current = 1700;
               startRound(roundIndexRef.current + 1);
             }
           }, 550);
