@@ -24,7 +24,7 @@ import { getLetter, Letter } from "@/lib/letters";
 import { getReadingLesson, READING_LESSONS } from "@/lib/lessons";
 import { primeSpeech } from "@/lib/speech";
 import { buzzWrong, unlockSfx } from "@/lib/sfx";
-import { speakCombo, speakLetterSound, playApplause, playLose, stopAll } from "@/lib/sound";
+import { speakCombo, speakLetterSound, playApplause, playApplauseShort, playLose, stopAll } from "@/lib/sound";
 import { buildHopBoard, HopStone, HopConfig } from "@/lib/pond/board";
 import LetterPicture from "@/components/shared/LetterPicture";
 import SpeakerIcon from "@/components/shared/SpeakerIcon";
@@ -203,8 +203,11 @@ export default function PondHopGame({ lesson, onFinish }: { lesson: number; onFi
             setPhase("won");
           }, HOP_MS + 500);
         } else {
-          // Pick a NEW target and send the frog back to the near bank.
-          later(() => startCrossing(completed), HOP_MS + 900);
+          // Clap for finishing this crossing, then pick a NEW target and send
+          // the frog back. The extra delay lets the short clap play before the
+          // next crossing's picture-word combo.
+          playApplauseShort();
+          later(() => startCrossing(completed), HOP_MS + 1200);
         }
       } else {
         // More rows to go — free up for the next tap once the hop lands.

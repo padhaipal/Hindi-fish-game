@@ -46,6 +46,12 @@ export function playApplause(): void {
   playFile("/audio/clap.mp3");
 }
 
+// A short burst of applause for finishing an intermediate level (a fish round /
+// a frog crossing) — the game keeps moving, so this is trimmed short.
+export function playApplauseShort(): void {
+  playFile("/audio/clap-short.mp3");
+}
+
 // The "wah wah wah" sad sound when a level is lost.
 export function playLose(): void {
   playFile("/audio/wa-wa-wa.mp3");
