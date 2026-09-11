@@ -2,8 +2,11 @@ import Link from "next/link";
 
 // ---------------------------------------------------------------------------
 // HOME — the PadhaiPal Hindi games collection.
-// A simple landing page linking to the two games. Each game is also directly
-// reachable at its own URL (/fish and /blocks).
+// A simple landing page linking to the games. Each game is also directly
+// reachable at its own URL (/fish, /blocks, ...).
+//
+// The letter games are for young children. "टीबी का सफ़र" (/tb) is a health
+// game for adults, built for tb.care, so it sits in its own group below them.
 // ---------------------------------------------------------------------------
 export default function Home() {
   return (
@@ -38,6 +41,14 @@ export default function Home() {
           <Link href="/lekhan" className="gameButton gbLekhan">
             <span className="gameEmoji">✍️</span>
             <span>लेखन खेल</span>
+          </Link>
+        </nav>
+
+        <p className="homeGroupLabel">बड़ों के लिए</p>
+        <nav className="homeButtons">
+          <Link href="/tb" className="gameButton gbTb">
+            <span className="gameEmoji">🫁</span>
+            <span>टीबी का सफ़र</span>
           </Link>
         </nav>
       </div>

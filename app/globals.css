@@ -1512,3 +1512,495 @@ body > div {
   padding: 10px 20px;
   font-size: 22px;
 }
+
+/* the TB game sits apart from the children's letter games on the home menu */
+.homeGroupLabel {
+  margin: 16px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #5b6b74;
+}
+.gameButton.gbTb {
+  background: linear-gradient(#5aa9a0, #2f7f77);
+  box-shadow: 0 6px 0 #1f5f59;
+}
+
+/* ===========================================================================
+   टीबी का सफ़र — the TB decision game (/tb)
+   ---------------------------------------------------------------------------
+   A different look from the children's games on purpose: this one is for
+   adults, often read outdoors on a cheap phone. Paper background, ink line
+   drawings, one warning colour, very large tap targets, and text that is never
+   the only way to understand a screen.
+   =========================================================================== */
+
+.tbApp {
+  --tb-ink: #26221e;
+  --tb-paper: #f7f1e6;
+  --tb-card: #fffdf8;
+  --tb-accent: #c8442b;
+  --tb-good: #1f7a4d;
+  --tb-bad: #c0392b;
+  --tb-gold: #e8a33d;
+
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 20px;
+  background: var(--tb-paper);
+  color: var(--tb-ink);
+  overflow-y: auto;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+/* ---- line drawings ------------------------------------------------------ */
+.tbArt {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  stroke: var(--tb-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  color: var(--tb-accent);
+}
+
+.tbArt *,
+.tbIcon * {
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.tbArt .tbAccent,
+.tbIcon .tbAccent {
+  stroke: var(--tb-accent);
+}
+
+.tbArt .tbFill,
+.tbArt .tbFill * {
+  fill: var(--tb-accent);
+  stroke: none;
+}
+
+.tbIcon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  stroke: var(--tb-ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tbIcon .tbGood {
+  stroke: var(--tb-good);
+}
+
+.tbIcon .tbBad {
+  stroke: var(--tb-bad);
+}
+
+/* ---- meters ------------------------------------------------------------- */
+.tbMeters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tbMeter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 120px;
+  min-width: 118px;
+  border: 2px solid #00000018;
+  background: var(--tb-card);
+  border-radius: 12px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.tbMeter--family {
+  flex: 1 1 100%;
+  justify-content: center;
+  gap: 2px;
+}
+
+.tbMeterGlyph {
+  width: 22px;
+  height: 22px;
+  stroke: var(--tb-ink);
+  stroke-width: 1.8;
+  fill: none;
+}
+
+.tbBar {
+  display: flex;
+  gap: 2px;
+  flex: 1 1 auto;
+  height: 16px;
+}
+
+.tbBarCell {
+  flex: 1 1 0;
+  border-radius: 3px;
+  transition: background 220ms ease;
+}
+
+.tbMember {
+  width: 26px;
+  height: 34px;
+  stroke: var(--tb-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.tbMember--warn {
+  stroke: var(--tb-gold);
+}
+
+.tbMember--ill {
+  stroke: var(--tb-bad);
+}
+
+.tbMemberMark {
+  stroke: var(--tb-bad);
+  stroke-width: 3;
+}
+
+.tbMemberShield {
+  stroke: var(--tb-good);
+  stroke-width: 3;
+}
+
+/* ---- six months --------------------------------------------------------- */
+.tbMonths {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+}
+
+.tbMonth {
+  width: 30px;
+  height: 16px;
+  border: 2px solid #00000022;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tbMonth--done {
+  background: #dff0e4;
+  border-color: var(--tb-good);
+}
+
+.tbMonth svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: var(--tb-good);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- the scene ---------------------------------------------------------- */
+.tbStage {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--tb-card);
+  border-radius: 16px;
+  padding: 10px 12px;
+  box-shadow: 0 2px 0 #00000012;
+}
+
+.tbSay {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  text-align: start;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tbSay--block {
+  width: 100%;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.tbSub {
+  display: block;
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+
+/* ---- the choices -------------------------------------------------------- */
+.tbOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tbOptionRow {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.tbOption {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 10px 14px;
+  border: 2px solid var(--tb-ink);
+  border-radius: 14px;
+  background: var(--tb-card);
+  color: inherit;
+  font: inherit;
+  font-size: 18px;
+  text-align: start;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #00000022;
+}
+
+.tbOption:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #00000022;
+}
+
+.tbSpeak {
+  flex: 0 0 auto;
+  width: 56px;
+  border: 2px solid #00000022;
+  border-radius: 14px;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tbSpeak svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: var(--tb-ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---- what happened, and why -------------------------------------------- */
+.tbResultScrim {
+  position: fixed;
+  inset: 0;
+  background: #00000055;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+  z-index: 20;
+}
+
+.tbResult {
+  width: 100%;
+  max-width: 460px;
+  background: var(--tb-card);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  border-top: 8px solid #999;
+  animation: tbRise 220ms ease-out;
+}
+
+.tbResult--good {
+  border-top-color: var(--tb-good);
+}
+
+.tbResult--bad {
+  border-top-color: var(--tb-bad);
+}
+
+.tbResult--mixed {
+  border-top-color: var(--tb-gold);
+}
+
+.tbResultText {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.tbFact {
+  margin: 0;
+  font-size: 17px;
+  background: #00000009;
+  border-inline-start: 5px solid var(--tb-accent);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+@keyframes tbRise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---- buttons and the start / end screens ------------------------------- */
+.tbBigButton {
+  min-height: 60px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--tb-good);
+  color: #fff;
+  font: inherit;
+  font-size: 21px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #00000033;
+  width: 100%;
+}
+
+.tbBigButton:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 #00000033;
+}
+
+.tbBigButton--ghost {
+  background: var(--tb-card);
+  color: var(--tb-ink);
+  border: 2px solid var(--tb-ink);
+}
+
+.tbApp--start,
+.tbApp--end {
+  justify-content: center;
+  align-items: center;
+}
+
+.tbStartCard,
+.tbEndCard,
+.tbLife {
+  width: 100%;
+  max-width: 460px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  background: var(--tb-card);
+  border-radius: 20px;
+  padding: 20px 16px;
+  box-shadow: 0 3px 0 #00000012;
+}
+
+.tbTitle {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.tbStartLine {
+  margin: 0;
+  text-align: center;
+  font-size: 19px;
+}
+
+.tbBackLink {
+  color: var(--tb-ink);
+  opacity: 0.7;
+  font-size: 17px;
+  text-decoration: none;
+}
+
+.tbLifeTitle,
+.tbEndTitle {
+  margin: 0;
+  font-size: 26px;
+}
+
+.tbLifeList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tbLifeRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 2px solid #00000018;
+  border-radius: 12px;
+  background: var(--tb-paper);
+  font: inherit;
+  font-size: 18px;
+  text-align: start;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tbScoreRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.tbScoreItem {
+  background: var(--tb-paper);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.tbEndButtons {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tbEnd--win .tbEndTitle {
+  color: var(--tb-good);
+}
+
+.tbEnd--lose .tbEndTitle {
+  color: var(--tb-accent);
+}
