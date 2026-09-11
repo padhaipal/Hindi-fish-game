@@ -157,6 +157,15 @@ export function householdRisk(s: GameState): number {
   return Math.round(worst * MAX_METER);
 }
 
+/**
+ * Has the player run out of health? The how-to-play screen promises that an
+ * empty health meter is the end, so the game checks it after every choice
+ * rather than only when a story path happens to reach an ending.
+ */
+export function isDead(s: GameState): boolean {
+  return s.health <= 0;
+}
+
 // ---- endings --------------------------------------------------------------
 export const ENDINGS: Record<EndingId, Ending> = {
   curedClean: {

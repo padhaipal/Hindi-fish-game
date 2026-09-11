@@ -28,6 +28,7 @@ import {
   healthColor,
   finalEnding,
   infectedCount,
+  isDead,
   newGame,
   resolveInfections,
 } from "@/lib/tb/engine";
@@ -45,8 +46,6 @@ import { LANG_PATH, OTHER_LANG, UI, line, type Lang } from "@/lib/tb/i18n";
 import { INTRO_LINE, LIFE_INTRO, LIFE_START, RULES_LINES } from "@/lib/tb/uiLines";
 import { playSound, unlockAudio } from "@/lib/audio";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
-
-const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 // A small deterministic shuffle. The choices must be in a different order every
 // game — otherwise a player learns "the right answer is the first one" instead
@@ -307,11 +306,16 @@ export default function TbGame({ lang = "hi" }: { lang?: Lang }) {
     const { nextId } = pending;
     setPending(null);
 
-    if (isEnding(nextId)) {
+    // An empty health meter ends the game wherever it happens, not only when a
+    // story path reaches an ending — that is what the how-to-play screen says,
+    // and it means no run can carry on at zero health.
+    const dead = isDead(state);
+
+    if (isEnding(nextId) || dead) {
       // Any germs still in the air get their last chance now.
       const settled = state.infectious ? resolveInfections(state) : state;
       let id: EndingId;
-      if (nextId === "e_died") id = "died";
+      if (dead || nextId === "e_died") id = "died";
       else if (nextId === "e_spreading") id = "spreading";
       else id = finalEnding(settled);
       setState(settled);
@@ -523,9 +527,6 @@ export default function TbGame({ lang = "hi" }: { lang?: Lang }) {
               </>
             )}
           </div>
-          <a className="tbBackLink" href={PADHAIPAL_URL}>
-            {ui.backToApp}
-          </a>
         </div>
       </main>
     );

@@ -183,12 +183,15 @@ export const SCENES_DIAGNOSIS: Scene[] = [
         effect: { health: -1 },
         result: {
           tone: "good",
-          hi: "घरवाले आपको अस्पताल ले गए। डॉक्टर ने तुरंत बलगम की जाँच लिखी।",
+          hi: "घरवाले आपको अस्पताल ले गए। उसी दिन बलगम की जाँच हुई।",
           factHi:
             "देर से इलाज शुरू होने पर पूरी तरह ठीक होना मुश्किल हो जाता है — पर इलाज न करने से तो जान ही चली जाती है।",
           icon: "clinic",
         },
-        next: "s_sputum",
+        // Straight to the diagnosis, not back to the sputum scene: somebody
+        // this weak is tested on arrival, and sending them back there was the
+        // one loop in the story (see SCENE_ORDER in story.ts).
+        next: "s_result",
       },
       {
         id: "home",
