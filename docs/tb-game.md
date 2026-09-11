@@ -46,8 +46,18 @@ The game is meant to be playable **without reading**. Every line is spoken:
 **No recordings exist yet** — today every line is read by the phone's TTS, which
 is understandable but flat, and on a phone with no Hindi voice installed it will
 fall back to an Indian-English voice reading Devanagari, which is poor. Recording
-a real Hindi voice is the single biggest improvement left. The ids follow the
-scene and option ids, so they can be recorded straight from a script:
+a real Hindi voice is the single biggest improvement left.
+
+**The full recording list is [docs/tb-audio-script.md](tb-audio-script.md)**
+(and `tb-audio-script.csv` for a spreadsheet): 244 files, about 34 minutes of
+finished audio. It is generated from the game itself —
+
+```bash
+npm run tb:audio      # rewrites both files from lib/tb
+```
+
+so after editing any scene, re-run it and the list stays in step. Ids follow the
+scene and option ids:
 
 | Recording | id |
 | --- | --- |
@@ -56,9 +66,16 @@ scene and option ids, so they can be recorded straight from a script:
 | What happened after a choice | `<sceneId>_<optionId>_result.mp3` |
 | The fact behind it | `<sceneId>_<optionId>_result_fact.mp3` |
 | An ending, and its fact | `end_<endingId>.mp3`, `end_<endingId>_fact.mp3` |
+| The opening line, household cards, meters | `intro.mp3`, `life_*.mp3`, `meter_*.mp3` — all in `lib/tb/uiLines.ts` |
 
 Dropping the files into `public/audio/tb/` is all that is needed — the game
-picks them up with no code change.
+picks them up with no code change, one at a time, and anything not yet recorded
+keeps using TTS.
+
+**Every spoken line is a fixed sentence with no numbers spliced into it**, which
+is why the meters say "आप कमज़ोर हो रहे हैं" rather than "सेहत 5 में से 10", and why
+the household cards have ids like `life_home_ekKamra` rather than `life_home`.
+Keep it that way when adding lines, or that line can never be recorded.
 
 ---
 

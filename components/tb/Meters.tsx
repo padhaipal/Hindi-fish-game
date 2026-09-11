@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------
 
 import { healthColor, infectionChance, MAX_METER } from "@/lib/tb/engine";
+import { FAMILY_LINES, HEALTH_LINES, MONEY_LINES } from "@/lib/tb/uiLines";
 import type { GameState, Member } from "@/lib/tb/types";
 
 function Bar({
@@ -66,27 +67,24 @@ export default function Meters({
   state: GameState;
   onSay: (id: string, text: string) => void;
 }) {
-  const healthText = `सेहत ${state.health} में से ${MAX_METER}। ${
+  // Each meter says a FIXED phrase, chosen by which band it is in — never a
+  // sentence with a number in it, so each line can be recorded once.
+  const health =
     state.health >= 7
-      ? "आपकी हालत ठीक है।"
+      ? HEALTH_LINES.good
       : state.health >= 4
-      ? "आप कमज़ोर हो रहे हैं।"
-      : "आपकी हालत ख़राब है। जान का ख़तरा है।"
-  }`;
-  const moneyText = `घर का पैसा ${state.money} में से ${MAX_METER}। ${
-    state.money <= 2 ? "पैसा लगभग खत्म है।" : ""
-  }`;
-  const ill = state.members.filter((m) => m.infected).length;
-  const familyText =
-    ill > 0
-      ? `घर में ${ill} लोगों को टीबी हो गई है।`
-      : "घर में अभी किसी को टीबी नहीं हुई है।";
+      ? HEALTH_LINES.mid
+      : HEALTH_LINES.low;
+  const money = state.money >= 3 ? MONEY_LINES.ok : MONEY_LINES.low;
+  const family = state.members.some((m) => m.infected)
+    ? FAMILY_LINES.ill
+    : FAMILY_LINES.clear;
 
   return (
     <div className="tbMeters">
       <button
         className="tbMeter"
-        onClick={() => onSay("meter_health", healthText)}
+        onClick={() => onSay(health.id, health.hi)}
         aria-label="सेहत"
       >
         <span className="tbMeterIcon" aria-hidden="true">
@@ -99,7 +97,7 @@ export default function Meters({
 
       <button
         className="tbMeter"
-        onClick={() => onSay("meter_money", moneyText)}
+        onClick={() => onSay(money.id, money.hi)}
         aria-label="पैसा"
       >
         <span className="tbMeterIcon" aria-hidden="true">
@@ -113,7 +111,7 @@ export default function Meters({
 
       <button
         className="tbMeter tbMeter--family"
-        onClick={() => onSay("meter_family", familyText)}
+        onClick={() => onSay(family.id, family.hi)}
         aria-label="घर के लोग"
       >
         {state.members.map((m) => (

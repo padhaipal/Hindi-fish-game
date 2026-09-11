@@ -33,6 +33,7 @@ import {
 import { FIRST_SCENE, getScene, isEnding, nextSceneId } from "@/lib/tb/story";
 import { HOME_HI, WORK_HI, riskInfo } from "@/lib/tb/profile";
 import { primeVoice, speak, speakSequence, stopSpeaking } from "@/lib/tb/speech";
+import { INTRO_LINE, LIFE_INTRO, LIFE_START } from "@/lib/tb/uiLines";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
@@ -169,10 +170,12 @@ export default function TbGame() {
         <div className="tbStartCard">
           <h1 className="tbTitle">टीबी का सफ़र</h1>
           <TbArt name="family" />
-          <p className="tbStartLine">
-            छह महीने का इलाज पूरा कीजिए। ज़िंदा रहिए, ठीक हो जाइए, और घर में किसी को
-            टीबी मत होने दीजिए।
-          </p>
+          <button
+            className="tbSay tbSay--block tbStartLine"
+            onClick={() => say("intro", INTRO_LINE)}
+          >
+            <span>{INTRO_LINE}</span>
+          </button>
           <button
             className="tbBigButton"
             onClick={() => {
@@ -192,10 +195,29 @@ export default function TbGame() {
 
   if (phase === "life") {
     const p = state.profile;
+    // Each line is a fixed sentence with its own audio id, so every one of them
+    // can be recorded once (see docs/tb-audio-script.md). The id names the thing
+    // that was dealt — `life_home_ekKamra`, not `life_home`.
+    const lifeRows = [
+      { id: `life_home_${p.home}`, hi: HOME_HI[p.home], icon: "window" as const },
+      { id: `life_work_${p.work}`, hi: WORK_HI[p.work], icon: "work" as const },
+      ...p.risks.map((r) => ({
+        id: `life_risk_${r}`,
+        hi: riskInfo(r).hi,
+        icon:
+          r === "sharab"
+            ? ("sharab" as const)
+            : r === "bidi"
+            ? ("bidi" as const)
+            : r === "kamzori"
+            ? ("food" as const)
+            : ("doctor" as const),
+      })),
+    ];
     const lifeLines = [
-      `यह आपका घर है। ${HOME_HI[p.home]}। आपका काम — ${WORK_HI[p.work]}।`,
-      ...p.risks.map((r) => riskInfo(r).hi),
-      "अब आपको खाँसी शुरू हुई है। आगे के फ़ैसले आपके हैं।",
+      { id: "life_intro", text: LIFE_INTRO },
+      ...lifeRows.map((r) => ({ id: r.id, text: r.hi })),
+      { id: "life_start", text: LIFE_START },
     ];
     return (
       <main className="tbApp">
@@ -203,31 +225,10 @@ export default function TbGame() {
           <h2 className="tbLifeTitle">आपका घर</h2>
           <TbArt name={p.home === "ekKamra" ? "smallHome" : "family"} />
           <ul className="tbLifeList">
-            {[
-              { id: "home", hi: HOME_HI[p.home] },
-              { id: "work", hi: WORK_HI[p.work] },
-              ...p.risks.map((r) => ({ id: r, hi: riskInfo(r).hi })),
-            ].map((row) => (
+            {lifeRows.map((row) => (
               <li key={row.id}>
-                <button
-                  className="tbLifeRow"
-                  onClick={() => say(`life_${row.id}`, row.hi)}
-                >
-                  <TbIcon
-                    name={
-                      row.id === "home"
-                        ? "window"
-                        : row.id === "work"
-                        ? "work"
-                        : row.id === "sharab"
-                        ? "sharab"
-                        : row.id === "bidi"
-                        ? "bidi"
-                        : row.id === "kamzori"
-                        ? "food"
-                        : "doctor"
-                    }
-                  />
+                <button className="tbLifeRow" onClick={() => say(row.id, row.hi)}>
+                  <TbIcon name={row.icon} />
                   <span>{row.hi}</span>
                 </button>
               </li>
@@ -236,7 +237,7 @@ export default function TbGame() {
           <button
             className="tbBigButton"
             onClick={() => {
-              speakSequence(lifeLines.map((t, i) => ({ id: `life_read_${i}`, text: t })));
+              speakSequence(lifeLines);
               beginStory();
             }}
           >
