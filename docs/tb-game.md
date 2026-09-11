@@ -207,6 +207,36 @@ Choice icons are [Lucide](https://lucide.dev) (`lucide-react`), with a small
 badge layered over a few of them for the things Lucide has no icon for — a
 stopped pill, a hospital that charges.
 
+## Why the game always ends
+
+`SCENE_ORDER` in `lib/tb/story.ts` lists every scene in the order the story runs,
+and **every choice must lead to a scene further down that list**. That one rule
+makes the story a one-way road: no sequence of choices can return to a scene
+already played, so no run can loop and every run reaches an ending. The longest
+possible game is 22 scenes.
+
+It is a direction, not a schedule — a choice may skip far ahead (going private
+jumps straight to the diagnosis), it just may never go back.
+
+The subtle part is that **`s_cough3` ("too weak to work") sits after the sputum
+scenes, not before them**. Delay in this game makes you sicker, and being sicker
+has to move you forward into a worse situation rather than back into the one you
+just refused. Until this order existed, refusing the sputum test sent you to
+`s_cough3`, whose only way out was that same sputum scene — a loop a player
+could ride for ever, and one that nothing stopped, because health could sit at
+zero indefinitely.
+
+`checkStory()` enforces it: `npm run tb:audio` exits non-zero and names the
+offending choice, and the same check warns in the browser console in
+development. Note that it is not wired into `next build` — run `npm run tb:audio`
+after editing scenes.
+
+Two things keep a run bounded even so:
+
+* An empty health meter ends the game where it happens (`isDead` in
+  `engine.ts`), which is what the how-to-play screen already promises.
+* Endings are terminal — nothing leads out of them.
+
 ## The choices are shuffled
 
 The order of the choices is randomised per scene and per game, so nobody learns

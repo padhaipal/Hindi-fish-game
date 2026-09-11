@@ -50,11 +50,24 @@ try {
 }
 
 const load = createRequire(join(out, "index.cjs"));
-const { SCENES } = load("./story.js");
+const { SCENES, checkStory } = load("./story.js");
 const { ENDINGS } = load("./engine.js");
 const { UI_LINES } = load("./uiLines.js");
 const { HOME_HI, RISKS, WORK_HI } = load("./profile.js");
 const { EN_LINES } = load("./en.js");
+
+// ---- is the story sound? --------------------------------------------------
+// Every choice must lead further along SCENE_ORDER, so the game cannot loop and
+// always reaches an ending. A breach is a bug that would let a player ride a
+// cycle for ever, so stop here rather than write a recording script for it.
+const problems = checkStory();
+if (problems.length) {
+  console.error(`\nThe story has ${problems.length} problem(s):`);
+  for (const p of problems) console.error(`   ${p}`);
+  console.error("");
+  process.exit(1);
+}
+console.log("Story checked: every choice leads forward, so the game always ends.");
 
 // ---- collect every line, in the order a player meets them -----------------
 const rows = [];

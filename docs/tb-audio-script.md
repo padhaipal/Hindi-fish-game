@@ -1,6 +1,6 @@
 # टीबी का सफ़र — audio recording script
 
-**250 files** · roughly 3809 words · about **35 minutes** of
+**250 files** · roughly 3808 words · about **35 minutes** of
 finished audio (allow 3–4× that in studio time).
 
 Generated from the game itself by `npm run tb:audio` — do not edit by hand,
@@ -133,7 +133,7 @@ edit the scenes in `lib/tb/` and run it again.
 | --- | --- | --- |
 | `s_cough3.mp3` | हालात | अब चलने में भी साँस फूलती है। काम पर जाना बंद हो गया। यह आख़िरी मौका है। |
 | `s_cough3_clinic.mp3` | विकल्प | सरकारी अस्पताल जाओ |
-| `s_cough3_clinic_result.mp3` | नतीजा | घरवाले आपको अस्पताल ले गए। डॉक्टर ने तुरंत बलगम की जाँच लिखी। |
+| `s_cough3_clinic_result.mp3` | नतीजा | घरवाले आपको अस्पताल ले गए। उसी दिन बलगम की जाँच हुई। |
 | `s_cough3_clinic_result_fact.mp3` | जानकारी | देर से इलाज शुरू होने पर पूरी तरह ठीक होना मुश्किल हो जाता है — पर इलाज न करने से तो जान ही चली जाती है। |
 | `s_cough3_home.mp3` | विकल्प | घर पर ही पड़े रहो |
 | `s_cough3_home_result.mp3` | नतीजा | हालत रोज़ बिगड़ती गई। घर के लोग भी खाँसने लगे। |

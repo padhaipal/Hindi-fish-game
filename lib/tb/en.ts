@@ -113,7 +113,7 @@ export const EN_LINES: Record<string, string> = {
   s_cough3_sub: "This is your last chance.",
   s_cough3_clinic: "Go to the government hospital",
   s_cough3_clinic_result:
-    "Your family took you to the hospital. The doctor ordered a sputum test straight away.",
+    "Your family took you to the hospital. Your sputum was tested the same day.",
   s_cough3_clinic_result_fact:
     "Starting treatment late makes a full recovery harder — but not treating it at all costs you your life.",
   s_cough3_home: "Stay lying at home",

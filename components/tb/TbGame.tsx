@@ -28,6 +28,7 @@ import {
   healthColor,
   finalEnding,
   infectedCount,
+  isDead,
   newGame,
   resolveInfections,
 } from "@/lib/tb/engine";
@@ -305,11 +306,16 @@ export default function TbGame({ lang = "hi" }: { lang?: Lang }) {
     const { nextId } = pending;
     setPending(null);
 
-    if (isEnding(nextId)) {
+    // An empty health meter ends the game wherever it happens, not only when a
+    // story path reaches an ending — that is what the how-to-play screen says,
+    // and it means no run can carry on at zero health.
+    const dead = isDead(state);
+
+    if (isEnding(nextId) || dead) {
       // Any germs still in the air get their last chance now.
       const settled = state.infectious ? resolveInfections(state) : state;
       let id: EndingId;
-      if (nextId === "e_died") id = "died";
+      if (dead || nextId === "e_died") id = "died";
       else if (nextId === "e_spreading") id = "spreading";
       else id = finalEnding(settled);
       setState(settled);
