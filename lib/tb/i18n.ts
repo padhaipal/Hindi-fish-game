@@ -55,7 +55,6 @@ export interface UiStrings {
   tryAgain: string;
   newHome: string;
   sameAgain: string;
-  backToApp: string;
   health: string;
   money: string;
   household: string;
@@ -81,7 +80,6 @@ export const UI: Record<Lang, UiStrings> = {
     tryAgain: "फिर से कोशिश करें",
     newHome: "नया घर, नया सफ़र",
     sameAgain: "यही सफ़र फिर से",
-    backToApp: "पाठ पर जाएं",
     health: "सेहत",
     money: "पैसा",
     household: "घर के लोग",
@@ -104,7 +102,6 @@ export const UI: Record<Lang, UiStrings> = {
     tryAgain: "Try again",
     newHome: "New household, new journey",
     sameAgain: "Same journey again",
-    backToApp: "Back to the lesson",
     health: "Health",
     money: "Money",
     household: "Your household",

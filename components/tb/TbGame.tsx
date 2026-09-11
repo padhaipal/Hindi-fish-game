@@ -46,8 +46,6 @@ import { INTRO_LINE, LIFE_INTRO, LIFE_START, RULES_LINES } from "@/lib/tb/uiLine
 import { playSound, unlockAudio } from "@/lib/audio";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
 
-const PADHAIPAL_URL = "https://wa.me/918528097842";
-
 // A small deterministic shuffle. The choices must be in a different order every
 // game — otherwise a player learns "the right answer is the first one" instead
 // of learning about TB — but the order must NOT change while they are looking
@@ -523,9 +521,6 @@ export default function TbGame({ lang = "hi" }: { lang?: Lang }) {
               </>
             )}
           </div>
-          <a className="tbBackLink" href={PADHAIPAL_URL}>
-            {ui.backToApp}
-          </a>
         </div>
       </main>
     );
