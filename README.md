@@ -1,7 +1,9 @@
 # 🎮 Hindi Learning Games
 
-Six simple, bright, mobile-first Hindi games for young / low-literacy children,
-built for **PadhaiPal**. No login, no backend.
+Simple, mobile-first Hindi games. No login, no backend.
+
+Six bright letter games for young / low-literacy children, built for
+**PadhaiPal**:
 
 - **🐟 Fish game** (`/fish`) — tap the fish carrying the target letter.
 - **🧩 Blocks game** (`/blocks`) — tap the two blocks that spell the pictured word.
@@ -15,6 +17,15 @@ built for **PadhaiPal**. No login, no backend.
 
 All six share the 8 letters **ब स प र त क च ल** and their sounds
 (`public/audio/letters`).
+
+And one health game for adults, built for **tb.care**:
+
+- **🫁 टीबी का सफ़र** (`/tb`) — a decision-path game about getting through TB
+  treatment alive, cured, and without infecting anybody at home. Line drawings,
+  a spoken line on every screen, and real choices a poor North Indian household
+  faces during six months of treatment. See **[docs/tb-game.md](docs/tb-game.md)**
+  for its content sources, the tb.care modules each scene comes from, and what
+  still needs doing (chiefly: recording the Hindi voice).
 
 ---
 
