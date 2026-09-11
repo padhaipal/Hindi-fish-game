@@ -1,6 +1,6 @@
 # टीबी का सफ़र — audio recording script
 
-**244 files** · roughly 3731 words · about **34 minutes** of
+**250 files** · roughly 3809 words · about **35 minutes** of
 finished audio (allow 3–4× that in studio time).
 
 Generated from the game itself by `npm run tb:audio` — do not edit by hand,
@@ -70,6 +70,17 @@ edit the scenes in `lib/tb/` and run it again.
 | --- | --- | --- |
 | `meter_family_clear.mp3` | स्क्रीन | घर में अभी किसी को टीबी नहीं हुई है। |
 | `meter_family_ill.mp3` | स्क्रीन | घर में किसी को टीबी हो गई है। |
+
+### कैसे खेलें
+
+| File | Kind | Hindi to say |
+| --- | --- | --- |
+| `rules_health.mp3` | स्क्रीन | यह आपकी सेहत है। दवा और अच्छा खाना इसे बढ़ाते हैं। ख़ाली हुई तो आप बच नहीं पाएँगे। |
+| `rules_money.mp3` | स्क्रीन | यह घर का पैसा है। प्राइवेट इलाज और कर्ज़ इसे ख़त्म कर देते हैं। |
+| `rules_family.mp3` | स्क्रीन | ये घर के लोग हैं। आपकी साँस से इन्हें भी टीबी हो सकती है। |
+| `rules_months.mp3` | स्क्रीन | छह महीने की दवा पूरी करनी है। |
+| `rules_win.mp3` | स्क्रीन | जीत — आप ज़िंदा, टीबी ख़त्म, और घर में किसी को टीबी नहीं। |
+| `rules_lose.mp3` | स्क्रीन | हार — सेहत ख़त्म हो जाए, या दवा बीच में छूट जाए। |
 
 ### s_cough
 

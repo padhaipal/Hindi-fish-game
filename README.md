@@ -27,7 +27,8 @@ And one health game for adults, built for **tb.care**:
   for its content sources, the tb.care modules each scene comes from, and what
   still needs doing. The voice recordings it needs are listed in
   **[docs/tb-audio-script.md](docs/tb-audio-script.md)** (`npm run tb:audio`
-  regenerates that list from the game).
+  regenerates that list from the game), and the scene photographs it can use are
+  prompted in **[docs/tb-art-prompts.md](docs/tb-art-prompts.md)**.
 
 ---
 

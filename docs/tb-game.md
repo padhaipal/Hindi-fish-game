@@ -22,7 +22,8 @@ can be played by somebody who cannot read Hindi.
 | `lib/tb/scenes/treatment.ts` | Part 2 — the six months, and the drug-resistant road |
 | `lib/tb/story.ts` | Puts the two halves together, looks scenes up by id |
 | `lib/tb/speech.ts` | The voice: recorded Hindi if present, else the phone's Hindi TTS |
-| `components/tb/Figures.tsx` | Every line drawing (`TbArt` for scenes, `TbIcon` for choices) |
+| `components/tb/Figures.tsx` | Scene pictures (`TbArt` — a photo if one exists, else the line drawing) and choice icons (`TbIcon`, from Lucide) |
+| `lib/tb/uiLines.ts` | The spoken lines outside the story: opening, household, how-to-play, meters |
 | `components/tb/Meters.tsx` | Health thermometer, money, household figures, the six-month track |
 | `components/tb/TbGame.tsx` | The game loop and screens |
 | `app/tb/page.tsx` | The route |
@@ -160,6 +161,44 @@ Sources to check the figures against when the content is next revised: the **WHO
 Global TB Report**, the **India TB Report (NTEP)**, and the RATIONS trial.
 
 ---
+
+## Pictures
+
+Scenes fall back to a line drawing, but will use a photograph the moment one is
+added at `public/images/tb/<art name>.jpg` (or `.png`) — see
+**[docs/tb-art-prompts.md](tb-art-prompts.md)** for a prompt per picture, the
+house style to paste into each one, and the two pictures I would leave as
+drawings. No photographs are committed yet.
+
+Choice icons are [Lucide](https://lucide.dev) (`lucide-react`), with a small
+badge layered over a few of them for the things Lucide has no icon for — a
+stopped pill, a hospital that charges.
+
+## Sound
+
+Beyond the spoken lines, the game plays a short chime the moment a result
+appears: `public/audio/tb/sfx-correct.wav` for a good choice, `sfx-wrong.wav`
+for a bad one, and nothing for a "mixed" one, which was neither. At the end it
+reuses the letter games' `clap.mp3` and `wa-wa-wa.mp3` through `lib/audio.ts`.
+
+The two chimes are synthesised, not recorded — a rising two-note bell and a
+soft low fall. The wrong-answer one is deliberately gentle: a wrong choice here
+is a normal part of learning, and nothing in this game should frighten someone
+who has TB. Replace either file to change the sound; keep the names.
+
+Worth knowing while you are in here: **`public/audio/wrong-baap.mp3` in this
+repo is a zero-byte file**, and `public/audio/bing.mp3` (used by the memory
+game) does not exist at all. Both fall back to `lib/audio.ts`'s synthesised
+tone, and the empty file makes the browser log a 416 error each time. That
+affects the letter games, not this one — the TB game no longer references
+either — but it is worth fixing.
+
+## Fitting one phone screen
+
+The playing screen never scrolls: the picture is the only flexible part, so it
+shrinks and the choices stay put. Checked at 360×640, 390×844 and 412×915. If
+you add a scene with five options or a very long line, re-check it at 360×640 —
+that is the size that breaks first.
 
 ## What is still missing
 

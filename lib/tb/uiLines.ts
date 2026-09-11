@@ -42,6 +42,35 @@ export const FAMILY_LINES = {
   ill: { id: "meter_family_ill", hi: "घर में किसी को टीबी हो गई है।" },
 } as const;
 
+// The "how to play" screen, shown once the household has been dealt so the
+// player can see their own real starting numbers while it is explained.
+export const RULES_LINES = {
+  health: {
+    id: "rules_health",
+    hi: "यह आपकी सेहत है। दवा और अच्छा खाना इसे बढ़ाते हैं। ख़ाली हुई तो आप बच नहीं पाएँगे।",
+  },
+  money: {
+    id: "rules_money",
+    hi: "यह घर का पैसा है। प्राइवेट इलाज और कर्ज़ इसे ख़त्म कर देते हैं।",
+  },
+  family: {
+    id: "rules_family",
+    hi: "ये घर के लोग हैं। आपकी साँस से इन्हें भी टीबी हो सकती है।",
+  },
+  months: {
+    id: "rules_months",
+    hi: "छह महीने की दवा पूरी करनी है।",
+  },
+  win: {
+    id: "rules_win",
+    hi: "जीत — आप ज़िंदा, टीबी ख़त्म, और घर में किसी को टीबी नहीं।",
+  },
+  lose: {
+    id: "rules_lose",
+    hi: "हार — सेहत ख़त्म हो जाए, या दवा बीच में छूट जाए।",
+  },
+} as const;
+
 /** Everything above, in the order a voice artist would record it. */
 export const UI_LINES: SpokenLine[] = [
   { id: "intro", hi: INTRO_LINE, where: "पहली स्क्रीन" },
@@ -54,4 +83,10 @@ export const UI_LINES: SpokenLine[] = [
   { ...MONEY_LINES.low, where: "पैसे का मीटर दबाने पर" },
   { ...FAMILY_LINES.clear, where: "घर के लोग दबाने पर" },
   { ...FAMILY_LINES.ill, where: "घर के लोग दबाने पर" },
+  { ...RULES_LINES.health, where: "कैसे खेलें" },
+  { ...RULES_LINES.money, where: "कैसे खेलें" },
+  { ...RULES_LINES.family, where: "कैसे खेलें" },
+  { ...RULES_LINES.months, where: "कैसे खेलें" },
+  { ...RULES_LINES.win, where: "कैसे खेलें" },
+  { ...RULES_LINES.lose, where: "कैसे खेलें" },
 ];

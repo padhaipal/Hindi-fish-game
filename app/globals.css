@@ -1544,26 +1544,39 @@ body > div {
   --tb-gold: #e8a33d;
 
   position: relative;
-  min-height: 100dvh;
+  height: 100dvh;
   width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 12px 20px;
+  gap: 8px;
+  padding: 8px 10px 10px;
   background: var(--tb-paper);
   color: var(--tb-ink);
-  overflow-y: auto;
+  /* The playing screen must fit the phone: the picture shrinks, the choices
+     never move below the fold. Only the card screens (start, household, how to
+     play, ending) may scroll. */
+  overflow: hidden;
   font-size: 18px;
-  line-height: 1.45;
+  line-height: 1.4;
+}
+
+.tbApp--card {
+  overflow-y: auto;
+  justify-content: center;
 }
 
 /* ---- line drawings ------------------------------------------------------ */
 .tbArt {
   width: 100%;
   max-width: 320px;
-  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
   display: block;
   margin: 0 auto;
+  object-fit: contain;
   stroke: var(--tb-ink);
   stroke-width: 3;
   stroke-linecap: round;
@@ -1715,14 +1728,27 @@ body > div {
 
 /* ---- the scene ---------------------------------------------------------- */
 .tbStage {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
   background: var(--tb-card);
   border-radius: 16px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   box-shadow: 0 2px 0 #00000012;
+  overflow: hidden;
+}
+
+/* A photograph, once one has been added to public/images/tb/. */
+.tbArt--photo {
+  border-radius: 12px;
+  background: #00000008;
+}
+
+.tbStage .tbSay {
+  flex: 0 0 auto;
+  overflow-y: auto;
 }
 
 .tbSay {
@@ -1754,9 +1780,10 @@ body > div {
 
 /* ---- the choices -------------------------------------------------------- */
 .tbOptions {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tbOptionRow {
@@ -1770,8 +1797,8 @@ body > div {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 66px;
-  padding: 10px 14px;
+  min-height: 62px;
+  padding: 8px 12px;
   border: 2px solid var(--tb-ink);
   border-radius: 14px;
   background: var(--tb-card);
@@ -2003,4 +2030,211 @@ body > div {
 
 .tbEnd--lose .tbEndTitle {
   color: var(--tb-accent);
+}
+
+/* ---- option icons (Lucide) ---------------------------------------------- */
+.tbIconBox {
+  position: relative;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: #00000008;
+  color: var(--tb-ink);
+}
+
+.tbIconBox--good {
+  background: #1f7a4d14;
+  color: var(--tb-good);
+}
+
+.tbIconBox--bad {
+  background: #c0392b14;
+  color: var(--tb-bad);
+}
+
+.tbIconMain {
+  width: 26px;
+  height: 26px;
+}
+
+.tbIconBadge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 17px;
+  height: 17px;
+  padding: 1.5px;
+  border-radius: 50%;
+  background: var(--tb-card);
+  color: var(--tb-accent);
+  box-shadow: 0 0 0 1.5px var(--tb-card);
+}
+
+/* ---- how to play -------------------------------------------------------- */
+.tbRules {
+  gap: 8px;
+  padding: 14px 12px;
+}
+
+.tbRules .tbLifeList {
+  gap: 6px;
+}
+
+.tbRuleRow {
+  align-items: center;
+  font-size: 15px;
+  line-height: 1.3;
+  padding: 6px 8px;
+  gap: 10px;
+}
+
+/* the month boxes are a full-width row elsewhere; here they are a thumbnail */
+.tbRuleMeter .tbMonths {
+  gap: 2px;
+}
+
+.tbRuleMeter .tbMonth {
+  width: 11px;
+  height: 12px;
+  border-width: 1.5px;
+}
+
+.tbRuleMeter {
+  flex: 0 0 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.tbRuleMeter .tbBar {
+  width: 70px;
+  height: 12px;
+}
+
+.tbRuleMeter b {
+  font-size: 15px;
+}
+
+.tbRuleMeter .tbMember {
+  width: 20px;
+  height: 26px;
+}
+
+.tbRuleMeter:has(.tbMember) {
+  flex-direction: row;
+  gap: 1px;
+}
+
+.tbRuleWin,
+.tbRuleLose {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.3;
+  border-radius: 12px;
+  padding: 6px 8px;
+}
+
+.tbRuleWin {
+  background: #1f7a4d12;
+}
+
+.tbRuleLose {
+  background: #c0392b12;
+}
+
+/* ---- short phones: give the picture and the choices a little less ------- */
+@media (max-height: 720px) {
+  .tbApp {
+    font-size: 17px;
+  }
+  .tbSay--block {
+    font-size: 18px;
+  }
+  .tbOption {
+    min-height: 54px;
+    font-size: 16px;
+    gap: 10px;
+  }
+  .tbIconBox {
+    width: 36px;
+    height: 36px;
+  }
+  .tbIconMain {
+    width: 22px;
+    height: 22px;
+  }
+  .tbSpeak {
+    width: 48px;
+  }
+  .tbMeter {
+    padding: 4px 6px;
+  }
+  .tbMember {
+    width: 22px;
+    height: 28px;
+  }
+  .tbResult {
+    padding: 12px;
+  }
+}
+
+@media (max-height: 620px) {
+  .tbOption {
+    min-height: 48px;
+    font-size: 15px;
+  }
+  .tbSay--block {
+    font-size: 16px;
+  }
+  .tbMonths {
+    display: none;
+  }
+}
+
+/* The result card must never push its "आगे" button off the screen either. */
+.tbResultScrim {
+  align-items: center;
+}
+
+.tbResult {
+  max-height: 92dvh;
+  overflow-y: auto;
+}
+
+/* ---- the opening screen ------------------------------------------------- */
+.tbStartCard .tbStartLine {
+  font-size: 18px;
+  font-weight: 500;
+  text-align: center;
+  justify-content: center;
+}
+
+.tbListen {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 2px solid #00000022;
+  border-radius: 999px;
+  background: var(--tb-card);
+  padding: 8px 18px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tbListen svg {
+  width: 22px;
+  height: 22px;
 }
