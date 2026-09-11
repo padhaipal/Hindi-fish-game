@@ -2275,3 +2275,18 @@ body > div {
     animation: none;
   }
 }
+
+/* the English TB game sits under the Hindi one, quieter */
+.gameButton.gbTbEn {
+  background: linear-gradient(#8fc4be, #5f9f98);
+  box-shadow: 0 6px 0 #47837d;
+  font-size: 19px;
+}
+
+/* the opening screen's two small links, side by side */
+.tbStartFoot {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+  justify-content: center;
+}

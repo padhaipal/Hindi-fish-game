@@ -51,7 +51,8 @@ people as the reference image".
 
 ## The pictures the game uses now
 
-Five of these are done and in the repo (marked ✅). Photographs should be about
+All of these are done and in the repo (marked ✅) **except `smallHome`**, which
+still falls back to its line drawing. Photographs should be about
 1024px on the long edge, progressive JPEG at quality ~78 — 50–130 KB each. The
 game is for cheap phones on slow connections, so please keep new ones in that
 range; I can resize anything that comes out larger.
@@ -63,18 +64,18 @@ range; I can resize anything that comes out larger.
 | ✅ `weak.jpg` | too weak to work — the last chance scene |
 | ✅ `clinic.jpg` | the government hospital (2 scenes) |
 | ✅ `labTest.jpg` | the sputum test and its report (4 scenes) |
-| `badNews.jpg` | the report is positive |
-| `pillsDaily.jpg` | taking the daily medicine (2 scenes) |
-| `smallHome.jpg` | the one-room house, and the "TB spread" ending |
-| `family.jpg` | telling the family, and the "someone at home caught it" ending |
-| `familyTest.jpg` | taking the household for screening |
-| `food.jpg` | eating to get strong |
-| `money.jpg` | no work, no money |
-| `travel.jpg` | leaving for work in another city |
-| `neighbours.jpg` | the neighbours talking (3 scenes) |
-| `calendar.jpg` | six months nearly done |
-| `strong.jpg` | recovered — and the winning ending |
-| `gone.jpg` | the death ending |
+| ✅ `badNews.jpg` | the report is positive |
+| ✅ `pillsDaily.jpg` | taking the daily medicine (2 scenes) |
+| ⬜ `smallHome.jpg` | the one-room house, and the "TB spread" ending |
+| ✅ `family.jpg` | telling the family, and the "someone at home caught it" ending |
+| ✅ `familyTest.jpg` | taking the household for screening |
+| ✅ `food.jpg` | eating to get strong |
+| ✅ `money.jpg` | no work, no money |
+| ✅ `travel.jpg` | leaving for work in another city |
+| ✅ `neighbours.jpg` | the neighbours talking (3 scenes) |
+| ✅ `calendar.jpg` | six months nearly done |
+| ✅ `strong.jpg` | recovered — and the winning ending |
+| ✅ `gone.jpg` | the death ending |
 
 ### Prompts
 

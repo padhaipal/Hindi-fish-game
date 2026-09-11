@@ -35,11 +35,13 @@ import { FIRST_SCENE, getScene, isEnding, nextSceneId } from "@/lib/tb/story";
 import { HOME_HI, WORK_HI, riskInfo } from "@/lib/tb/profile";
 import {
   primeVoice,
+  setSpeechLang,
   speak,
   speakSequence,
   stopSpeaking,
   subscribeSpeaking,
 } from "@/lib/tb/speech";
+import { LANG_PATH, OTHER_LANG, UI, line, type Lang } from "@/lib/tb/i18n";
 import { INTRO_LINE, LIFE_INTRO, LIFE_START, RULES_LINES } from "@/lib/tb/uiLines";
 import { playSound, unlockAudio } from "@/lib/audio";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
@@ -96,7 +98,10 @@ interface Pending {
   audioId: string;
 }
 
-export default function TbGame() {
+export default function TbGame({ lang = "hi" }: { lang?: Lang }) {
+  const ui = UI[lang];
+  /** The words for one line of the game, in the language being played. */
+  const say2 = (id: string, hindi: string) => line(lang, id, hindi);
   const [state, setState] = useState<GameState>(() => newGame());
   const [phase, setPhase] = useState<Phase>("intro");
   const [pending, setPending] = useState<Pending | null>(null);
@@ -104,6 +109,9 @@ export default function TbGame() {
   /** Changes each new game, so the choices come up in a fresh order. */
   const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random() * 1e9));
   const speakingId = useSpeaking();
+
+  // Recordings and the phone's voice both depend on the language.
+  useEffect(() => setSpeechLang(lang), [lang]);
   // Facts the player has already met, newest last — shown in the recap.
   const factsRef = useRef<string[]>([]);
 
@@ -142,16 +150,27 @@ export default function TbGame() {
   }, [state.profile]);
 
   // ---- voice -------------------------------------------------------------
-  const say = useCallback((id: string, text: string) => {
-    speak(id, text);
-  }, []);
+  const say = useCallback(
+    (id: string, hindi: string) => {
+      speak(id, line(lang, id, hindi));
+    },
+    [lang]
+  );
 
   // Read the whole scene out: the situation first, then each choice in turn.
   useEffect(() => {
     if (phase !== "scene" || !scene) return;
     const lines = [
-      { id: scene.id, text: scene.hi + (scene.subHi ? " " + scene.subHi : "") },
-      ...options.map((o) => ({ id: `${scene.id}_${o.id}`, text: o.hi })),
+      {
+        id: scene.id,
+        text:
+          say2(scene.id, scene.hi) +
+          (scene.subHi ? " " + say2(`${scene.id}_sub`, scene.subHi) : ""),
+      },
+      ...options.map((o) => ({
+        id: `${scene.id}_${o.id}`,
+        text: say2(`${scene.id}_${o.id}`, o.hi),
+      })),
     ];
     speakSequence(lines);
     return () => stopSpeaking();
@@ -171,8 +190,11 @@ export default function TbGame() {
     }
     const t = window.setTimeout(() => {
       speakSequence([
-        { id: pending.audioId, text: pending.result.hi },
-        { id: `${pending.audioId}_fact`, text: pending.result.factHi },
+        { id: pending.audioId, text: say2(pending.audioId, pending.result.hi) },
+        {
+          id: `${pending.audioId}_fact`,
+          text: say2(`${pending.audioId}_fact`, pending.result.factHi),
+        },
       ]);
     }, 700);
     return () => {
@@ -187,8 +209,8 @@ export default function TbGame() {
     playSound(e.win ? "/audio/clap.mp3" : "/audio/wa-wa-wa.mp3", e.win ? "win" : "lose");
     const t = window.setTimeout(() => {
       speakSequence([
-        { id: `end_${endingId}`, text: e.hi },
-        { id: `end_${endingId}_fact`, text: e.factHi },
+        { id: `end_${endingId}`, text: say2(`end_${endingId}`, e.hi) },
+        { id: `end_${endingId}_fact`, text: say2(`end_${endingId}_fact`, e.factHi) },
       ]);
     }, 900);
     return () => {
@@ -200,9 +222,9 @@ export default function TbGame() {
   useEffect(() => {
     if (phase !== "life") return;
     speakSequence([
-      { id: "life_intro", text: LIFE_INTRO },
-      ...lifeRows.map((r) => ({ id: r.id, text: r.hi })),
-      { id: "life_start", text: LIFE_START },
+      { id: "life_intro", text: say2("life_intro", LIFE_INTRO) },
+      ...lifeRows.map((r) => ({ id: r.id, text: say2(r.id, r.hi) })),
+      { id: "life_start", text: say2("life_start", LIFE_START) },
     ]);
     return () => stopSpeaking();
   }, [phase, lifeRows]);
@@ -210,7 +232,7 @@ export default function TbGame() {
   useEffect(() => {
     if (phase !== "rules") return;
     speakSequence(
-      Object.values(RULES_LINES).map((l) => ({ id: l.id, text: l.hi }))
+      Object.values(RULES_LINES).map((l) => ({ id: l.id, text: say2(l.id, l.hi) }))
     );
     return () => stopSpeaking();
   }, [phase]);
@@ -223,7 +245,7 @@ export default function TbGame() {
     const wake = () => {
       primeVoice();
       unlockAudio();
-      speak("intro", INTRO_LINE);
+      speak("intro", say2("intro", INTRO_LINE));
     };
     window.addEventListener("pointerdown", wake, { once: true });
     return () => window.removeEventListener("pointerdown", wake);
@@ -310,13 +332,13 @@ export default function TbGame() {
     return (
       <main className="tbApp tbApp--card tbApp--start">
         <div className="tbStartCard">
-          <h1 className="tbTitle">टीबी का सफ़र</h1>
+          <h1 className="tbTitle">{ui.title}</h1>
           <TbArt name="family" />
           <button
             className={`tbSay tbSay--block tbStartLine${reading(speakingId, "intro")}`}
             onClick={() => say("intro", INTRO_LINE)}
           >
-            <span>{INTRO_LINE}</span>
+            <span>{say2("intro", INTRO_LINE)}</span>
           </button>
           <button className="tbListen" onClick={() => say("intro", INTRO_LINE)}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -324,7 +346,7 @@ export default function TbGame() {
               <path d="M16 9 q3 3 0 6" />
               <path d="M19 6 q5 6 0 12" />
             </svg>
-            सुनिए
+            {ui.listen}
           </button>
           <button
             className="tbBigButton"
@@ -334,11 +356,16 @@ export default function TbGame() {
               dealNewLife();
             }}
           >
-            खेल शुरू करें
+            {ui.start}
           </button>
-          <Link href="/" className="tbBackLink">
-            ← और खेल
-          </Link>
+          <div className="tbStartFoot">
+            <Link href={LANG_PATH[OTHER_LANG[lang]]} className="tbBackLink">
+              {ui.switchTo}
+            </Link>
+            <Link href="/" className="tbBackLink">
+              {ui.moreGames}
+            </Link>
+          </div>
         </div>
       </main>
     );
@@ -348,7 +375,7 @@ export default function TbGame() {
     return (
       <main className="tbApp tbApp--card">
         <div className="tbLife">
-          <h2 className="tbLifeTitle">आपका घर</h2>
+          <h2 className="tbLifeTitle">{ui.yourHome}</h2>
           <TbArt name={state.profile.home === "ekKamra" ? "smallHome" : "family"} />
           <ul className="tbLifeList">
             {lifeRows.map((row) => (
@@ -358,13 +385,13 @@ export default function TbGame() {
                   onClick={() => say(row.id, row.hi)}
                 >
                   <TbIcon name={row.icon} />
-                  <span>{row.hi}</span>
+                  <span>{say2(row.id, row.hi)}</span>
                 </button>
               </li>
             ))}
           </ul>
           <button className="tbBigButton" onClick={showRules}>
-            आगे
+            {ui.next}
           </button>
         </div>
       </main>
@@ -414,7 +441,7 @@ export default function TbGame() {
     return (
       <main className="tbApp tbApp--card">
         <div className="tbLife tbRules">
-          <h2 className="tbLifeTitle">कैसे खेलें</h2>
+          <h2 className="tbLifeTitle">{ui.howToPlay}</h2>
           <ul className="tbLifeList">
             {rules.map((r) => (
               <li key={r.id}>
@@ -423,21 +450,21 @@ export default function TbGame() {
                   onClick={() => say(r.id, r.hi)}
                 >
                   {r.art}
-                  <span>{r.hi}</span>
+                  <span>{say2(r.id, r.hi)}</span>
                 </button>
               </li>
             ))}
           </ul>
           <p className={`tbRuleWin${reading(speakingId, RULES_LINES.win.id)}`}>
             <TbIcon name="yes" />
-            <span>{RULES_LINES.win.hi}</span>
+            <span>{say2(RULES_LINES.win.id, RULES_LINES.win.hi)}</span>
           </p>
           <p className={`tbRuleLose${reading(speakingId, RULES_LINES.lose.id)}`}>
             <TbIcon name="no" />
-            <span>{RULES_LINES.lose.hi}</span>
+            <span>{say2(RULES_LINES.lose.id, RULES_LINES.lose.hi)}</span>
           </p>
           <button className="tbBigButton" onClick={beginStory}>
-            शुरू करें
+            {ui.begin}
           </button>
         </div>
       </main>
@@ -450,25 +477,25 @@ export default function TbGame() {
     return (
       <main className={`tbApp tbApp--card tbApp--end tbEnd--${e.win ? "win" : "lose"}`}>
         <div className="tbEndCard">
-          <h2 className="tbEndTitle">{e.win ? "आप जीत गए!" : "इस बार नहीं"}</h2>
+          <h2 className="tbEndTitle">{e.win ? ui.youWon : ui.notThisTime}</h2>
           <TbArt name={e.art} />
           <button
             className={`tbSay tbSay--block${reading(speakingId, `end_${endingId}`)}`}
             onClick={() => say(`end_${endingId}`, e.hi)}
           >
-            <span>{e.hi}</span>
+            <span>{say2(`end_${endingId}`, e.hi)}</span>
           </button>
-          <p className={`tbFact${reading(speakingId, `end_${endingId}_fact`)}`}>{e.factHi}</p>
+          <p className={`tbFact${reading(speakingId, `end_${endingId}_fact`)}`}>{say2(`end_${endingId}_fact`, e.factHi)}</p>
 
           <div className="tbScoreRow">
             <span className="tbScoreItem">
-              सेहत {state.health}/10
+              {ui.health} {state.health}/10
             </span>
             <span className="tbScoreItem">
-              महीने {Math.min(state.month, 6)}/6
+              {ui.months} {Math.min(state.month, 6)}/6
             </span>
             <span className="tbScoreItem">
-              {ill === 0 ? "घर में कोई बीमार नहीं" : `घर में ${ill} बीमार`}
+              {ill === 0 ? ui.nobodyIll : ui.someIll(ill)}
             </span>
           </div>
 
@@ -479,25 +506,25 @@ export default function TbGame() {
             {e.win ? (
               <>
                 <button className="tbBigButton" onClick={dealNewLife}>
-                  नया घर, नया सफ़र
+                  {ui.newHome}
                 </button>
                 <button className="tbBigButton tbBigButton--ghost" onClick={retrySameLife}>
-                  यही सफ़र फिर से
+                  {ui.sameAgain}
                 </button>
               </>
             ) : (
               <>
                 <button className="tbBigButton" onClick={retrySameLife}>
-                  फिर से कोशिश करें
+                  {ui.tryAgain}
                 </button>
                 <button className="tbBigButton tbBigButton--ghost" onClick={dealNewLife}>
-                  नया घर, नया सफ़र
+                  {ui.newHome}
                 </button>
               </>
             )}
           </div>
           <a className="tbBackLink" href={PADHAIPAL_URL}>
-            पाठ पर जाएं
+            {ui.backToApp}
           </a>
         </div>
       </main>
@@ -510,7 +537,7 @@ export default function TbGame() {
   return (
     <main className="tbApp">
       <header className="tbTop">
-        <Meters state={state} onSay={say} speakingId={speakingId} />
+        <Meters state={state} onSay={say} speakingId={speakingId} lang={lang} />
         <MonthTrack month={Math.min(state.month, 6)} />
       </header>
 
@@ -523,8 +550,10 @@ export default function TbGame() {
           }
         >
           <span>
-            {scene.hi}
-            {scene.subHi ? <em className="tbSub">{scene.subHi}</em> : null}
+            {say2(scene.id, scene.hi)}
+            {scene.subHi ? (
+              <em className="tbSub">{say2(`${scene.id}_sub`, scene.subHi)}</em>
+            ) : null}
           </span>
         </button>
       </section>
@@ -540,11 +569,11 @@ export default function TbGame() {
                 onClick={() => choose(o)}
               >
                 <TbIcon name={o.icon} />
-                <span>{o.hi}</span>
+                <span>{say2(`${scene.id}_${o.id}`, o.hi)}</span>
               </button>
               <button
                 className="tbSpeak"
-                aria-label="सुनें"
+                aria-label={ui.listen}
                 onClick={() => say(`${scene.id}_${o.id}`, o.hi)}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -562,13 +591,13 @@ export default function TbGame() {
           <div className={`tbResult tbResult--${pending.result.tone}`}>
             <TbIcon name={pending.result.icon} />
             <p className={`tbResultText${reading(speakingId, pending.audioId)}`}>
-              {pending.result.hi}
+              {say2(pending.audioId, pending.result.hi)}
             </p>
             <p className={`tbFact${reading(speakingId, `${pending.audioId}_fact`)}`}>
-              {pending.result.factHi}
+              {say2(`${pending.audioId}_fact`, pending.result.factHi)}
             </p>
             <button className="tbBigButton" onClick={goOn}>
-              आगे
+              {ui.next}
             </button>
           </div>
         </div>

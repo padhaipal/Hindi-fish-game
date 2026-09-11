@@ -15,6 +15,7 @@
 
 import { healthColor, infectionChance, MAX_METER } from "@/lib/tb/engine";
 import { FAMILY_LINES, HEALTH_LINES, MONEY_LINES } from "@/lib/tb/uiLines";
+import { UI, type Lang } from "@/lib/tb/i18n";
 import type { GameState, Member } from "@/lib/tb/types";
 
 /** A 10-step meter. Also used on the how-to-play screen. */
@@ -65,13 +66,16 @@ export default function Meters({
   state,
   onSay,
   speakingId,
+  lang = "hi",
 }: {
   state: GameState;
   onSay: (id: string, text: string) => void;
   /** Which line the voice is on, so the matching meter can light up. */
   speakingId?: string | null;
+  lang?: Lang;
 }) {
   const lit = (id: string) => (speakingId === id ? " tbReading" : "");
+  const ui = UI[lang];
   // Each meter says a FIXED phrase, chosen by which band it is in — never a
   // sentence with a number in it, so each line can be recorded once.
   const health =
@@ -90,7 +94,7 @@ export default function Meters({
       <button
         className={`tbMeter${lit(health.id)}`}
         onClick={() => onSay(health.id, health.hi)}
-        aria-label="सेहत"
+        aria-label={ui.health}
       >
         <span className="tbMeterIcon" aria-hidden="true">
           <svg viewBox="0 0 24 24" className="tbMeterGlyph">
@@ -103,7 +107,7 @@ export default function Meters({
       <button
         className={`tbMeter${lit(money.id)}`}
         onClick={() => onSay(money.id, money.hi)}
-        aria-label="पैसा"
+        aria-label={ui.money}
       >
         <span className="tbMeterIcon" aria-hidden="true">
           <svg viewBox="0 0 24 24" className="tbMeterGlyph">
@@ -117,7 +121,7 @@ export default function Meters({
       <button
         className={`tbMeter tbMeter--family${lit(family.id)}`}
         onClick={() => onSay(family.id, family.hi)}
-        aria-label="घर के लोग"
+        aria-label={ui.household}
       >
         {state.members.map((m) => (
           <MemberDot key={m.id} m={m} />

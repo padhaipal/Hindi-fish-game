@@ -24,9 +24,11 @@ can be played by somebody who cannot read Hindi.
 | `lib/tb/speech.ts` | The voice: recorded Hindi if present, else the phone's Hindi TTS |
 | `components/tb/Figures.tsx` | Scene pictures (`TbArt` — a photo if one exists, else the line drawing) and choice icons (`TbIcon`, from Lucide) |
 | `lib/tb/uiLines.ts` | The spoken lines outside the story: opening, household, how-to-play, meters |
+| `lib/tb/i18n.ts` | The two languages: which words to use, and the buttons around the game |
+| `lib/tb/en.ts` | Every line of the game in English, keyed by the same ids |
 | `components/tb/Meters.tsx` | Health thermometer, money, household figures, the six-month track |
 | `components/tb/TbGame.tsx` | The game loop and screens |
-| `app/tb/page.tsx` | The route |
+| `app/tb/page.tsx` | The route (Hindi); `app/tb/hi` is the same page, `app/tb/en` is English |
 
 **To add or change a scene**, edit one of the two files in `lib/tb/scenes/`.
 Nothing else needs to change: a scene is a picture name, one spoken line, and
@@ -162,14 +164,40 @@ Global TB Report**, the **India TB Report (NTEP)**, and the RATIONS trial.
 
 ---
 
+## Two languages
+
+| URL | Language |
+| --- | --- |
+| `/tb` and `/tb/hi` | Hindi — the original |
+| `/tb/en` | English — the same game, translated |
+
+The game itself is written in Hindi: scenes, choices, results and facts all live
+in `lib/tb/` as Hindi text. English is a translation layer keyed by the **same
+ids the recordings use** — `s_cough_clinic_result_fact` names one line of the
+game, and has a Hindi string, an English string and (one day) a recording in
+each language.
+
+Nothing about the story is duplicated, so the two languages cannot drift apart
+structurally: add a scene and it exists in both at once, and only its words need
+translating. A line with no English falls back to Hindi rather than showing a
+blank, and `npm run tb:audio` lists every id that is still missing so this
+cannot go unnoticed. It currently reports none.
+
+**English recordings** go in `public/audio/tb/en/<id>.mp3`, alongside the Hindi
+ones in `public/audio/tb/`. The phone's text-to-speech is asked for `en-IN`
+rather than `hi-IN` when the English game is being played.
+
+The opening screen of each carries a link to the other.
+
 ## Pictures
 
 Scenes use a photograph when one exists at `public/images/tb/<art name>.jpg` (or
-`.png`), and fall back to the line drawing when one does not. Five are in:
-`cough`, `coughBlood`, `weak`, `clinic` and `labTest`. The rest are still
-drawings — see **[docs/tb-art-prompts.md](tb-art-prompts.md)** for a prompt per
-picture, the house style to paste into each one, and the two I would leave as
-drawings.
+`.png`), and fall back to the line drawing when one does not. Sixteen are in,
+covering every scene in the game **except `smallHome`** — the one-room house,
+which is used by the household screen, the "protect your family" scene and the
+"TB spread at home" ending, and still draws. Its prompt is in
+**[docs/tb-art-prompts.md](tb-art-prompts.md)** along with the six pictures for
+scenes that do not exist yet.
 
 Photographs are resized to 1024px on the long edge and saved as progressive JPEG
 at quality 78, which lands each one between 50 and 130 KB. Please keep new ones
