@@ -10,6 +10,39 @@
 // TbIcon — the small picture on a choice button    (48 x 48)
 // ---------------------------------------------------------------------------
 
+import {
+  Ban,
+  Banknote,
+  Baby,
+  BedDouble,
+  BedSingle,
+  Bus,
+  Check,
+  Cigarette,
+  ClipboardCheck,
+  Clock,
+  HandCoins,
+  Hammer,
+  HeartHandshake,
+  Hospital,
+  IndianRupee,
+  MessageCircle,
+  EyeOff,
+  Phone,
+  Pill,
+  Soup,
+  Stethoscope,
+  Store,
+  Syringe,
+  TestTube,
+  Users,
+  Utensils,
+  Wind,
+  Wine,
+  X,
+  type LucideIcon,
+} from "lucide-react";
+import { useState } from "react";
 import type { ArtName, IconName } from "@/lib/tb/types";
 import type { ReactNode } from "react";
 
@@ -395,7 +428,36 @@ function art(name: ArtName): ReactNode {
   }
 }
 
+// Photographs, when they exist, live in public/images/tb/<art name>.jpg (or
+// .png). None are committed yet, so every scene currently shows its line
+// drawing; drop a file in with the right name and that scene starts using it,
+// with no code change. See docs/tb-art-prompts.md.
+const noPhoto = new Set<string>();
+
 export function TbArt({ name }: { name: ArtName }) {
+  // Try .jpg, then .png, then give up and draw the line drawing. The picture
+  // name is kept in state too, so moving to the next scene starts its search
+  // again rather than inheriting where the last one gave up.
+  const [tried, setTried] = useState({ name, step: noPhoto.has(name) ? 2 : 0 });
+  const step = tried.name === name ? tried.step : noPhoto.has(name) ? 2 : 0;
+  const src = step === 0 ? `/images/tb/${name}.jpg` : `/images/tb/${name}.png`;
+
+  if (step < 2) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        className="tbArt tbArt--photo"
+        src={src}
+        alt=""
+        aria-hidden="true"
+        onError={() => {
+          if (step === 1) noPhoto.add(name);
+          setTried({ name, step: step + 1 });
+        }}
+      />
+    );
+  }
+
   return (
     <svg className="tbArt" viewBox="0 0 160 120" aria-hidden="true">
       {art(name)}
@@ -404,237 +466,59 @@ export function TbArt({ name }: { name: ArtName }) {
 }
 
 // ---- the small choice pictures -------------------------------------------
+// These used to be hand-drawn paths, which looked home-made next to the scene
+// art. They are now Lucide icons — one consistent, properly drawn set — with a
+// small badge layered on a few of them to say the thing Lucide has no icon for
+// ("a pill, but stopped", "a hospital, but one that charges").
 
-function icon(name: IconName): ReactNode {
-  switch (name) {
-    case "wait":
-      return (
-        <>
-          <circle cx="24" cy="24" r="16" />
-          <path d="M24 14 L24 24 L31 29" />
-        </>
-      );
-    case "chemist":
-      return (
-        <>
-          <rect x="14" y="12" width="20" height="28" rx="4" />
-          <path d="M18 6 L30 6 L30 12 L18 12 Z" />
-          <path d="M24 20 L24 32 M18 26 L30 26" className="tbAccent" />
-        </>
-      );
-    case "quack":
-      return (
-        <>
-          <path d="M10 34 L28 16" />
-          <path d="M24 10 L38 24" />
-          <path d="M28 8 L34 14 M20 20 L28 28" />
-          <path d="M8 40 L16 32" className="tbAccent" />
-        </>
-      );
-    case "clinic":
-      return (
-        <>
-          <rect x="8" y="14" width="32" height="26" />
-          <rect x="20" y="28" width="8" height="12" />
-          <path d="M24 4 L24 14 M19 9 L29 9" className="tbAccent" />
-        </>
-      );
-    case "privateClinic":
-      return (
-        <>
-          <rect x="8" y="14" width="32" height="26" />
-          <rect x="20" y="28" width="8" height="12" />
-          <path d="M18 6 L30 6 M18 10 L30 10 M18 14 L24 14 Q32 10 24 6 M22 14 L30 22" className="tbAccent" />
-        </>
-      );
-    case "spit":
-      return (
-        <>
-          <path d="M14 18 L18 40 L30 40 L34 18 Z" />
-          <path d="M11 18 L37 18" />
-          <path d="M24 6 q6 4 0 10" className="tbAccent" />
-        </>
-      );
-    case "yes":
-      return <path d="M10 26 L20 36 L38 12" strokeWidth="5" className="tbGood" />;
-    case "no":
-      return (
-        <g className="tbBad">
-          <path d="M12 12 L36 36 M36 12 L12 36" strokeWidth="5" />
-        </g>
-      );
-    case "pill":
-      return (
-        <>
-          <rect x="8" y="18" width="32" height="14" rx="7" />
-          <path d="M24 18 L24 32" />
-        </>
-      );
-    case "pillFood":
-      return (
-        <>
-          <ellipse cx="24" cy="32" rx="16" ry="7" />
-          <rect x="14" y="10" width="20" height="10" rx="5" />
-          <path d="M24 10 L24 20" />
-        </>
-      );
-    case "stopPill":
-      return (
-        <>
-          <rect x="8" y="18" width="32" height="14" rx="7" />
-          <path d="M8 40 L40 8" strokeWidth="5" className="tbBad" />
-        </>
-      );
-    case "mask":
-      return (
-        <>
-          <path d="M12 16 q12 -6 24 0 l0 14 q-12 8 -24 0 Z" />
-          <path d="M12 20 L4 16 M36 20 L44 16" />
-        </>
-      );
-    case "window":
-      return (
-        <>
-          <rect x="10" y="10" width="28" height="28" />
-          <path d="M24 10 L24 38 M10 24 L38 24" />
-          <path d="M40 14 q8 6 0 12" className="tbAccent" />
-        </>
-      );
-    case "sleepApart":
-      return (
-        <>
-          <path d="M6 30 L20 30 M6 30 L6 38 M20 30 L20 38" />
-          <path d="M28 30 L42 30 M28 30 L28 38 M42 30 L42 38" />
-          <circle cx="10" cy="22" r="4" />
-          <circle cx="38" cy="22" r="4" />
-        </>
-      );
-    case "familyTest":
-      return (
-        <>
-          <circle cx="12" cy="16" r="5" />
-          <path d="M12 21 L12 34 M6 38 L12 34 L18 38" />
-          <circle cx="28" cy="18" r="4" />
-          <path d="M28 22 L28 34 M23 38 L28 34 L33 38" />
-          <path d="M36 14 L40 18 L46 8" className="tbGood" />
-        </>
-      );
-    case "child":
-      return (
-        <>
-          <circle cx="24" cy="16" r="7" />
-          <path d="M24 23 L24 34 M16 28 L32 28 M18 40 L24 34 L30 40" />
-        </>
-      );
-    case "food":
-      return (
-        <>
-          <ellipse cx="24" cy="28" rx="17" ry="8" />
-          <circle cx="18" cy="26" r="5" />
-          <path d="M28 22 q7 -2 10 4 q-6 5 -10 -4" />
-        </>
-      );
-    case "money":
-      return (
-        <>
-          <rect x="6" y="16" width="36" height="20" rx="3" />
-          <path d="M18 21 L30 21 M18 25 L30 25 M18 29 L24 29 Q32 25 24 21 M22 29 L30 35" className="tbAccent" />
-        </>
-      );
-    case "loan":
-      return (
-        <>
-          <path d="M8 36 q16 -20 32 0" />
-          <path d="M24 8 L24 22 M18 16 L24 22 L30 16" className="tbBad" />
-        </>
-      );
-    case "work":
-      return (
-        <>
-          <rect x="8" y="26" width="32" height="10" />
-          <rect x="14" y="16" width="20" height="10" />
-          <path d="M24 8 L24 16" />
-        </>
-      );
-    case "rest":
-      return (
-        <>
-          <path d="M6 32 L42 32 M6 32 L6 40 M42 32 L42 40" />
-          <circle cx="14" cy="24" r="5" />
-          <path d="M20 26 L38 26" />
-        </>
-      );
-    case "bus":
-      return (
-        <>
-          <rect x="6" y="12" width="36" height="20" rx="3" />
-          <rect x="10" y="16" width="9" height="8" />
-          <rect x="23" y="16" width="9" height="8" />
-          <circle cx="14" cy="36" r="4" />
-          <circle cx="34" cy="36" r="4" />
-        </>
-      );
-    case "phone":
-      return (
-        <>
-          <rect x="14" y="6" width="20" height="36" rx="3" />
-          <path d="M20 36 L28 36" />
-          <path d="M18 12 L30 12" className="tbAccent" />
-        </>
-      );
-    case "bidi":
-      return (
-        <>
-          <path d="M8 30 L34 30" strokeWidth="6" />
-          <path d="M38 30 L42 30" strokeWidth="6" className="tbAccent" />
-          <path d="M30 20 q6 -8 0 -14" className="tbAccent" />
-        </>
-      );
-    case "sharab":
-      return (
-        <>
-          <path d="M18 8 L30 8 L30 16 L34 24 L34 40 L14 40 L14 24 L18 16 Z" />
-          <path d="M14 28 L34 28" className="tbAccent" />
-        </>
-      );
-    case "talk":
-      return (
-        <>
-          <path d="M8 10 L40 10 L40 30 L22 30 L14 38 L14 30 L8 30 Z" />
-          <path d="M16 18 L32 18 M16 24 L26 24" className="tbAccent" />
-        </>
-      );
-    case "hide":
-      return (
-        <>
-          <circle cx="24" cy="20" r="9" />
-          <path d="M10 24 L38 24" strokeWidth="6" />
-          <path d="M24 29 L24 40" />
-        </>
-      );
-    case "help":
-      return (
-        <>
-          <circle cx="16" cy="16" r="6" />
-          <path d="M16 22 L16 34 M8 40 L16 34 L24 40" />
-          <path d="M30 26 L42 26 M36 20 L36 32" className="tbGood" strokeWidth="5" />
-        </>
-      );
-    case "doctor":
-      return (
-        <>
-          <circle cx="24" cy="14" r="7" />
-          <path d="M24 21 L24 36 M12 40 L24 34 L36 40" />
-          <path d="M18 24 q6 10 12 0" className="tbAccent" />
-        </>
-      );
-  }
+interface IconSpec {
+  Icon: LucideIcon;
+  /** Small icon in the bottom-right corner, e.g. a ban sign over a pill. */
+  badge?: LucideIcon;
+  tone?: "good" | "bad";
 }
 
+const ICONS: Record<IconName, IconSpec> = {
+  wait: { Icon: Clock },
+  chemist: { Icon: Store },
+  quack: { Icon: Syringe, badge: Ban, tone: "bad" },
+  clinic: { Icon: Hospital, tone: "good" },
+  privateClinic: { Icon: Hospital, badge: IndianRupee },
+  spit: { Icon: TestTube },
+  yes: { Icon: Check, tone: "good" },
+  no: { Icon: X, tone: "bad" },
+  pill: { Icon: Pill },
+  pillFood: { Icon: Pill, badge: Utensils },
+  stopPill: { Icon: Pill, badge: Ban, tone: "bad" },
+  mask: { Icon: Wind },
+  window: { Icon: Wind, tone: "good" },
+  sleepApart: { Icon: BedDouble },
+  familyTest: { Icon: Users, badge: ClipboardCheck },
+  child: { Icon: Baby },
+  food: { Icon: Soup },
+  money: { Icon: Banknote },
+  loan: { Icon: HandCoins },
+  work: { Icon: Hammer },
+  rest: { Icon: BedSingle },
+  bus: { Icon: Bus },
+  phone: { Icon: Phone },
+  bidi: { Icon: Cigarette, tone: "bad" },
+  sharab: { Icon: Wine, tone: "bad" },
+  talk: { Icon: MessageCircle },
+  hide: { Icon: EyeOff },
+  help: { Icon: HeartHandshake, tone: "good" },
+  doctor: { Icon: Stethoscope },
+};
+
 export function TbIcon({ name }: { name: IconName }) {
+  const spec = ICONS[name];
+  const cls = spec.tone ? `tbIconBox tbIconBox--${spec.tone}` : "tbIconBox";
   return (
-    <svg className="tbIcon" viewBox="0 0 48 48" aria-hidden="true">
-      {icon(name)}
-    </svg>
+    <span className={cls} aria-hidden="true">
+      <spec.Icon className="tbIconMain" strokeWidth={1.75} absoluteStrokeWidth />
+      {spec.badge ? (
+        <spec.badge className="tbIconBadge" strokeWidth={2.5} absoluteStrokeWidth />
+      ) : null}
+    </span>
   );
 }

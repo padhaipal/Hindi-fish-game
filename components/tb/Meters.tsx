@@ -14,15 +14,17 @@
 // ---------------------------------------------------------------------------
 
 import { healthColor, infectionChance, MAX_METER } from "@/lib/tb/engine";
+import { FAMILY_LINES, HEALTH_LINES, MONEY_LINES } from "@/lib/tb/uiLines";
 import type { GameState, Member } from "@/lib/tb/types";
 
-function Bar({
+/** A 10-step meter. Also used on the how-to-play screen. */
+export function Bar({
   value,
   color,
   dim = "#00000018",
 }: {
   value: number;
-  color: (i: number) => string;
+  color: string;
   dim?: string;
 }) {
   return (
@@ -31,7 +33,7 @@ function Bar({
         <span
           key={i}
           className="tbBarCell"
-          style={{ background: i < value ? color(i) : dim }}
+          style={{ background: i < value ? color : dim }}
         />
       ))}
     </div>
@@ -39,7 +41,7 @@ function Bar({
 }
 
 /** One household member: line figure, tinted by how much TB air they breathed. */
-function MemberDot({ m }: { m: Member }) {
+export function MemberDot({ m }: { m: Member }) {
   const risk = infectionChance(m);
   const state = m.infected ? "ill" : risk > 0.4 ? "warn" : "ok";
   const scale = m.kind === "child" ? 0.8 : 1;
@@ -66,27 +68,24 @@ export default function Meters({
   state: GameState;
   onSay: (id: string, text: string) => void;
 }) {
-  const healthText = `सेहत ${state.health} में से ${MAX_METER}। ${
+  // Each meter says a FIXED phrase, chosen by which band it is in — never a
+  // sentence with a number in it, so each line can be recorded once.
+  const health =
     state.health >= 7
-      ? "आपकी हालत ठीक है।"
+      ? HEALTH_LINES.good
       : state.health >= 4
-      ? "आप कमज़ोर हो रहे हैं।"
-      : "आपकी हालत ख़राब है। जान का ख़तरा है।"
-  }`;
-  const moneyText = `घर का पैसा ${state.money} में से ${MAX_METER}। ${
-    state.money <= 2 ? "पैसा लगभग खत्म है।" : ""
-  }`;
-  const ill = state.members.filter((m) => m.infected).length;
-  const familyText =
-    ill > 0
-      ? `घर में ${ill} लोगों को टीबी हो गई है।`
-      : "घर में अभी किसी को टीबी नहीं हुई है।";
+      ? HEALTH_LINES.mid
+      : HEALTH_LINES.low;
+  const money = state.money >= 3 ? MONEY_LINES.ok : MONEY_LINES.low;
+  const family = state.members.some((m) => m.infected)
+    ? FAMILY_LINES.ill
+    : FAMILY_LINES.clear;
 
   return (
     <div className="tbMeters">
       <button
         className="tbMeter"
-        onClick={() => onSay("meter_health", healthText)}
+        onClick={() => onSay(health.id, health.hi)}
         aria-label="सेहत"
       >
         <span className="tbMeterIcon" aria-hidden="true">
@@ -94,12 +93,12 @@ export default function Meters({
             <path d="M12 20 C6 15 3 12 3 8.5 A4.5 4.5 0 0 1 12 6 A4.5 4.5 0 0 1 21 8.5 C21 12 18 15 12 20 Z" />
           </svg>
         </span>
-        <Bar value={state.health} color={() => healthColor(state.health)} />
+        <Bar value={state.health} color={healthColor(state.health)} />
       </button>
 
       <button
         className="tbMeter"
-        onClick={() => onSay("meter_money", moneyText)}
+        onClick={() => onSay(money.id, money.hi)}
         aria-label="पैसा"
       >
         <span className="tbMeterIcon" aria-hidden="true">
@@ -108,12 +107,12 @@ export default function Meters({
             <path d="M8 8 L16 8 M8 11 L16 11 M8 14 L12 14 Q17 11 12 8 M11 14 L16 19" />
           </svg>
         </span>
-        <Bar value={state.money} color={() => "#e8a33d"} />
+        <Bar value={state.money} color="#e8a33d" />
       </button>
 
       <button
         className="tbMeter tbMeter--family"
-        onClick={() => onSay("meter_family", familyText)}
+        onClick={() => onSay(family.id, family.hi)}
         aria-label="घर के लोग"
       >
         {state.members.map((m) => (

@@ -19,12 +19,13 @@
 // ---------------------------------------------------------------------------
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import Meters, { MonthTrack } from "./Meters";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Meters, { Bar, MemberDot, MonthTrack } from "./Meters";
 import { TbArt, TbIcon } from "./Figures";
 import {
   ENDINGS,
   advance,
+  healthColor,
   finalEnding,
   infectedCount,
   newGame,
@@ -33,11 +34,13 @@ import {
 import { FIRST_SCENE, getScene, isEnding, nextSceneId } from "@/lib/tb/story";
 import { HOME_HI, WORK_HI, riskInfo } from "@/lib/tb/profile";
 import { primeVoice, speak, speakSequence, stopSpeaking } from "@/lib/tb/speech";
+import { INTRO_LINE, LIFE_INTRO, LIFE_START, RULES_LINES } from "@/lib/tb/uiLines";
+import { playSound, unlockAudio } from "@/lib/audio";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
-type Phase = "intro" | "life" | "scene" | "result" | "ending";
+type Phase = "intro" | "life" | "rules" | "scene" | "result" | "ending";
 
 interface Pending {
   result: Result;
@@ -54,6 +57,27 @@ export default function TbGame() {
   const factsRef = useRef<string[]>([]);
 
   const scene = getScene(state.sceneId);
+
+  // The household cards dealt to this player, with a fixed audio id each.
+  const lifeRows = useMemo(() => {
+    const p = state.profile;
+    return [
+      { id: `life_home_${p.home}`, hi: HOME_HI[p.home], icon: "window" as const },
+      { id: `life_work_${p.work}`, hi: WORK_HI[p.work], icon: "work" as const },
+      ...p.risks.map((r) => ({
+        id: `life_risk_${r}`,
+        hi: riskInfo(r).hi,
+        icon:
+          r === "sharab"
+            ? ("sharab" as const)
+            : r === "bidi"
+            ? ("bidi" as const)
+            : r === "kamzori"
+            ? ("food" as const)
+            : ("doctor" as const),
+      })),
+    ];
+  }, [state.profile]);
 
   // ---- voice -------------------------------------------------------------
   const say = useCallback((id: string, text: string) => {
@@ -76,22 +100,75 @@ export default function TbGame() {
 
   useEffect(() => {
     if (phase !== "result" || !pending) return;
-    speakSequence([
-      { id: pending.audioId, text: pending.result.hi },
-      { id: `${pending.audioId}_fact`, text: pending.result.factHi },
-    ]);
-    return () => stopSpeaking();
+    // A short chime first — a player who cannot read knows at once whether the
+    // choice was a good one — then the words. A "mixed" result gets no chime:
+    // it was neither right nor wrong, and the spoken line explains why.
+    const tone = pending.result.tone;
+    if (tone !== "mixed") {
+      playSound(
+        tone === "good" ? "/audio/tb/sfx-correct.wav" : "/audio/tb/sfx-wrong.wav",
+        tone === "good" ? "correct" : "wrong"
+      );
+    }
+    const t = window.setTimeout(() => {
+      speakSequence([
+        { id: pending.audioId, text: pending.result.hi },
+        { id: `${pending.audioId}_fact`, text: pending.result.factHi },
+      ]);
+    }, 700);
+    return () => {
+      window.clearTimeout(t);
+      stopSpeaking();
+    };
   }, [phase, pending]);
 
   useEffect(() => {
     if (phase !== "ending") return;
     const e = ENDINGS[endingId];
+    playSound(e.win ? "/audio/clap.mp3" : "/audio/wa-wa-wa.mp3", e.win ? "win" : "lose");
+    const t = window.setTimeout(() => {
+      speakSequence([
+        { id: `end_${endingId}`, text: e.hi },
+        { id: `end_${endingId}_fact`, text: e.factHi },
+      ]);
+    }, 900);
+    return () => {
+      window.clearTimeout(t);
+      stopSpeaking();
+    };
+  }, [phase, endingId]);
+
+  useEffect(() => {
+    if (phase !== "life") return;
     speakSequence([
-      { id: `end_${endingId}`, text: e.hi },
-      { id: `end_${endingId}_fact`, text: e.factHi },
+      { id: "life_intro", text: LIFE_INTRO },
+      ...lifeRows.map((r) => ({ id: r.id, text: r.hi })),
+      { id: "life_start", text: LIFE_START },
     ]);
     return () => stopSpeaking();
-  }, [phase, endingId]);
+  }, [phase, lifeRows]);
+
+  useEffect(() => {
+    if (phase !== "rules") return;
+    speakSequence(
+      Object.values(RULES_LINES).map((l) => ({ id: l.id, text: l.hi }))
+    );
+    return () => stopSpeaking();
+  }, [phase]);
+
+  // The very first tap of the game is what lets a browser make any sound at
+  // all, so use it: unlock audio and read the opening line out. Without this
+  // the first screen is silent and the game only finds its voice on screen two.
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const wake = () => {
+      primeVoice();
+      unlockAudio();
+      speak("intro", INTRO_LINE);
+    };
+    window.addEventListener("pointerdown", wake, { once: true });
+    return () => window.removeEventListener("pointerdown", wake);
+  }, [phase]);
 
   // ---- starting and restarting -------------------------------------------
   const dealNewLife = useCallback(() => {
@@ -110,6 +187,11 @@ export default function TbGame() {
     setPending(null);
     setPhase("life");
   }, [state.profile]);
+
+  const showRules = useCallback(() => {
+    stopSpeaking();
+    setPhase("rules");
+  }, []);
 
   const beginStory = useCallback(() => {
     stopSpeaking();
@@ -165,18 +247,29 @@ export default function TbGame() {
   // ---- screens -----------------------------------------------------------
   if (phase === "intro") {
     return (
-      <main className="tbApp tbApp--start">
+      <main className="tbApp tbApp--card tbApp--start">
         <div className="tbStartCard">
           <h1 className="tbTitle">टीबी का सफ़र</h1>
           <TbArt name="family" />
-          <p className="tbStartLine">
-            छह महीने का इलाज पूरा कीजिए। ज़िंदा रहिए, ठीक हो जाइए, और घर में किसी को
-            टीबी मत होने दीजिए।
-          </p>
+          <button
+            className="tbSay tbSay--block tbStartLine"
+            onClick={() => say("intro", INTRO_LINE)}
+          >
+            <span>{INTRO_LINE}</span>
+          </button>
+          <button className="tbListen" onClick={() => say("intro", INTRO_LINE)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 9 L4 15 L8 15 L13 19 L13 5 L8 9 Z" />
+              <path d="M16 9 q3 3 0 6" />
+              <path d="M19 6 q5 6 0 12" />
+            </svg>
+            सुनिए
+          </button>
           <button
             className="tbBigButton"
             onClick={() => {
               primeVoice();
+              unlockAudio();
               dealNewLife();
             }}
           >
@@ -191,56 +284,93 @@ export default function TbGame() {
   }
 
   if (phase === "life") {
-    const p = state.profile;
-    const lifeLines = [
-      `यह आपका घर है। ${HOME_HI[p.home]}। आपका काम — ${WORK_HI[p.work]}।`,
-      ...p.risks.map((r) => riskInfo(r).hi),
-      "अब आपको खाँसी शुरू हुई है। आगे के फ़ैसले आपके हैं।",
-    ];
     return (
-      <main className="tbApp">
+      <main className="tbApp tbApp--card">
         <div className="tbLife">
           <h2 className="tbLifeTitle">आपका घर</h2>
-          <TbArt name={p.home === "ekKamra" ? "smallHome" : "family"} />
+          <TbArt name={state.profile.home === "ekKamra" ? "smallHome" : "family"} />
           <ul className="tbLifeList">
-            {[
-              { id: "home", hi: HOME_HI[p.home] },
-              { id: "work", hi: WORK_HI[p.work] },
-              ...p.risks.map((r) => ({ id: r, hi: riskInfo(r).hi })),
-            ].map((row) => (
+            {lifeRows.map((row) => (
               <li key={row.id}>
-                <button
-                  className="tbLifeRow"
-                  onClick={() => say(`life_${row.id}`, row.hi)}
-                >
-                  <TbIcon
-                    name={
-                      row.id === "home"
-                        ? "window"
-                        : row.id === "work"
-                        ? "work"
-                        : row.id === "sharab"
-                        ? "sharab"
-                        : row.id === "bidi"
-                        ? "bidi"
-                        : row.id === "kamzori"
-                        ? "food"
-                        : "doctor"
-                    }
-                  />
+                <button className="tbLifeRow" onClick={() => say(row.id, row.hi)}>
+                  <TbIcon name={row.icon} />
                   <span>{row.hi}</span>
                 </button>
               </li>
             ))}
           </ul>
-          <button
-            className="tbBigButton"
-            onClick={() => {
-              speakSequence(lifeLines.map((t, i) => ({ id: `life_read_${i}`, text: t })));
-              beginStory();
-            }}
-          >
+          <button className="tbBigButton" onClick={showRules}>
             आगे
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  // ---- how to play: the meters explained, with this player's real numbers --
+  if (phase === "rules") {
+    const rules = [
+      {
+        ...RULES_LINES.health,
+        art: (
+          <span className="tbRuleMeter">
+            <Bar value={state.health} color={healthColor(state.health)} />
+            <b style={{ color: healthColor(state.health) }}>{state.health}/10</b>
+          </span>
+        ),
+      },
+      {
+        ...RULES_LINES.money,
+        art: (
+          <span className="tbRuleMeter">
+            <Bar value={state.money} color="#e8a33d" />
+            <b>{state.money}/10</b>
+          </span>
+        ),
+      },
+      {
+        ...RULES_LINES.family,
+        art: (
+          <span className="tbRuleMeter">
+            {state.members.map((m) => (
+              <MemberDot key={m.id} m={m} />
+            ))}
+          </span>
+        ),
+      },
+      {
+        ...RULES_LINES.months,
+        art: (
+          <span className="tbRuleMeter">
+            <MonthTrack month={0} />
+          </span>
+        ),
+      },
+    ];
+    return (
+      <main className="tbApp tbApp--card">
+        <div className="tbLife tbRules">
+          <h2 className="tbLifeTitle">कैसे खेलें</h2>
+          <ul className="tbLifeList">
+            {rules.map((r) => (
+              <li key={r.id}>
+                <button className="tbLifeRow tbRuleRow" onClick={() => say(r.id, r.hi)}>
+                  {r.art}
+                  <span>{r.hi}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="tbRuleWin">
+            <TbIcon name="yes" />
+            <span>{RULES_LINES.win.hi}</span>
+          </p>
+          <p className="tbRuleLose">
+            <TbIcon name="no" />
+            <span>{RULES_LINES.lose.hi}</span>
+          </p>
+          <button className="tbBigButton" onClick={beginStory}>
+            शुरू करें
           </button>
         </div>
       </main>
@@ -251,7 +381,7 @@ export default function TbGame() {
     const e = ENDINGS[endingId];
     const ill = infectedCount(state);
     return (
-      <main className={`tbApp tbApp--end tbEnd--${e.win ? "win" : "lose"}`}>
+      <main className={`tbApp tbApp--card tbApp--end tbEnd--${e.win ? "win" : "lose"}`}>
         <div className="tbEndCard">
           <h2 className="tbEndTitle">{e.win ? "आप जीत गए!" : "इस बार नहीं"}</h2>
           <TbArt name={e.art} />

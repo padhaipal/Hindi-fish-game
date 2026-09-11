@@ -25,7 +25,10 @@ And one health game for adults, built for **tb.care**:
   a spoken line on every screen, and real choices a poor North Indian household
   faces during six months of treatment. See **[docs/tb-game.md](docs/tb-game.md)**
   for its content sources, the tb.care modules each scene comes from, and what
-  still needs doing (chiefly: recording the Hindi voice).
+  still needs doing. The voice recordings it needs are listed in
+  **[docs/tb-audio-script.md](docs/tb-audio-script.md)** (`npm run tb:audio`
+  regenerates that list from the game), and the scene photographs it can use are
+  prompted in **[docs/tb-art-prompts.md](docs/tb-art-prompts.md)**.
 
 ---
 
