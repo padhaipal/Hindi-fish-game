@@ -33,6 +33,7 @@ try {
       "lib/tb/story.ts",
       "lib/tb/engine.ts",
       "lib/tb/uiLines.ts",
+      "lib/tb/en.ts",
       "--outDir", out,
       "--rootDir", "lib/tb",
       // CommonJS, so the compiled files can require each other without the
@@ -53,6 +54,7 @@ const { SCENES } = load("./story.js");
 const { ENDINGS } = load("./engine.js");
 const { UI_LINES } = load("./uiLines.js");
 const { HOME_HI, RISKS, WORK_HI } = load("./profile.js");
+const { EN_LINES } = load("./en.js");
 
 // ---- collect every line, in the order a player meets them -----------------
 const rows = [];
@@ -98,6 +100,22 @@ for (const r of rows) {
     process.exit(1);
   }
   seen.set(r.file, r.hi);
+}
+
+// ---- is every line translated? -------------------------------------------
+// The English game (/tb/en) falls back to Hindi for anything missing, which is
+// better than a blank screen but not something to ship, so say so loudly.
+const needsEnglish = rows.map((r) => r.file.replace(/\.mp3$/, "")).filter((id) => EN_LINES[id] === undefined);
+for (const scene of SCENES) {
+  if (scene.subHi && EN_LINES[`${scene.id}_sub`] === undefined) {
+    needsEnglish.push(`${scene.id}_sub`);
+  }
+}
+if (needsEnglish.length) {
+  console.warn(`\n${needsEnglish.length} line(s) have no English yet (lib/tb/en.ts):`);
+  for (const id of needsEnglish) console.warn(`   ${id}`);
+} else {
+  console.log("Every line has an English translation.");
 }
 
 // ---- write the recording sheet -------------------------------------------

@@ -65,9 +65,28 @@ function stopAll(): void {
   }
 }
 
-function hindiVoice(): SpeechSynthesisVoice | null {
+// The language the game is currently being played in. Set once by the game;
+// everything below follows it, so no caller has to pass it down.
+let lang: "hi" | "en" = "hi";
+
+export function setSpeechLang(next: "hi" | "en"): void {
+  if (next === lang) return;
+  lang = next;
+  // Recordings differ per language, so forget which files were missing.
+  missing.clear();
+  cache.clear();
+}
+
+function bestVoice(): SpeechSynthesisVoice | null {
   if (typeof window === "undefined" || !window.speechSynthesis) return null;
   const voices = window.speechSynthesis.getVoices();
+  if (lang === "en") {
+    return (
+      voices.find((v) => v.lang === "en-IN") ??
+      voices.find((v) => v.lang.startsWith("en")) ??
+      null
+    );
+  }
   return (
     voices.find((v) => v.lang === "hi-IN") ??
     voices.find((v) => v.lang.startsWith("hi")) ??
@@ -104,8 +123,8 @@ function speakWithTts(text: string, onEnd?: () => void): void {
   };
   try {
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "hi-IN";
-    const v = hindiVoice();
+    u.lang = lang === "en" ? "en-IN" : "hi-IN";
+    const v = bestVoice();
     if (v) u.voice = v;
     u.rate = 0.9; // a little slower — this is health information
     u.onend = done;
@@ -141,7 +160,8 @@ function speakLine(id: string, text: string, onEnd?: () => void): void {
   window.setTimeout(finish, 3000 + text.length * 95);
   setSpeaking(id);
 
-  const src = `/audio/tb/${id}.mp3`;
+  // Hindi recordings sit in /audio/tb/, English in /audio/tb/en/.
+  const src = lang === "en" ? `/audio/tb/en/${id}.mp3` : `/audio/tb/${id}.mp3`;
   if (missing.has(src)) {
     speakWithTts(text, finish);
     return;

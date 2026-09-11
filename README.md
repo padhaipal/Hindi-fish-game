@@ -20,7 +20,7 @@ All six share the 8 letters **ब स प र त क च ल** and their sounds
 
 And one health game for adults, built for **tb.care**:
 
-- **🫁 टीबी का सफ़र** (`/tb`) — a decision-path game about getting through TB
+- **🫁 टीबी का सफ़र** (`/tb`, and in English at `/tb/en`) — a decision-path game about getting through TB
   treatment alive, cured, and without infecting anybody at home. Line drawings,
   a spoken line on every screen, and real choices a poor North Indian household
   faces during six months of treatment. See **[docs/tb-game.md](docs/tb-game.md)**

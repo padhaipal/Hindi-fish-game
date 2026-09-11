@@ -50,6 +50,10 @@ export default function Home() {
             <span className="gameEmoji">🫁</span>
             <span>टीबी का सफ़र</span>
           </Link>
+          <Link href="/tb/en" className="gameButton gbTb gbTbEn">
+            <span className="gameEmoji">🫁</span>
+            <span>The TB Journey</span>
+          </Link>
         </nav>
       </div>
     </main>
