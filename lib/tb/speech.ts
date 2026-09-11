@@ -22,7 +22,35 @@ let current: HTMLAudioElement | null = null;
 /** Bumped whenever speech is cancelled, so an old sequence stops stepping. */
 let seqToken = 0;
 
+// ---- who is speaking right now -------------------------------------------
+// The game highlights the line being read, so a player following along can see
+// which words they are hearing. Anything that wants to know subscribes here
+// rather than having a callback threaded through every call.
+type SpeakingListener = (id: string | null) => void;
+const listeners = new Set<SpeakingListener>();
+let speakingId: string | null = null;
+
+function setSpeaking(id: string | null): void {
+  if (speakingId === id) return;
+  speakingId = id;
+  for (const l of listeners) l(id);
+}
+
+/** Be told which line is being spoken. Returns an unsubscribe function. */
+export function subscribeSpeaking(listener: SpeakingListener): () => void {
+  listeners.add(listener);
+  listener(speakingId);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+export function currentlySpeaking(): string | null {
+  return speakingId;
+}
+
 function stopAll(): void {
+  setSpeaking(null);
   if (current) {
     try {
       current.pause();
@@ -49,22 +77,42 @@ function hindiVoice(): SpeechSynthesisVoice | null {
   );
 }
 
+/** Roughly how long this line takes to say aloud, in milliseconds. */
+function readingTime(text: string): number {
+  return Math.min(12000, 400 + text.length * 65);
+}
+
 function speakWithTts(text: string, onEnd?: () => void): void {
   if (typeof window === "undefined" || !window.speechSynthesis) {
-    onEnd?.();
+    // No speech engine at all: still pace the line, so the read-along
+    // highlight walks through the words at reading speed instead of
+    // flashing past. A player following the words can keep their place.
+    window.setTimeout(() => onEnd?.(), readingTime(text));
     return;
   }
+  const started = Date.now();
+  const done = () => {
+    // A phone with no Hindi voice installed says nothing and reports that it
+    // finished instantly. Treat that as "silent" and pace it ourselves.
+    const elapsed = Date.now() - started;
+    const expected = readingTime(text);
+    if (elapsed < Math.min(300, expected)) {
+      window.setTimeout(() => onEnd?.(), expected - elapsed);
+    } else {
+      onEnd?.();
+    }
+  };
   try {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "hi-IN";
     const v = hindiVoice();
     if (v) u.voice = v;
     u.rate = 0.9; // a little slower — this is health information
-    u.onend = () => onEnd?.();
-    u.onerror = () => onEnd?.();
+    u.onend = done;
+    u.onerror = done;
     window.speechSynthesis.speak(u);
   } catch {
-    onEnd?.();
+    done();
   }
 }
 
@@ -83,9 +131,15 @@ function once(fn?: () => void): () => void {
 function speakLine(id: string, text: string, onEnd?: () => void): void {
   if (typeof window === "undefined") return;
   stopAll();
-  const finish = once(onEnd);
-  // Roughly how long this line could take to say, plus room to breathe.
-  window.setTimeout(finish, 2000 + text.length * 90);
+  const finish = once(() => {
+    // Only un-highlight if nothing else has started speaking since.
+    if (speakingId === id) setSpeaking(null);
+    onEnd?.();
+  });
+  // Safety net: if nothing ever reports the end, move on anyway. It has to be
+  // longer than readingTime() or it would cut the pacing short.
+  window.setTimeout(finish, 3000 + text.length * 95);
+  setSpeaking(id);
 
   const src = `/audio/tb/${id}.mp3`;
   if (missing.has(src)) {

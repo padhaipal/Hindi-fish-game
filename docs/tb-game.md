@@ -164,15 +164,44 @@ Global TB Report**, the **India TB Report (NTEP)**, and the RATIONS trial.
 
 ## Pictures
 
-Scenes fall back to a line drawing, but will use a photograph the moment one is
-added at `public/images/tb/<art name>.jpg` (or `.png`) — see
-**[docs/tb-art-prompts.md](tb-art-prompts.md)** for a prompt per picture, the
-house style to paste into each one, and the two pictures I would leave as
-drawings. No photographs are committed yet.
+Scenes use a photograph when one exists at `public/images/tb/<art name>.jpg` (or
+`.png`), and fall back to the line drawing when one does not. Five are in:
+`cough`, `coughBlood`, `weak`, `clinic` and `labTest`. The rest are still
+drawings — see **[docs/tb-art-prompts.md](tb-art-prompts.md)** for a prompt per
+picture, the house style to paste into each one, and the two I would leave as
+drawings.
+
+Photographs are resized to 1024px on the long edge and saved as progressive JPEG
+at quality 78, which lands each one between 50 and 130 KB. Please keep new ones
+in that range: this game is for cheap phones on slow connections.
 
 Choice icons are [Lucide](https://lucide.dev) (`lucide-react`), with a small
 badge layered over a few of them for the things Lucide has no icon for — a
 stopped pill, a hospital that charges.
+
+## The choices are shuffled
+
+The order of the choices is randomised per scene and per game, so nobody learns
+"the answer is the first one" instead of learning about TB. The shuffle is
+seeded from the scene id and one number picked at the start of each game, which
+matters for a reason that is easy to miss: the order must never change while the
+player is looking at it, or they will tap a choice they did not mean to.
+
+Because of this, tests cannot select a choice by position — each choice button
+carries `data-option="<option id>"`, and `scripts`-level tests select by that.
+
+## Reading along
+
+Whatever the voice is saying is highlighted as it says it, so somebody who is
+slowly working through the words can keep their place, and somebody who cannot
+read at all can see the game working through the choices one at a time.
+`lib/tb/speech.ts` publishes the id of the line being spoken
+(`subscribeSpeaking`), and each screen lights up the element with that id.
+
+One wrinkle worth keeping: a phone with no Hindi voice installed says nothing
+and reports that it finished instantly. Rather than letting the highlight flash
+past, `speakWithTts` notices an implausibly fast finish and paces the line by
+estimated reading speed instead.
 
 ## Sound
 

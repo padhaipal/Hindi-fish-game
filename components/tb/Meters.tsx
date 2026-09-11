@@ -64,10 +64,14 @@ export function MemberDot({ m }: { m: Member }) {
 export default function Meters({
   state,
   onSay,
+  speakingId,
 }: {
   state: GameState;
   onSay: (id: string, text: string) => void;
+  /** Which line the voice is on, so the matching meter can light up. */
+  speakingId?: string | null;
 }) {
+  const lit = (id: string) => (speakingId === id ? " tbReading" : "");
   // Each meter says a FIXED phrase, chosen by which band it is in — never a
   // sentence with a number in it, so each line can be recorded once.
   const health =
@@ -84,7 +88,7 @@ export default function Meters({
   return (
     <div className="tbMeters">
       <button
-        className="tbMeter"
+        className={`tbMeter${lit(health.id)}`}
         onClick={() => onSay(health.id, health.hi)}
         aria-label="सेहत"
       >
@@ -97,7 +101,7 @@ export default function Meters({
       </button>
 
       <button
-        className="tbMeter"
+        className={`tbMeter${lit(money.id)}`}
         onClick={() => onSay(money.id, money.hi)}
         aria-label="पैसा"
       >
@@ -111,7 +115,7 @@ export default function Meters({
       </button>
 
       <button
-        className="tbMeter tbMeter--family"
+        className={`tbMeter tbMeter--family${lit(family.id)}`}
         onClick={() => onSay(family.id, family.hi)}
         aria-label="घर के लोग"
       >

@@ -33,12 +33,60 @@ import {
 } from "@/lib/tb/engine";
 import { FIRST_SCENE, getScene, isEnding, nextSceneId } from "@/lib/tb/story";
 import { HOME_HI, WORK_HI, riskInfo } from "@/lib/tb/profile";
-import { primeVoice, speak, speakSequence, stopSpeaking } from "@/lib/tb/speech";
+import {
+  primeVoice,
+  speak,
+  speakSequence,
+  stopSpeaking,
+  subscribeSpeaking,
+} from "@/lib/tb/speech";
 import { INTRO_LINE, LIFE_INTRO, LIFE_START, RULES_LINES } from "@/lib/tb/uiLines";
 import { playSound, unlockAudio } from "@/lib/audio";
 import type { EndingId, GameState, Option, Result } from "@/lib/tb/types";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
+
+// A small deterministic shuffle. The choices must be in a different order every
+// game — otherwise a player learns "the right answer is the first one" instead
+// of learning about TB — but the order must NOT change while they are looking
+// at it, or they will tap something they did not mean to. Seeding it from the
+// scene id and one per-game number gives both.
+function seededOrder<T>(items: T[], seed: number): T[] {
+  let a = seed >>> 0;
+  const rnd = () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+function hash(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Follows the voice, so the line being read can be highlighted. */
+function useSpeaking(): string | null {
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => subscribeSpeaking(setId), []);
+  return id;
+}
+
+/** Class name for a line that is being read aloud right now. */
+function reading(speakingId: string | null, id: string): string {
+  return speakingId === id ? " tbReading" : "";
+}
 
 type Phase = "intro" | "life" | "rules" | "scene" | "result" | "ending";
 
@@ -53,10 +101,24 @@ export default function TbGame() {
   const [phase, setPhase] = useState<Phase>("intro");
   const [pending, setPending] = useState<Pending | null>(null);
   const [endingId, setEndingId] = useState<EndingId>("curedClean");
+  /** Changes each new game, so the choices come up in a fresh order. */
+  const [shuffleSeed, setShuffleSeed] = useState(() => Math.floor(Math.random() * 1e9));
+  const speakingId = useSpeaking();
   // Facts the player has already met, newest last — shown in the recap.
   const factsRef = useRef<string[]>([]);
 
   const scene = getScene(state.sceneId);
+
+  // The choices as the player sees them: same choices, order reshuffled per
+  // scene and per game.
+  const options = useMemo(() => {
+    if (!scene) return [];
+    const usable = scene.options.filter((o) => !o.show || o.show(state));
+    return seededOrder(usable, hash(scene.id) ^ shuffleSeed);
+    // `state` is only read to test which options apply, which cannot change
+    // within a scene, so the order is stable while the scene is on screen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, shuffleSeed]);
 
   // The household cards dealt to this player, with a fixed audio id each.
   const lifeRows = useMemo(() => {
@@ -89,14 +151,11 @@ export default function TbGame() {
     if (phase !== "scene" || !scene) return;
     const lines = [
       { id: scene.id, text: scene.hi + (scene.subHi ? " " + scene.subHi : "") },
-      ...scene.options.map((o) => ({
-        id: `${scene.id}_${o.id}`,
-        text: o.hi,
-      })),
+      ...options.map((o) => ({ id: `${scene.id}_${o.id}`, text: o.hi })),
     ];
     speakSequence(lines);
     return () => stopSpeaking();
-  }, [phase, scene]);
+  }, [phase, scene, options]);
 
   useEffect(() => {
     if (phase !== "result" || !pending) return;
@@ -174,6 +233,7 @@ export default function TbGame() {
   const dealNewLife = useCallback(() => {
     stopSpeaking();
     factsRef.current = [];
+    setShuffleSeed(Math.floor(Math.random() * 1e9));
     setState(newGame());
     setPending(null);
     setPhase("life");
@@ -182,6 +242,7 @@ export default function TbGame() {
   const retrySameLife = useCallback(() => {
     stopSpeaking();
     factsRef.current = [];
+    setShuffleSeed(Math.floor(Math.random() * 1e9));
     // Same household, same risks — a fresh run at the same hard road.
     setState(newGame({ ...state.profile, members: state.profile.members.map((m) => ({ ...m, exposure: 0, infected: false, protectedByTpt: false })) }));
     setPending(null);
@@ -252,7 +313,7 @@ export default function TbGame() {
           <h1 className="tbTitle">टीबी का सफ़र</h1>
           <TbArt name="family" />
           <button
-            className="tbSay tbSay--block tbStartLine"
+            className={`tbSay tbSay--block tbStartLine${reading(speakingId, "intro")}`}
             onClick={() => say("intro", INTRO_LINE)}
           >
             <span>{INTRO_LINE}</span>
@@ -292,7 +353,10 @@ export default function TbGame() {
           <ul className="tbLifeList">
             {lifeRows.map((row) => (
               <li key={row.id}>
-                <button className="tbLifeRow" onClick={() => say(row.id, row.hi)}>
+                <button
+                  className={`tbLifeRow${reading(speakingId, row.id)}`}
+                  onClick={() => say(row.id, row.hi)}
+                >
                   <TbIcon name={row.icon} />
                   <span>{row.hi}</span>
                 </button>
@@ -354,18 +418,21 @@ export default function TbGame() {
           <ul className="tbLifeList">
             {rules.map((r) => (
               <li key={r.id}>
-                <button className="tbLifeRow tbRuleRow" onClick={() => say(r.id, r.hi)}>
+                <button
+                  className={`tbLifeRow tbRuleRow${reading(speakingId, r.id)}`}
+                  onClick={() => say(r.id, r.hi)}
+                >
                   {r.art}
                   <span>{r.hi}</span>
                 </button>
               </li>
             ))}
           </ul>
-          <p className="tbRuleWin">
+          <p className={`tbRuleWin${reading(speakingId, RULES_LINES.win.id)}`}>
             <TbIcon name="yes" />
             <span>{RULES_LINES.win.hi}</span>
           </p>
-          <p className="tbRuleLose">
+          <p className={`tbRuleLose${reading(speakingId, RULES_LINES.lose.id)}`}>
             <TbIcon name="no" />
             <span>{RULES_LINES.lose.hi}</span>
           </p>
@@ -385,10 +452,13 @@ export default function TbGame() {
         <div className="tbEndCard">
           <h2 className="tbEndTitle">{e.win ? "आप जीत गए!" : "इस बार नहीं"}</h2>
           <TbArt name={e.art} />
-          <button className="tbSay tbSay--block" onClick={() => say(`end_${endingId}`, e.hi)}>
+          <button
+            className={`tbSay tbSay--block${reading(speakingId, `end_${endingId}`)}`}
+            onClick={() => say(`end_${endingId}`, e.hi)}
+          >
             <span>{e.hi}</span>
           </button>
-          <p className="tbFact">{e.factHi}</p>
+          <p className={`tbFact${reading(speakingId, `end_${endingId}_fact`)}`}>{e.factHi}</p>
 
           <div className="tbScoreRow">
             <span className="tbScoreItem">
@@ -440,14 +510,14 @@ export default function TbGame() {
   return (
     <main className="tbApp">
       <header className="tbTop">
-        <Meters state={state} onSay={say} />
+        <Meters state={state} onSay={say} speakingId={speakingId} />
         <MonthTrack month={Math.min(state.month, 6)} />
       </header>
 
       <section className="tbStage">
         <TbArt name={scene.art} />
         <button
-          className="tbSay tbSay--block"
+          className={`tbSay tbSay--block${reading(speakingId, scene.id)}`}
           onClick={() =>
             say(scene.id, scene.hi + (scene.subHi ? " " + scene.subHi : ""))
           }
@@ -460,11 +530,15 @@ export default function TbGame() {
       </section>
 
       <nav className="tbOptions">
-        {scene.options
-          .filter((o) => !o.show || o.show(state))
-          .map((o) => (
+        {options.map((o) => (
             <div className="tbOptionRow" key={o.id}>
-              <button className="tbOption" onClick={() => choose(o)}>
+              <button
+                className={`tbOption${reading(speakingId, `${scene.id}_${o.id}`)}`}
+                // names the choice for tests, which cannot rely on position
+                // now that the order is shuffled
+                data-option={o.id}
+                onClick={() => choose(o)}
+              >
                 <TbIcon name={o.icon} />
                 <span>{o.hi}</span>
               </button>
@@ -487,8 +561,12 @@ export default function TbGame() {
         <div className="tbResultScrim">
           <div className={`tbResult tbResult--${pending.result.tone}`}>
             <TbIcon name={pending.result.icon} />
-            <p className="tbResultText">{pending.result.hi}</p>
-            <p className="tbFact">{pending.result.factHi}</p>
+            <p className={`tbResultText${reading(speakingId, pending.audioId)}`}>
+              {pending.result.hi}
+            </p>
+            <p className={`tbFact${reading(speakingId, `${pending.audioId}_fact`)}`}>
+              {pending.result.factHi}
+            </p>
             <button className="tbBigButton" onClick={goOn}>
               आगे
             </button>

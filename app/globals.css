@@ -2238,3 +2238,40 @@ body > div {
   width: 22px;
   height: 22px;
 }
+
+/* ---- read-along highlight ----------------------------------------------- */
+/* Whatever the voice is saying right now is lit up, so somebody following the
+   words can see which line they are hearing — and somebody who cannot read can
+   still see that the game is working through the choices one by one. */
+.tbReading {
+  background: #ffe9a8 !important;
+  box-shadow: inset 0 0 0 2px #e8a33d;
+  animation: tbReadPulse 1.4s ease-in-out infinite;
+}
+
+.tbOption.tbReading {
+  border-color: #e8a33d;
+}
+
+.tbSay.tbReading,
+.tbStartLine.tbReading {
+  border-radius: 10px;
+  padding-inline: 8px;
+  margin-inline: -8px;
+}
+
+@keyframes tbReadPulse {
+  0%,
+  100% {
+    background: #ffe9a8;
+  }
+  50% {
+    background: #fff4cf;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tbReading {
+    animation: none;
+  }
+}
