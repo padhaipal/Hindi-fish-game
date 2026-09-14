@@ -120,7 +120,10 @@ export default function BuildLetter({ letterId, onDone }: Props) {
       startY = Math.max(trayTop, Math.min(trayBot - h, startY));
       return { i, w, h, d: pathFrom(rel), homeX, homeY, startX, startY, color: PIECE_COLORS[i % PIECE_COLORS.length] };
     });
-    return { pieces, lw, tol: A * 0.2 };
+    // Faint outline of the whole letter, shown in the assembly area as a target
+    // to drop the pieces onto (the pieces themselves start down in the tray).
+    const guide = raw.map((s) => pathFrom(s.map(map)));
+    return { pieces, guide, lw, tol: A * 0.2 };
   }, [letterId, dims]);
 
   const [pos, setPos] = useState<Record<number, Pt>>({});
@@ -183,6 +186,15 @@ export default function BuildLetter({ letterId, onDone }: Props) {
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
+        {/* faint outline of the letter to drop the pieces onto */}
+        {model && (
+          <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+            {model.guide.map((d, k) => (
+              <path key={k} d={d} fill="none" stroke="#0a3d5722" strokeWidth={model.lw}
+                strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+          </svg>
+        )}
         {model &&
           model.pieces.map((pc) => {
             const p = pos[pc.i] ?? { x: pc.startX, y: pc.startY };

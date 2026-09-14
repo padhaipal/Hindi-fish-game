@@ -2451,3 +2451,101 @@ body > div {
 .letterTile:active { transform: translateY(2px); box-shadow: 0 2px 0 #b0cbf0; }
 .letterTileChar { font-size: 34px; font-weight: 800; color: #0a3d57; }
 .letterTilePic { position: absolute; right: 4px; bottom: 3px; font-size: 15px; }
+
+/* ===========================================================================
+   MATRA MAKER (मात्रा जोड़ो)
+   =========================================================================== */
+.gameButton.gbMatra {
+  background: linear-gradient(#4fd6c4, #16b3a0);
+  box-shadow: 0 6px 0 #0e8576;
+}
+.matraApp {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(#e9fff9 0%, #bff0e6 55%, #93e6d6 100%);
+}
+.matraPlay {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: 54px 14px 16px;
+  gap: 14px;
+  touch-action: none;
+}
+.matraGoal {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: #ffffffcc;
+  box-shadow: 0 4px 0 #00000018;
+}
+.matraGoalLabel { font-size: 16px; font-weight: 800; color: #0d7a6a; }
+.matraGoalSyl { font-size: 44px; font-weight: 800; color: #0a3d57; line-height: 1; min-width: 44px; text-align: center; }
+
+.matraCardWrap {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+.matraCard {
+  width: 150px;
+  height: 150px;
+  border-radius: 30px;
+  background: #fff;
+  border: 6px solid #16b3a0;
+  box-shadow: 0 8px 0 #00000020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 92px;
+  font-weight: 800;
+  color: #0a3d57;
+  line-height: 1;
+}
+.matraCard.done {
+  border-color: #2fa84f;
+  background: #eafff0;
+  animation: pop 0.5s ease;
+}
+.matraCard.shake { animation: shake 0.42s ease; }
+
+.matraTray {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 6px;
+}
+.matraChip {
+  width: 76px;
+  height: 76px;
+  border-radius: 20px;
+  background: #fff;
+  border: 4px solid #f0a500;
+  box-shadow: 0 5px 0 #c98a00;
+  font-size: 40px;
+  font-weight: 800;
+  color: #0a3d57;
+  line-height: 1;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  will-change: transform;
+  -webkit-tap-highlight-color: transparent;
+}
+.matraChip:active { cursor: grabbing; }
+.matraHint { flex: 0 0 auto; font-size: 15px; font-weight: 700; color: #0d5a52; margin: 0; text-align: center; }
