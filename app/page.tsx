@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LETTERS } from "@/lib/letters";
+import { MATRAS, matraChip } from "@/lib/matras";
 
 // ---------------------------------------------------------------------------
 // HOME — the PadhaiPal Hindi games collection.
@@ -25,6 +26,16 @@ export default function Home() {
             <Link key={l.id} href={`/letter/${l.id}`} className="letterTile" aria-label={`${l.char} की सैर`}>
               <span className="letterTileChar">{l.char}</span>
               <span className="letterTilePic">{l.id === "la" ? "🌀" : l.emoji}</span>
+            </Link>
+          ))}
+        </nav>
+
+        {/* Per-matra adventures */}
+        <h2 className="homeSection">✨ मात्रा की सैर</h2>
+        <nav className="homeLetters">
+          {MATRAS.map((m) => (
+            <Link key={m.id} href={`/matra/${m.id}`} className="letterTile matraTile" aria-label={`${m.sign} मात्रा की सैर`}>
+              <span className="letterTileChar">{matraChip(m)}</span>
             </Link>
           ))}
         </nav>
