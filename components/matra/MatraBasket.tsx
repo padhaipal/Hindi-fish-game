@@ -33,9 +33,9 @@ interface Props {
 }
 
 // How many TARGET fruits carry the matra (== how many must be basketed).
-const TARGETS = 5;
+const TARGETS = 6;
 // Total fruits on the tree (fixed for the whole round): 5 target + 5 distractor.
-const FRUIT_COUNT = 10;
+const FRUIT_COUNT = 12;
 // Fruit size in px (kept in sync with .mb-fruit below).
 const FRUIT = 70;
 

@@ -20,6 +20,7 @@ import MatraGame from "@/components/matra/MatraGame";
 import MatraPond from "@/components/matra/MatraPond";
 import MatraFish from "@/components/matra/MatraFish";
 import MatraBasket from "@/components/matra/MatraBasket";
+import MatraWriteStep from "@/components/matra/MatraWriteStep";
 import { MATRAS, getMatra, matraChip } from "@/lib/matras";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 import { stopTts } from "@/lib/tts";
@@ -36,6 +37,8 @@ const STEPS: StepDef[] = [
   { key: "pond", icon: "🐸", pad: true, render: (id, done) => <MatraPond matraId={id} onDone={done} /> },
   { key: "fish", icon: "🫧", pad: true, render: (id, done) => <MatraFish matraId={id} onDone={done} /> },
   { key: "basket", icon: "🧺", pad: true, render: (id, done) => <MatraBasket matraId={id} onDone={done} /> },
+  { key: "trace", icon: "✏️", render: (id, done) => <MatraWriteStep matraId={id} guided onDone={done} /> },
+  { key: "write", icon: "🖊️", render: (id, done) => <MatraWriteStep matraId={id} guided={false} onDone={done} /> },
 ];
 
 type Phase = "playing" | "transition" | "done";
