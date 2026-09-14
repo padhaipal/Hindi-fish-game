@@ -33,6 +33,7 @@ import {
   playWrongSound,
   playWinSound,
   playLoseSound,
+  playBingSound,
   playEndgameSound,
   stopWinLoseSounds,
   unlockAudio,
@@ -87,7 +88,16 @@ function facingTransform(vx: number, vy: number): string {
   return `scaleX(-1) rotate(${180 - deg}deg)`;
 }
 
-export default function PondGame() {
+export default function PondGame({
+  lockedLetter,
+  rounds = 2,
+  onFinish,
+}: {
+  lockedLetter?: string; // when set, every round targets this one letter (adventure mode)
+  rounds?: number; // how many mini-rounds before handing back to the adventure
+  onFinish?: () => void; // called after the last mini-round (adventure mode)
+} = {}) {
+  const embedded = !!lockedLetter;
   const [phase, setPhase] = useState<Phase>("start");
   const [level, setLevel] = useState(1);
   const [round, setRound] = useState<RoundPlan | null>(null);
@@ -179,6 +189,16 @@ export default function PondGame() {
     setScore(0);
     startLevel(1);
   }, [startLevel]);
+
+  // ---- adventure mode: auto-start, locked to a single letter --------------
+  const embeddedStarted = useRef(false);
+  useEffect(() => {
+    if (!embedded || embeddedStarted.current) return;
+    embeddedStarted.current = true;
+    letterOrderRef.current = [lockedLetter!];
+    setScore(0);
+    startLevel(1);
+  }, [embedded, lockedLetter, startLevel]);
 
   // ---- place the fish + (after layout) play the frozen intro sound -------
   // Runs once per round. Positions the fish so the frozen board looks set up,
@@ -289,16 +309,26 @@ export default function PondGame() {
           const timeStars = pct > 0.5 ? 3 : pct > 0.2 ? 2 : 1;
           setStars(Math.max(1, timeStars - wrongTapsRef.current));
 
-          const wasLastLevel = levelRef.current >= TOTAL_LEVELS;
-          window.setTimeout(() => {
-            if (wasLastLevel) {
-              // Finished all 8 levels -> the final "go back to the app" screen.
-              setPhase("allDone");
-            } else {
-              setPhase("levelComplete");
-              playWinSound(); // clapping/cheer
-            }
-          }, 450);
+          if (embedded) {
+            // Adventure mode: after `rounds` catches, hand back; else auto-advance.
+            const enough = levelRef.current >= rounds;
+            window.setTimeout(() => {
+              playBingSound();
+              if (enough) onFinish?.();
+              else startLevel(levelRef.current + 1);
+            }, 500);
+          } else {
+            const wasLastLevel = levelRef.current >= TOTAL_LEVELS;
+            window.setTimeout(() => {
+              if (wasLastLevel) {
+                // Finished all 8 levels -> the final "go back to the app" screen.
+                setPhase("allDone");
+              } else {
+                setPhase("levelComplete");
+                playWinSound(); // clapping/cheer
+              }
+            }, 450);
+          }
         }
       } else {
         // WRONG: fish stays and shakes gently.
@@ -306,8 +336,9 @@ export default function PondGame() {
         el.classList.add("shake");
         window.setTimeout(() => el.classList.remove("shake"), 450);
 
-        if (wrongTapsRef.current >= MAX_WRONG_TAPS) {
+        if (!embedded && wrongTapsRef.current >= MAX_WRONG_TAPS) {
           // Too many wrong taps -> you lose. Play the sad "wa wa wa".
+          // (In adventure mode there is no losing — just the soft "baaap".)
           roundOverRef.current = true;
           setLoseReason("wrong");
           playLoseSound();
@@ -317,7 +348,7 @@ export default function PondGame() {
         }
       }
     },
-    [phase, spawnBurst]
+    [phase, spawnBurst, embedded, rounds, onFinish, startLevel]
   );
 
   // ---- the animation + timer loop (runs only while "playing") ------------
@@ -432,6 +463,11 @@ export default function PondGame() {
       if (remainingRef.current <= 0) {
         if (!roundOverRef.current) {
           roundOverRef.current = true;
+          if (embedded) {
+            // Adventure mode: no lose screen — quietly restart this mini-round.
+            startLevel(levelRef.current);
+            return;
+          }
           setLoseReason("time");
           playLoseSound(); // sad "wa wa wa"
         }
@@ -455,15 +491,17 @@ export default function PondGame() {
   const target = round?.target;
 
   return (
-    <div className="app">
-      {/* Top bar: score + level */}
-      <div className="topbar">
-        <div className="scorePill">
-          <span>🐟</span>
-          <span>{score}</span>
+    <div className={`app${embedded ? " app--adv" : ""}`}>
+      {/* Top bar: score + level (hidden inside the letter adventure) */}
+      {!embedded && (
+        <div className="topbar">
+          <div className="scorePill">
+            <span>🐟</span>
+            <span>{score}</span>
+          </div>
+          <div className="levelPill">⭐ {Math.min(level, TOTAL_LEVELS)}</div>
         </div>
-        <div className="levelPill">⭐ {Math.min(level, TOTAL_LEVELS)}</div>
-      </div>
+      )}
 
       {/* Target: picture on the left, letter card on the right */}
       {target && (
@@ -514,8 +552,8 @@ export default function PondGame() {
         ))}
       </div>
 
-      {/* ---- Overlays ---- */}
-      {phase === "start" && (
+      {/* ---- Overlays (none while embedded in the letter adventure) ---- */}
+      {!embedded && phase === "start" && (
         <div className="overlay">
           <div className="overlayCard">
             <div className="overlayEmoji">🐟🎣</div>
