@@ -4,25 +4,25 @@
 // MATRA MAKER (मात्रा जोड़ो) — build a syllable by adding the right vowel sign.
 // ---------------------------------------------------------------------------
 // A consonant sits in the middle (क). The goal syllable is shown and spoken
-// ("की"). Along the bottom are matra signs (◌ा ◌ि ◌ी ◌ु …). The child DRAGS the
-// matra that makes the goal sound up onto the consonant: it snaps on, the whole
-// syllable appears in its proper form (की) and is spoken. The matras attach in
-// their real positions (right / left / above / below), so children see where
-// each one goes. Six rounds, then applause.
+// ("की"). A 3×2 grid of matra tiles (◌ा ◌ि ◌ी ◌ु …) sits below. The child DRAGS
+// the matra that makes the goal sound up onto the consonant: it snaps on, the
+// whole syllable appears in its proper form (की) and is spoken. Six rounds,
+// then applause.
 //
-// Syllables are spoken with the phone's Hindi text-to-speech (see lib/tts) —
-// no recordings needed. Correct/wrong/win cues reuse the app's sound effects.
+// Runs standalone (its own start/win screens) OR, when `lockedMatra` is given,
+// as one stop in a matra adventure: the matra is fixed and the CONSONANT varies
+// so the child learns that (say) ा makes का, पा, ता … On the last round it hands
+// back with onFinish() and shows no overlays of its own.
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LETTERS, getLetter, Letter } from "@/lib/letters";
-import { MATRAS, Matra, matraChip, syllable } from "@/lib/matras";
+import { LETTERS, Letter } from "@/lib/letters";
+import { MATRAS, Matra, getMatra, matraChip, syllable } from "@/lib/matras";
 import { primeTts, speakSyllable, stopTts } from "@/lib/tts";
 import { playBingSound, playWrongSound, playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 
-const TOTAL_ROUNDS = 6;
-const OPTIONS = 4; // matra choices per round
+const OPTIONS = 6; // matra choices per round (a 3×2 grid)
 
 type Phase = "start" | "playing" | "won";
 
@@ -41,18 +41,29 @@ function shuffle<T>(a: T[]): T[] {
   return r;
 }
 
-function makeRound(): Round {
+function makeRound(lockedMatra?: string): Round {
   const consonant = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-  const matra = MATRAS[Math.floor(Math.random() * MATRAS.length)];
+  const matra = lockedMatra ? getMatra(lockedMatra) : MATRAS[Math.floor(Math.random() * MATRAS.length)];
   const distractors = shuffle(MATRAS.filter((m) => m.id !== matra.id)).slice(0, OPTIONS - 1);
   return { consonant, matra, options: shuffle([matra, ...distractors]) };
 }
 
-export default function MatraGame() {
+export default function MatraGame({
+  lockedMatra,
+  rounds = 6,
+  onFinish,
+}: {
+  lockedMatra?: string; // adventure mode: fix this matra, vary the consonant
+  rounds?: number;
+  onFinish?: () => void;
+} = {}) {
+  const embedded = !!lockedMatra;
+  const totalRounds = embedded ? rounds : 6;
+
   const [phase, setPhase] = useState<Phase>("start");
   const [round, setRound] = useState(0);
   const [data, setData] = useState<Round | null>(null);
-  const [placed, setPlaced] = useState(false); // correct matra locked on
+  const [placed, setPlaced] = useState(false);
   const [shake, setShake] = useState(false);
   const [offset, setOffset] = useState<Record<string, { x: number; y: number }>>({});
 
@@ -65,10 +76,13 @@ export default function MatraGame() {
     timers.current.forEach((t) => window.clearTimeout(t));
     timers.current = [];
   };
-  useEffect(() => () => {
-    clearTimers();
-    stopTts();
-  }, []);
+  useEffect(
+    () => () => {
+      clearTimers();
+      stopTts();
+    },
+    []
+  );
 
   const speakGoal = useCallback((r: Round) => {
     speakSyllable(syllable(r.consonant.char, r.matra));
@@ -76,7 +90,7 @@ export default function MatraGame() {
 
   const newRound = useCallback(
     (n: number) => {
-      const r = makeRound();
+      const r = makeRound(lockedMatra);
       setData(r);
       setRound(n);
       setPlaced(false);
@@ -85,7 +99,7 @@ export default function MatraGame() {
       busyRef.current = false;
       later(() => speakGoal(r), 500);
     },
-    [speakGoal]
+    [speakGoal, lockedMatra]
   );
 
   const startGame = useCallback(() => {
@@ -95,6 +109,15 @@ export default function MatraGame() {
     newRound(0);
     setPhase("playing");
   }, [newRound]);
+
+  // Auto-start when embedded in an adventure.
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (!embedded || startedRef.current) return;
+    startedRef.current = true;
+    newRound(0);
+    setPhase("playing");
+  }, [embedded, newRound]);
 
   const onDown = (e: React.PointerEvent, id: string) => {
     if (busyRef.current || placed) return;
@@ -116,26 +139,26 @@ export default function MatraGame() {
     const br = chipEl.getBoundingClientRect();
     const cx = br.left + br.width / 2;
     const cy = br.top + br.height / 2;
-    const onCard =
-      !!cr && cx > cr.left - 30 && cx < cr.right + 30 && cy > cr.top - 30 && cy < cr.bottom + 40;
+    const onCard = !!cr && cx > cr.left - 30 && cx < cr.right + 30 && cy > cr.top - 30 && cy < cr.bottom + 40;
 
     if (onCard && m.id === data.matra.id) {
-      // Correct — lock it on, show + speak the whole syllable, advance.
       busyRef.current = true;
       setPlaced(true);
       setOffset((o) => ({ ...o, [m.id]: { x: 0, y: 0 } }));
       playBingSound();
       later(() => speakGoal(data), 250);
       later(() => {
-        if (round + 1 >= TOTAL_ROUNDS) {
-          playWinSound();
-          setPhase("won");
+        if (round + 1 >= totalRounds) {
+          if (embedded) onFinish?.();
+          else {
+            playWinSound();
+            setPhase("won");
+          }
         } else {
           newRound(round + 1);
         }
       }, 1500);
     } else {
-      // Wrong (or dropped away) — snap back, a soft buzz + a shake if on the card.
       setOffset((o) => ({ ...o, [m.id]: { x: 0, y: 0 } }));
       if (onCard) {
         playWrongSound();
@@ -146,15 +169,20 @@ export default function MatraGame() {
   };
 
   return (
-    <div className="matraApp">
-      <Link href="/" className="cornerLink" aria-label="games home" onClick={() => stopTts()}>
-        🏠
-      </Link>
-      {phase !== "start" && <div className="blocksLevelPill">✨ {Math.min(round + 1, TOTAL_ROUNDS)}/{TOTAL_ROUNDS}</div>}
+    <div className={`matraApp${embedded ? " matraApp--adv" : ""}`}>
+      {!embedded && (
+        <Link href="/" className="cornerLink" aria-label="games home" onClick={() => stopTts()}>
+          🏠
+        </Link>
+      )}
+      {!embedded && phase !== "start" && (
+        <div className="blocksLevelPill">
+          ✨ {Math.min(round + 1, totalRounds)}/{totalRounds}
+        </div>
+      )}
 
       {phase === "playing" && data && (
         <div className="matraPlay" onPointerMove={onMove}>
-          {/* Goal */}
           <div className="matraGoal">
             <span className="matraGoalLabel">यह बनाओ</span>
             <span className="matraGoalSyl">{syllable(data.consonant.char, data.matra)}</span>
@@ -172,14 +200,12 @@ export default function MatraGame() {
             </button>
           </div>
 
-          {/* Consonant card (drop target) */}
           <div className="matraCardWrap">
             <div ref={cardRef} className={`matraCard${placed ? " done" : ""}${shake ? " shake" : ""}`}>
               {placed ? syllable(data.consonant.char, data.matra) : data.consonant.char}
             </div>
           </div>
 
-          {/* Matra chips to drag */}
           <div className="matraTray">
             {data.options.map((m) => {
               const off = offset[m.id] ?? { x: 0, y: 0 };
@@ -209,7 +235,7 @@ export default function MatraGame() {
         </div>
       )}
 
-      {phase === "start" && (
+      {!embedded && phase === "start" && (
         <div className="overlay">
           <div className="overlayCard">
             <div className="overlayEmoji">✨</div>
@@ -227,7 +253,7 @@ export default function MatraGame() {
         </div>
       )}
 
-      {phase === "won" && (
+      {!embedded && phase === "won" && (
         <div className="overlay">
           <div className="overlayCard">
             <div className="overlayEmoji">🏆</div>
