@@ -226,21 +226,19 @@ export default function MatraFish({ matraId, onDone }: Props) {
 
     const { text, spoken, isTarget } = makeBubble();
 
-    // Random drift speed; direction is random too. ~50-100 px/s keeps a bubble
-    // on screen for several seconds between edge bounces.
-    const speed = 55 + Math.random() * 55;
-    const angle = Math.random() * Math.PI * 2;
-
+    // Every bubble ENTERS from a single point at the top-centre, then drifts
+    // down and out; after that it bounces off the walls and off other bubbles.
+    const cx = (w - BUBBLE) / 2;
     const b: BubbleMotion = {
       id: idSeq.current++,
       text,
       spoken,
       isTarget,
       color: COLORS[colorSeq.current++ % COLORS.length],
-      x: Math.random() * Math.max(1, w - BUBBLE),
-      y: Math.random() * Math.max(1, h - BUBBLE),
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
+      x: Math.max(0, Math.min(Math.max(0, w - BUBBLE), cx + (Math.random() - 0.5) * 26)),
+      y: 2,
+      vx: (Math.random() - 0.5) * 130, // fan out left/right
+      vy: 48 + Math.random() * 42, // downward, into the play area
       popping: false,
     };
     motion.current.set(b.id, b);
@@ -329,34 +327,72 @@ export default function MatraFish({ matraId, onDone }: Props) {
       if (root) {
         const w = root.clientWidth;
         const h = root.clientHeight;
+        const maxX = Math.max(0, w - BUBBLE);
+        const maxY = Math.max(0, h - BUBBLE);
 
+        // Active (not popping) bubbles take part in movement + collisions.
+        const active: BubbleMotion[] = [];
+        motion.current.forEach((b) => {
+          if (!b.popping) active.push(b);
+        });
+
+        // 1) Move + bounce off the walls.
+        for (const b of active) {
+          b.x += b.vx * dt;
+          b.y += b.vy * dt;
+          if (b.x <= 0) {
+            b.x = 0;
+            b.vx = Math.abs(b.vx);
+          } else if (b.x >= maxX) {
+            b.x = maxX;
+            b.vx = -Math.abs(b.vx);
+          }
+          if (b.y <= 0) {
+            b.y = 0;
+            b.vy = Math.abs(b.vy);
+          } else if (b.y >= maxY) {
+            b.y = maxY;
+            b.vy = -Math.abs(b.vy);
+          }
+        }
+
+        // 2) Bounce bubbles off EACH OTHER so they never overlap (2-D balls).
+        for (let i = 0; i < active.length; i++) {
+          for (let j = i + 1; j < active.length; j++) {
+            const a = active[i];
+            const b = active[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const dist = Math.hypot(dx, dy);
+            if (dist > 0 && dist < BUBBLE) {
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const overlap = (BUBBLE - dist) / 2;
+              a.x -= nx * overlap;
+              a.y -= ny * overlap;
+              b.x += nx * overlap;
+              b.y += ny * overlap;
+              const rel = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+              if (rel < 0) {
+                a.vx += rel * nx;
+                a.vy += rel * ny;
+                b.vx -= rel * nx;
+                b.vy -= rel * ny;
+              }
+            }
+          }
+        }
+
+        // 3) Clamp back inside the walls, then write transforms.
         motion.current.forEach((b) => {
           if (!b.popping) {
-            b.x += b.vx * dt;
-            b.y += b.vy * dt;
-
-            // Bounce off every edge, keeping the bubble fully on screen.
-            const maxX = Math.max(0, w - BUBBLE);
-            const maxY = Math.max(0, h - BUBBLE);
-            if (b.x <= 0) {
-              b.x = 0;
-              b.vx = Math.abs(b.vx);
-            } else if (b.x >= maxX) {
-              b.x = maxX;
-              b.vx = -Math.abs(b.vx);
-            }
-            if (b.y <= 0) {
-              b.y = 0;
-              b.vy = Math.abs(b.vy);
-            } else if (b.y >= maxY) {
-              b.y = maxY;
-              b.vy = -Math.abs(b.vy);
-            }
+            if (b.x < 0) b.x = 0;
+            else if (b.x > maxX) b.x = maxX;
+            if (b.y < 0) b.y = 0;
+            else if (b.y > maxY) b.y = maxY;
           }
           const el = els.current.get(b.id);
-          if (el) {
-            el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`;
-          }
+          if (el) el.style.transform = `translate3d(${b.x}px, ${b.y}px, 0)`;
         });
       }
 

@@ -67,10 +67,6 @@ export default function Home() {
             <span className="gameEmoji">✍️</span>
             <span>लेखन खेल</span>
           </Link>
-          <Link href="/matra" className="gameButton gbMatra">
-            <span className="gameEmoji">✨</span>
-            <span>मात्रा खेल</span>
-          </Link>
         </nav>
 
         <p className="homeGroupLabel">बड़ों के लिए</p>

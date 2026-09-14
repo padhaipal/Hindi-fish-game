@@ -1,19 +1,21 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// MATRA BASKET (मात्रा टोकरी) — one stop in a per-matra adventure.
+// MATRA BASKET (मात्रा टोकरी) — a fruit-tree sorting game for ONE matra.
 // ---------------------------------------------------------------------------
-// A single-MATRA sorting game. Syllable tiles float in the upper area — some
-// carry the TARGET matra (का, पा, मा … when the target is ा) and some carry a
-// DIFFERENT matra (कि, कु, को …). The child DRAGS the tiles that have the target
-// matra into the basket at the bottom, and leaves the rest.
+// A leafy tree stands across the top of the screen with 10 fruits hanging on
+// its canopy. Each fruit has a syllable written on it — 5 carry the TARGET
+// matra (का, पा, मा … when the target is ा) and 5 carry a DIFFERENT matra
+// (कि, कु, को …). The child DRAGS the fruits that have the target matra down
+// into the basket at the bottom, and leaves the rest.
 //
-// Deliberately FORGIVING: no lose / time-up / exit. A wrong tile dropped on the
-// basket gives a soft "baaap", shakes and snaps back — it is never counted and
-// never removed. A tile dropped anywhere off the basket just snaps home. Once
-// the child has collected COLLECT (6) target tiles we call onDone() exactly once
-// (guarded by a ref) and the parent adventure takes over — this component owns
-// no navigation or overlays.
+// Deliberately FORGIVING: no lose / time-up / exit. A wrong fruit dropped on
+// the basket gives a soft "baaap", shakes and snaps back — it is never counted
+// and never removed. A fruit dropped anywhere off the basket just snaps home.
+// The set of 10 fruits is FIXED for the round — nothing ever refills. Once the
+// child has basketed all 5 target fruits we call onDone() exactly once (guarded
+// by a ref) and the parent adventure takes over — this component owns no
+// navigation or overlays.
 //
 // Self-contained: inline styles + one injected <style>, all classes mb- prefixed
 // so nothing collides with globals.css or another component on the page.
@@ -30,65 +32,97 @@ interface Props {
   onDone: () => void;
 }
 
-// How many TARGET tiles the child must basket to finish this stop.
-const COLLECT = 6;
-// How many tiles we try to keep on the board at once (a loose scatter).
-const TILE_COUNT = 6;
-// Tile size in px (kept in sync with .mb-tile below).
-const TILE = 72;
-
-// Cheerful, high-contrast tile fills — the syllable is drawn in dark text so it
-// stays readable on every one. We rotate through these as tiles spawn.
-const COLORS = [
-  "#ff8787", // red
-  "#ffa94d", // orange
-  "#ffd43b", // yellow
-  "#69db7c", // green
-  "#4dabf7", // blue
-  "#da77f2", // purple
-  "#3bc9db", // teal
-];
-
-interface Tile {
-  key: number; // unique, stable identity
-  slot: number; // which layout slot it sits in
-  char: string; // the consonant character
-  matra: Matra; // the matra this tile carries
-  isTarget: boolean; // does it carry the target matra?
-  syl: string; // the rendered syllable, e.g. "का"
-  color: string;
-}
+// How many TARGET fruits carry the matra (== how many must be basketed).
+const TARGETS = 5;
+// Total fruits on the tree (fixed for the whole round): 5 target + 5 distractor.
+const FRUIT_COUNT = 10;
+// Fruit size in px (kept in sync with .mb-fruit below).
+const FRUIT = 70;
 
 type Pt = { x: number; y: number };
 
+// Distinct fruit looks — colour + shape so they read as different fruits. The
+// syllable sits on a light plate on top, so it stays readable on every one.
+interface FruitLook {
+  bg: string;
+  radius: string;
+  leaf: string;
+}
+const LOOKS: FruitLook[] = [
+  // apple (red)
+  { bg: "radial-gradient(circle at 34% 28%, #ff9a9a, #e23b4e 72%)", radius: "50% 50% 47% 47%", leaf: "#3fae57" },
+  // orange
+  { bg: "radial-gradient(circle at 34% 28%, #ffce7a, #ff8f1f 74%)", radius: "50%", leaf: "#3fae57" },
+  // mango (yellow, egg-ish)
+  { bg: "radial-gradient(circle at 36% 26%, #ffe873, #f0ad00 76%)", radius: "56% 56% 50% 50% / 62% 62% 44% 44%", leaf: "#3fae57" },
+  // plum (purple)
+  { bg: "radial-gradient(circle at 34% 28%, #cfa8ff, #8a3ff0 72%)", radius: "50%", leaf: "#3fae57" },
+  // guava (green)
+  { bg: "radial-gradient(circle at 34% 28%, #c2ec86, #5cb531 74%)", radius: "50% 50% 52% 52%", leaf: "#2f9e44" },
+];
+
+interface Fruit {
+  key: number; // stable identity
+  slot: number; // which layout slot it hangs in (0..FRUIT_COUNT-1)
+  isTarget: boolean; // does it carry the target matra?
+  syl: string; // rendered syllable, e.g. "का"
+  look: number; // index into LOOKS
+}
+
+// Build the fixed set of 10 fruits: 5 targets + 5 distractors, shuffled so the
+// colours and the target/distractor fruits interleave over the tree.
+function buildFruits(matra: Matra): Fruit[] {
+  const others = MATRAS.filter((m) => m.id !== matra.id);
+  const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+
+  const raw: { isTarget: boolean; syl: string }[] = [];
+  for (let i = 0; i < TARGETS; i++) {
+    const c = pick(LETTERS);
+    raw.push({ isTarget: true, syl: syllable(c.char, matra) });
+  }
+  for (let i = 0; i < FRUIT_COUNT - TARGETS; i++) {
+    const c = pick(LETTERS);
+    // A different matra guarantees the syllable can never equal the target.
+    const m = pick(others);
+    raw.push({ isTarget: false, syl: syllable(c.char, m) });
+  }
+
+  // Fisher–Yates shuffle so targets are scattered among the slots.
+  for (let i = raw.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [raw[i], raw[j]] = [raw[j], raw[i]];
+  }
+
+  return raw.map((r, i) => ({
+    key: i,
+    slot: i,
+    isTarget: r.isTarget,
+    syl: r.syl,
+    look: i % LOOKS.length,
+  }));
+}
+
 export default function MatraBasket({ matraId, onDone }: Props) {
   const matra = getMatra(matraId);
-  // The matras that are NOT the target — used to build distractor tiles. We
-  // filter by the RESOLVED target id (not the raw prop) so a distractor can
-  // never accidentally equal the target.
-  const otherMatras = useMemo(
-    () => MATRAS.filter((m) => m.id !== matra.id),
-    [matra.id]
-  );
 
   const rootRef = useRef<HTMLDivElement>(null);
   const basketRef = useRef<HTMLDivElement>(null);
   const elsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
 
-  const [tiles, setTiles] = useState<Tile[]>([]);
+  // The fixed set of fruits — built once. If the matra prop changes (rare), a
+  // guarded effect below rebuilds the round.
+  const [fruits, setFruits] = useState<Fruit[]>(() => buildFruits(matra));
   const [offset, setOffset] = useState<Record<number, Pt>>({});
   const [removing, setRemoving] = useState<Set<number>>(new Set());
   const [shakeKey, setShakeKey] = useState<number | null>(null);
   const [collected, setCollected] = useState(0);
 
   const drag = useRef<{ key: number; sx: number; sy: number; pid: number } | null>(null);
-  const keySeq = useRef(0);
-  const colorSeq = useRef(0);
   const collectedRef = useRef(0);
   const doneRef = useRef(false);
-  const seededRef = useRef(false);
   const introRef = useRef(false);
+  const builtForId = useRef(matra.id);
   const timers = useRef<number[]>([]);
 
   const later = useCallback((fn: () => void, ms: number) => {
@@ -125,91 +159,58 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     []
   );
 
+  // ---- rebuild the round if the matra prop changes -------------------------
+  useEffect(() => {
+    if (builtForId.current === matra.id) return;
+    builtForId.current = matra.id;
+    doneRef.current = false;
+    collectedRef.current = 0;
+    setCollected(0);
+    setOffset({});
+    setRemoving(new Set());
+    setShakeKey(null);
+    elsRef.current.clear();
+    setFruits(buildFruits(matra));
+  }, [matra]);
+
   const registerEl = useCallback((key: number, el: HTMLDivElement | null) => {
     if (el) elsRef.current.set(key, el);
     else elsRef.current.delete(key);
   }, []);
 
-  // ---- slot layout: a loose 2-row grid in the upper area ------------------
-  // Slots keep tiles from overlapping each other or the basket. Each slot is a
-  // top-left home position for a TILE-sized square, with a little deterministic
-  // jitter so the row looks scattered rather than mechanical.
+  // ---- slot layout: a scattered grid over the tree canopy -----------------
+  // Slots are top-left home positions for a FRUIT-sized square, laid out inside
+  // the leafy canopy (roughly the top 58% of the area) with a little
+  // deterministic jitter so the fruits look hung rather than gridded.
   const slots = useMemo<Pt[]>(() => {
     if (!dims) return [];
     const { w, h } = dims;
-    const cols = w < 330 ? 2 : 3;
-    const rows = Math.ceil(TILE_COUNT / cols);
-    const topPad = 64; // room for the counter chip up top
-    const basketZone = Math.max(150, Math.min(h * 0.34, 200)); // reserved bottom
+    const cols = w < 340 ? 3 : 4;
+    const rows = Math.ceil(FRUIT_COUNT / cols);
+    const topPad = 82; // room for the goal line + counter chip
+    const canopyH = Math.max(FRUIT * rows + topPad + 20, h * 0.58);
     const areaTop = topPad;
-    const areaH = Math.max(TILE * rows, h - basketZone - topPad);
-    const cellW = w / cols;
+    const areaLeft = w * 0.06;
+    const areaW = w * 0.88;
+    const areaH = Math.max(FRUIT * rows, canopyH - topPad - 12);
+    const cellW = areaW / cols;
     const cellH = areaH / rows;
     const out: Pt[] = [];
-    for (let i = 0; i < TILE_COUNT; i++) {
+    for (let i = 0; i < FRUIT_COUNT; i++) {
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const jx = Math.sin(i * 12.9898) * (cellW - TILE) * 0.18;
-      const jy = Math.cos(i * 4.1414) * (cellH - TILE) * 0.14;
-      let x = col * cellW + (cellW - TILE) / 2 + jx;
-      let y = areaTop + row * cellH + (cellH - TILE) / 2 + jy;
-      x = Math.max(6, Math.min(w - TILE - 6, x));
-      y = Math.max(topPad, Math.min(areaTop + areaH - TILE, y));
+      const jx = Math.sin(i * 12.9898) * (cellW - FRUIT) * 0.22;
+      const jy = Math.cos(i * 4.1414) * (cellH - FRUIT) * 0.18;
+      let x = areaLeft + col * cellW + (cellW - FRUIT) / 2 + jx;
+      let y = areaTop + row * cellH + (cellH - FRUIT) / 2 + jy;
+      x = Math.max(6, Math.min(w - FRUIT - 6, x));
+      y = Math.max(topPad, Math.min(areaTop + areaH - FRUIT, y));
       out.push({ x, y });
     }
     return out;
   }, [dims]);
 
-  // ---- build one tile for a given slot ------------------------------------
-  const makeTile = useCallback(
-    (slot: number, forceTarget: boolean): Tile => {
-      const isTarget = forceTarget || Math.random() < 0.5;
-      const consonant = LETTERS[Math.floor(Math.random() * LETTERS.length)];
-      const m = isTarget
-        ? matra
-        : otherMatras[Math.floor(Math.random() * otherMatras.length)];
-      return {
-        key: keySeq.current++,
-        slot,
-        char: consonant.char,
-        matra: m,
-        isTarget,
-        syl: syllable(consonant.char, m),
-        color: COLORS[colorSeq.current++ % COLORS.length],
-      };
-    },
-    [matra, otherMatras]
-  );
-
-  // ---- spawn `count` tiles into free slots, keeping ≥2 targets present -----
-  const spawn = useCallback(
-    (count: number) => {
-      setTiles((prev) => {
-        const occupied = new Set(prev.map((t) => t.slot));
-        const free: number[] = [];
-        for (let i = 0; i < TILE_COUNT; i++) if (!occupied.has(i)) free.push(i);
-        const next = [...prev];
-        let targets = prev.filter((t) => t.isTarget).length;
-        for (let k = 0; k < count && free.length > 0; k++) {
-          const slot = free.shift() as number;
-          const t = makeTile(slot, targets < 2);
-          if (t.isTarget) targets += 1;
-          next.push(t);
-        }
-        return next;
-      });
-    },
-    [makeTile]
-  );
-
-  // ---- seed the board once the area has been measured ---------------------
-  useEffect(() => {
-    if (!dims || seededRef.current) return;
-    seededRef.current = true;
-    spawn(TILE_COUNT);
-  }, [dims, spawn]);
-
-  // ---- drag handling (pointer capture on the tile; area catches move/up) ---
+  // ---- drag handling (pointer capture on the fruit; area catches move/up) --
   const onDown = (e: React.PointerEvent, key: number) => {
     if (drag.current || doneRef.current || removing.has(key)) return;
     e.preventDefault();
@@ -238,31 +239,30 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     snapBack(key);
   };
 
-  const collect = (tile: Tile) => {
-    speakSyllable(tile.syl);
+  const collect = (fruit: Fruit) => {
+    speakSyllable(fruit.syl);
     playBingSound();
     collectedRef.current += 1;
     setCollected(collectedRef.current);
 
-    // Play a quick shrink-into-basket animation, then drop the tile and (unless
-    // we're finished) refill its slot so ~6 tiles stay on the board.
-    setRemoving((s) => new Set(s).add(tile.key));
-    snapBack(tile.key);
-    const finished = collectedRef.current >= COLLECT;
+    // Quick shrink-into-basket animation, then drop the fruit for good (the set
+    // is fixed — nothing refills).
+    setRemoving((s) => new Set(s).add(fruit.key));
+    snapBack(fruit.key);
+    const finished = collectedRef.current >= TARGETS;
     later(() => {
-      setTiles((prev) => prev.filter((t) => t.key !== tile.key));
+      setFruits((prev) => prev.filter((f) => f.key !== fruit.key));
       setRemoving((s) => {
         const n = new Set(s);
-        n.delete(tile.key);
+        n.delete(fruit.key);
         return n;
       });
-      elsRef.current.delete(tile.key);
-      if (!finished) spawn(1);
+      elsRef.current.delete(fruit.key);
     }, 240);
 
     if (finished && !doneRef.current) {
       doneRef.current = true;
-      later(() => onDone(), 520); // small beat so the last tile is seen landing
+      later(() => onDone(), 560); // small beat so the last fruit is seen landing
     }
   };
 
@@ -270,10 +270,10 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     const d = drag.current;
     if (!d || e.pointerId !== d.pid) return;
     drag.current = null;
-    const tile = tiles.find((t) => t.key === d.key);
+    const fruit = fruits.find((f) => f.key === d.key);
     const el = elsRef.current.get(d.key);
     const basket = basketRef.current;
-    if (!tile || !el || !basket || removing.has(d.key)) {
+    if (!fruit || !el || !basket || removing.has(d.key)) {
       snapBack(d.key);
       return;
     }
@@ -283,16 +283,16 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     const br = basket.getBoundingClientRect();
     // Generous catch area: a little padding around the basket rect.
     const overBasket =
-      cx > br.left - 24 &&
-      cx < br.right + 24 &&
-      cy > br.top - 30 &&
-      cy < br.bottom + 24;
+      cx > br.left - 28 &&
+      cx < br.right + 28 &&
+      cy > br.top - 34 &&
+      cy < br.bottom + 28;
 
     if (overBasket) {
-      if (tile.isTarget) collect(tile);
-      else reject(tile.key);
+      if (fruit.isTarget) collect(fruit);
+      else reject(fruit.key);
     } else {
-      snapBack(tile.key);
+      snapBack(fruit.key);
     }
   };
 
@@ -306,36 +306,52 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     >
       <style>{CSS}</style>
 
-      {/* progress counter */}
-      <div className="mb-counter" aria-live="polite">
-        🧺 {collected}/{COLLECT}
+      {/* the tree: trunk + leafy canopy behind the fruits */}
+      <div className="mb-tree" aria-hidden>
+        <div className="mb-trunk" />
+        <div className="mb-canopy mb-canopy-a" />
+        <div className="mb-canopy mb-canopy-b" />
+        <div className="mb-canopy mb-canopy-c" />
       </div>
 
-      {/* the tiles */}
-      {tiles.map((tile) => {
-        const home = slots[tile.slot] ?? { x: 0, y: 0 };
-        const off = offset[tile.key] ?? { x: 0, y: 0 };
-        const dragging = !!offset[tile.key];
-        const isRemoving = removing.has(tile.key);
+      {/* goal line */}
+      <div className="mb-goal">
+        {matraChip(matra)} वाले फल टोकरी में डालो
+      </div>
+
+      {/* progress counter */}
+      <div className="mb-counter" aria-live="polite">
+        🧺 {collected}/{TARGETS}
+      </div>
+
+      {/* the fruits */}
+      {fruits.map((fruit) => {
+        const home = slots[fruit.slot] ?? { x: 0, y: 0 };
+        const off = offset[fruit.key] ?? { x: 0, y: 0 };
+        const dragging = !!offset[fruit.key];
+        const isRemoving = removing.has(fruit.key);
+        const look = LOOKS[fruit.look];
         return (
           <div
-            key={tile.key}
-            ref={(el) => registerEl(tile.key, el)}
-            className={`mb-tile${shakeKey === tile.key ? " mb-shake" : ""}${
+            key={fruit.key}
+            ref={(el) => registerEl(fruit.key, el)}
+            className={`mb-fruit${shakeKey === fruit.key ? " mb-shake" : ""}${
               isRemoving ? " mb-gone" : ""
             }`}
-            onPointerDown={(e) => onDown(e, tile.key)}
+            onPointerDown={(e) => onDown(e, fruit.key)}
             style={{
-              width: TILE,
-              height: TILE,
-              background: tile.color,
+              width: FRUIT,
+              height: FRUIT,
               transform: `translate3d(${home.x + off.x}px, ${home.y + off.y}px, 0)`,
               transition: dragging ? "none" : undefined,
               zIndex: dragging ? 30 : 5,
             }}
-            aria-label={tile.syl}
+            aria-label={fruit.syl}
           >
-            {tile.syl}
+            <span className="mb-stem" />
+            <span className="mb-leaf" style={{ background: look.leaf }} />
+            <span className="mb-body" style={{ background: look.bg, borderRadius: look.radius }} />
+            <span className="mb-syl">{fruit.syl}</span>
           </div>
         );
       })}
@@ -359,7 +375,66 @@ const CSS = `
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
-  background: linear-gradient(180deg, #d3f0ff 0%, #eaf9ff 48%, #fff3dc 100%);
+  background: linear-gradient(180deg, #bfe9ff 0%, #e6f7ff 46%, #d6f4c8 78%, #eafbd6 100%);
+}
+
+/* ---- the tree ---------------------------------------------------------- */
+.mb-tree { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.mb-trunk {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translateX(-50%);
+  width: 46px;
+  height: 40%;
+  background: linear-gradient(90deg, #8a5a2b, #b07636 45%, #8a5a2b);
+  border-radius: 12px 12px 0 0;
+  box-shadow: inset -6px 0 10px rgba(0,0,0,0.18), inset 6px 0 8px rgba(255,255,255,0.15);
+}
+.mb-canopy {
+  position: absolute;
+  border-radius: 50%;
+  filter: drop-shadow(0 8px 14px rgba(0,0,0,0.12));
+}
+.mb-canopy-a {
+  left: -6%;
+  top: 1%;
+  width: 78%;
+  height: 52%;
+  background: radial-gradient(circle at 38% 32%, #7ed957, #46a531 75%);
+}
+.mb-canopy-b {
+  right: -8%;
+  top: 4%;
+  width: 74%;
+  height: 50%;
+  background: radial-gradient(circle at 40% 30%, #8ee36a, #3f9b2c 76%);
+}
+.mb-canopy-c {
+  left: 50%;
+  top: -6%;
+  transform: translateX(-50%);
+  width: 68%;
+  height: 50%;
+  background: radial-gradient(circle at 42% 34%, #98ea74, #4fb038 78%);
+}
+
+/* ---- headers ----------------------------------------------------------- */
+.mb-goal {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 108px;
+  z-index: 12;
+  padding: 8px 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  font-size: 16px;
+  font-weight: 800;
+  color: #0a3d57;
+  line-height: 1.25;
+  pointer-events: none;
 }
 .mb-counter {
   position: absolute;
@@ -371,37 +446,76 @@ const CSS = `
   gap: 6px;
   padding: 8px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(255,255,255,0.94);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.15);
   font-size: 20px;
   font-weight: 800;
   color: #0a3d57;
   pointer-events: none;
 }
-.mb-tile {
+
+/* ---- fruits ------------------------------------------------------------ */
+.mb-fruit {
   position: absolute;
   left: 0;
   top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 18px;
-  font-size: 38px;
-  font-weight: 800;
-  line-height: 1;
-  color: #1a1330;
-  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
-  box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55),
-    inset 0 -4px 8px rgba(0, 0, 0, 0.14), 0 4px 8px rgba(0, 0, 0, 0.2);
   cursor: grab;
   touch-action: none;
   will-change: transform;
   transition: transform 0.16s ease-out, opacity 0.2s ease-out;
   -webkit-tap-highlight-color: transparent;
 }
-.mb-tile:active { cursor: grabbing; }
+.mb-fruit:active { cursor: grabbing; }
+.mb-body {
+  position: absolute;
+  inset: 6px 0 0 0;
+  box-shadow: inset -8px -8px 14px rgba(0,0,0,0.22),
+    inset 8px 8px 14px rgba(255,255,255,0.28),
+    0 5px 8px rgba(0,0,0,0.24);
+}
+.mb-stem {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) rotate(8deg);
+  width: 6px;
+  height: 12px;
+  border-radius: 3px;
+  background: #7a4a22;
+  z-index: 2;
+}
+.mb-leaf {
+  position: absolute;
+  top: 2px;
+  left: 58%;
+  width: 16px;
+  height: 10px;
+  border-radius: 0 10px 0 10px;
+  transform: rotate(-18deg);
+  z-index: 2;
+  box-shadow: inset 0 -2px 3px rgba(0,0,0,0.15);
+}
+.mb-syl {
+  position: relative;
+  z-index: 3;
+  margin-top: 6px;
+  min-width: 40px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.9);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.05;
+  color: #14263a;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+}
 .mb-gone {
-  transform: scale(0.35) !important;
+  transform: scale(0.32) !important;
   opacity: 0 !important;
   transition: transform 0.24s ease-in, opacity 0.24s ease-in !important;
   pointer-events: none;
@@ -414,6 +528,8 @@ const CSS = `
   60% { margin-left: -7px; }
   80% { margin-left: 6px; }
 }
+
+/* ---- basket ------------------------------------------------------------ */
 .mb-basket {
   position: absolute;
   left: 50%;
@@ -421,15 +537,15 @@ const CSS = `
   transform: translateX(-50%);
   z-index: 2;
   width: min(74%, 260px);
-  min-height: 150px;
+  min-height: 148px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
   padding: 10px 8px 6px;
   border-radius: 26px;
-  background: rgba(255, 255, 255, 0.34);
-  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55);
+  background: rgba(255,255,255,0.30);
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,0.55);
   pointer-events: none;
 }
 .mb-basket-chip {
@@ -440,16 +556,16 @@ const CSS = `
   padding: 6px 16px;
   border-radius: 999px;
   background: #fff;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 3px 8px rgba(0,0,0,0.16);
   font-size: 34px;
   font-weight: 800;
   color: #0a3d57;
   line-height: 1;
 }
 .mb-basket-emoji {
-  font-size: 96px;
+  font-size: 94px;
   line-height: 1;
   margin-top: 2px;
-  filter: drop-shadow(0 4px 5px rgba(0, 0, 0, 0.22));
+  filter: drop-shadow(0 4px 5px rgba(0,0,0,0.22));
 }
 `;
