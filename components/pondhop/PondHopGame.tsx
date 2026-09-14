@@ -42,14 +42,17 @@ type Phase = "start" | "intro" | "playing" | "levelComplete" | "lost" | "allDone
 
 export default function PondHopGame({
   lockedLetter,
-  rounds = 2,
+  lockedLevel = 1,
+  rounds = 1,
   onFinish,
 }: {
   lockedLetter?: string; // adventure mode: every crossing targets this one letter
+  lockedLevel?: number; // which level's difficulty to use in adventure mode
   rounds?: number; // how many crossings before handing back to the adventure
   onFinish?: () => void; // called after the last crossing (adventure mode)
 } = {}) {
   const embedded = !!lockedLetter;
+  const flowRoundsRef = useRef(0); // crossings completed in adventure mode
   const [phase, setPhase] = useState<Phase>("start");
   const [level, setLevel] = useState(1);
   const [target, setTarget] = useState<Letter | null>(null);
@@ -124,8 +127,9 @@ export default function PondHopGame({
     if (!embedded || embeddedStarted.current) return;
     embeddedStarted.current = true;
     letterOrderRef.current = [lockedLetter!];
-    startLevel(1);
-  }, [embedded, lockedLetter, startLevel]);
+    flowRoundsRef.current = 0;
+    startLevel(lockedLevel);
+  }, [embedded, lockedLetter, lockedLevel, startLevel]);
 
   // ---- intro: play the picture+letter prompt, then start the timer -------
   useEffect(() => {
@@ -203,11 +207,12 @@ export default function PondHopGame({
           roundOverRef.current = true;
           busyRef.current = true;
           if (embedded) {
-            const enough = level >= rounds;
+            flowRoundsRef.current += 1;
+            const enough = flowRoundsRef.current >= rounds;
             later(() => {
               playBingSound();
               if (enough) onFinish?.();
-              else startLevel(level + 1);
+              else startLevel(lockedLevel);
             }, HOP_MS + 250);
           } else {
             later(() => {
@@ -237,7 +242,7 @@ export default function PondHopGame({
         }, HOP_MS + 450);
       }
     },
-    [phase, pos, board, isLastLevel, embedded, level, rounds, onFinish, startLevel]
+    [phase, pos, board, isLastLevel, embedded, level, lockedLevel, rounds, onFinish, startLevel]
   );
 
   const cfg = HOP_LEVELS[level - 1];

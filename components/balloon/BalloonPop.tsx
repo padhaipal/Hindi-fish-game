@@ -225,8 +225,8 @@ export default function BalloonPop({ letterId, onDone }: Props) {
       x: baseX,
       // Start a little below the bottom so it floats up into view.
       y: -(BALLOON + 30),
-      // Cross the screen in ~6-9s -> speed depends on the height.
-      speed: root.clientHeight / (6 + Math.random() * 3),
+      // Cross the screen in ~4-6s (50% faster) -> speed depends on the height.
+      speed: root.clientHeight / (4 + Math.random() * 2),
       sway: Math.random() * Math.PI * 2,
       swayAmp,
       baseX,

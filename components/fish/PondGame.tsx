@@ -90,14 +90,19 @@ function facingTransform(vx: number, vy: number): string {
 
 export default function PondGame({
   lockedLetter,
-  rounds = 2,
+  lockedLevel = 1,
+  lockedFishCount,
+  rounds = 1,
   onFinish,
 }: {
   lockedLetter?: string; // when set, every round targets this one letter (adventure mode)
+  lockedLevel?: number; // which level's difficulty to use in adventure mode
+  lockedFishCount?: number; // override the pond's fish count in adventure mode
   rounds?: number; // how many mini-rounds before handing back to the adventure
   onFinish?: () => void; // called after the last mini-round (adventure mode)
 } = {}) {
   const embedded = !!lockedLetter;
+  const flowRoundsRef = useRef(0); // rounds completed in adventure mode
   const [phase, setPhase] = useState<Phase>("start");
   const [level, setLevel] = useState(1);
   const [round, setRound] = useState<RoundPlan | null>(null);
@@ -148,7 +153,9 @@ export default function PondGame({
 
   // ---- start (or restart) a level ----------------------------------------
   const startLevel = useCallback((levelNumber: number) => {
-    const cfg = getLevelConfig(levelNumber);
+    const base = getLevelConfig(levelNumber);
+    // Adventure mode can pin an exact fish count (e.g. 6 fish → 3 targets).
+    const cfg = embedded && lockedFishCount ? { ...base, fishCount: lockedFishCount } : base;
     // This level's target letter comes from the shuffled per-game order.
     const order = letterOrderRef.current;
     const targetId = order[(levelNumber - 1) % order.length];
@@ -174,7 +181,7 @@ export default function PondGame({
     setRound(plan);
     setPhase("intro"); // start FROZEN; the intro sound effect will unfreeze
     setRoundId((r) => r + 1);
-  }, []);
+  }, [embedded, lockedFishCount]);
 
   // ---- start a brand-new game --------------------------------------------
   // Reshuffle the 8 letters (so each level's target is random per player), reset
@@ -196,9 +203,10 @@ export default function PondGame({
     if (!embedded || embeddedStarted.current) return;
     embeddedStarted.current = true;
     letterOrderRef.current = [lockedLetter!];
+    flowRoundsRef.current = 0;
     setScore(0);
-    startLevel(1);
-  }, [embedded, lockedLetter, startLevel]);
+    startLevel(lockedLevel);
+  }, [embedded, lockedLetter, lockedLevel, startLevel]);
 
   // ---- place the fish + (after layout) play the frozen intro sound -------
   // Runs once per round. Positions the fish so the frozen board looks set up,
@@ -310,12 +318,13 @@ export default function PondGame({
           setStars(Math.max(1, timeStars - wrongTapsRef.current));
 
           if (embedded) {
-            // Adventure mode: after `rounds` catches, hand back; else auto-advance.
-            const enough = levelRef.current >= rounds;
+            // Adventure mode: play exactly `rounds` rounds at the pinned level.
+            flowRoundsRef.current += 1;
+            const enough = flowRoundsRef.current >= rounds;
             window.setTimeout(() => {
               playBingSound();
               if (enough) onFinish?.();
-              else startLevel(levelRef.current + 1);
+              else startLevel(lockedLevel);
             }, 500);
           } else {
             const wasLastLevel = levelRef.current >= TOTAL_LEVELS;
@@ -348,7 +357,7 @@ export default function PondGame({
         }
       }
     },
-    [phase, spawnBurst, embedded, rounds, onFinish, startLevel]
+    [phase, spawnBurst, embedded, rounds, lockedLevel, onFinish, startLevel]
   );
 
   // ---- the animation + timer loop (runs only while "playing") ------------
