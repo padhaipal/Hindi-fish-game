@@ -26,6 +26,7 @@ import {
   playWrongSound,
   playWinSound,
   playLoseSound,
+  playBingSound,
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
@@ -39,7 +40,16 @@ const HOP_MS = 480;
 
 type Phase = "start" | "intro" | "playing" | "levelComplete" | "lost" | "allDone";
 
-export default function PondHopGame() {
+export default function PondHopGame({
+  lockedLetter,
+  rounds = 2,
+  onFinish,
+}: {
+  lockedLetter?: string; // adventure mode: every crossing targets this one letter
+  rounds?: number; // how many crossings before handing back to the adventure
+  onFinish?: () => void; // called after the last crossing (adventure mode)
+} = {}) {
+  const embedded = !!lockedLetter;
   const [phase, setPhase] = useState<Phase>("start");
   const [level, setLevel] = useState(1);
   const [target, setTarget] = useState<Letter | null>(null);
@@ -108,6 +118,15 @@ export default function PondHopGame() {
     startLevel(1);
   }, [startLevel]);
 
+  // ---- adventure mode: auto-start, locked to a single letter --------------
+  const embeddedStarted = useRef(false);
+  useEffect(() => {
+    if (!embedded || embeddedStarted.current) return;
+    embeddedStarted.current = true;
+    letterOrderRef.current = [lockedLetter!];
+    startLevel(1);
+  }, [embedded, lockedLetter, startLevel]);
+
   // ---- intro: play the picture+letter prompt, then start the timer -------
   useEffect(() => {
     if (phase !== "intro" || !target) return;
@@ -145,8 +164,12 @@ export default function PondHopGame() {
       if (remainingRef.current <= 0) {
         if (!roundOverRef.current) {
           roundOverRef.current = true;
-          playLoseSound(); // sad "wa wa wa"
-          setPhase("lost");
+          if (embedded) {
+            startLevel(level); // adventure mode: quietly retry, no lose screen
+          } else {
+            playLoseSound(); // sad "wa wa wa"
+            setPhase("lost");
+          }
         }
         return;
       }
@@ -176,13 +199,22 @@ export default function PondHopGame() {
         setPos(newPos);
 
         if (newPos >= board.length - 1) {
-          // Reached the far bank -> the level is won (after the hop lands).
+          // Reached the far bank -> the crossing is won (after the hop lands).
           roundOverRef.current = true;
           busyRef.current = true;
-          later(() => {
-            playWinSound(); // applause
-            setPhase(isLastLevel ? "allDone" : "levelComplete");
-          }, HOP_MS + 250);
+          if (embedded) {
+            const enough = level >= rounds;
+            later(() => {
+              playBingSound();
+              if (enough) onFinish?.();
+              else startLevel(level + 1);
+            }, HOP_MS + 250);
+          } else {
+            later(() => {
+              playWinSound(); // applause
+              setPhase(isLastLevel ? "allDone" : "levelComplete");
+            }, HOP_MS + 250);
+          }
         }
       } else {
         // WRONG: the frog leaps at the stone, it turns red, the frog falls in.
@@ -195,12 +227,17 @@ export default function PondHopGame() {
           playWrongSound(); // the "splash"
         }, HOP_MS - 40);
         later(() => {
-          playLoseSound(); // sad "wa wa wa"
-          setPhase("lost");
+          if (embedded) {
+            // Adventure mode: no lose screen — quietly retry this crossing.
+            startLevel(level);
+          } else {
+            playLoseSound(); // sad "wa wa wa"
+            setPhase("lost");
+          }
         }, HOP_MS + 450);
       }
     },
-    [phase, pos, board, isLastLevel]
+    [phase, pos, board, isLastLevel, embedded, level, rounds, onFinish, startLevel]
   );
 
   const cfg = HOP_LEVELS[level - 1];
@@ -208,11 +245,13 @@ export default function PondHopGame() {
   const playing = phase === "playing";
 
   return (
-    <div className="hopApp" style={{ background: cfg.bg }}>
-      <Link href="/" className="cornerLink" aria-label="games home">
-        🏠
-      </Link>
-      {phase !== "start" && (
+    <div className={`hopApp${embedded ? " hopApp--adv" : ""}`} style={{ background: cfg.bg }}>
+      {!embedded && (
+        <Link href="/" className="cornerLink" aria-label="games home">
+          🏠
+        </Link>
+      )}
+      {!embedded && phase !== "start" && (
         <div className="blocksLevelPill">
           स्तर {level}/{TOTAL_HOP_LEVELS}
         </div>
@@ -310,8 +349,8 @@ export default function PondHopGame() {
         </div>
       )}
 
-      {/* ---- Overlays ---- */}
-      {phase === "start" && (
+      {/* ---- Overlays (none while embedded in the letter adventure) ---- */}
+      {!embedded && phase === "start" && (
         <div className="overlay">
           <div className="overlayCard">
             <div className="overlayEmoji">🐸</div>

@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { LETTERS } from "@/lib/letters";
 
 // ---------------------------------------------------------------------------
 // HOME — the PadhaiPal Hindi games collection.
-// A simple landing page linking to the games. Each game is also directly
-// reachable at its own URL (/fish, /blocks, ...).
+// Top: a per-letter "adventure" (a sequence of mini-games for one letter, its
+// own deep link at /letter/<id>); then each individual game at its own URL.
 //
 // The letter games are for young children. "टीबी का सफ़र" (/tb) is a health
 // game for adults, built for tb.care, so it sits in its own group below them.
@@ -17,6 +18,19 @@ export default function Home() {
         <h1 className="homeTitle">PadhaiPal</h1>
         <p className="homeSub">हिंदी खेल</p>
 
+        {/* Per-letter adventures */}
+        <h2 className="homeSection">✨ अक्षर की सैर</h2>
+        <nav className="homeLetters">
+          {LETTERS.map((l) => (
+            <Link key={l.id} href={`/letter/${l.id}`} className="letterTile" aria-label={`${l.char} की सैर`}>
+              <span className="letterTileChar">{l.char}</span>
+              <span className="letterTilePic">{l.id === "la" ? "🌀" : l.emoji}</span>
+            </Link>
+          ))}
+        </nav>
+
+        {/* Individual games */}
+        <h2 className="homeSection">🎮 सभी खेल</h2>
         <nav className="homeButtons">
           <Link href="/pondhop" className="gameButton gbHop">
             <span className="gameEmoji">🐸</span>
