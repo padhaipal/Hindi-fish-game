@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import MatraGame from "@/components/matra/MatraGame";
+import MatraPond from "@/components/matra/MatraPond";
 import MatraFish from "@/components/matra/MatraFish";
 import MatraBasket from "@/components/matra/MatraBasket";
 import { MATRAS, getMatra, matraChip } from "@/lib/matras";
@@ -32,6 +33,7 @@ type StepDef = {
 
 const STEPS: StepDef[] = [
   { key: "maker", icon: "✨", render: (id, done) => <MatraGame lockedMatra={id} rounds={4} onFinish={done} /> },
+  { key: "pond", icon: "🐸", pad: true, render: (id, done) => <MatraPond matraId={id} onDone={done} /> },
   { key: "fish", icon: "🫧", pad: true, render: (id, done) => <MatraFish matraId={id} onDone={done} /> },
   { key: "basket", icon: "🧺", pad: true, render: (id, done) => <MatraBasket matraId={id} onDone={done} /> },
 ];
