@@ -22,6 +22,7 @@ import PondGame from "@/components/fish/PondGame";
 import BalloonPop from "@/components/balloon/BalloonPop";
 import BuildLetter from "@/components/build/BuildLetter";
 import TraceStep from "@/components/adventure/TraceStep";
+import FreeWriteStep from "@/components/adventure/FreeWriteStep";
 import { getLetter, LETTERS } from "@/lib/letters";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 
@@ -29,11 +30,12 @@ type StepDef = { key: string; icon: string; render: (letterId: string, done: () 
 
 // Recognise the letter first (moving games), then form it (build, then write).
 const STEPS: StepDef[] = [
-  { key: "pond", icon: "🐸", render: (id, done) => <PondHopGame lockedLetter={id} rounds={2} onFinish={done} /> },
-  { key: "fish", icon: "🐠", render: (id, done) => <PondGame lockedLetter={id} rounds={2} onFinish={done} /> },
+  { key: "pond", icon: "🐸", render: (id, done) => <PondHopGame lockedLetter={id} lockedLevel={4} rounds={1} onFinish={done} /> },
+  { key: "fish", icon: "🐠", render: (id, done) => <PondGame lockedLetter={id} lockedLevel={6} lockedFishCount={6} rounds={1} onFinish={done} /> },
   { key: "balloon", icon: "🎈", render: (id, done) => <BalloonPop letterId={id} onDone={done} /> },
   { key: "build", icon: "🧩", render: (id, done) => <BuildLetter letterId={id} onDone={done} /> },
   { key: "trace", icon: "✍️", render: (id, done) => <TraceStep letterId={id} onDone={done} /> },
+  { key: "write", icon: "✏️", render: (id, done) => <FreeWriteStep letterId={id} onDone={done} /> },
 ];
 
 type Phase = "playing" | "transition" | "done";
