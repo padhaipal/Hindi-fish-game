@@ -7,10 +7,13 @@
 // Each bubble shows a consonant + a matra (e.g. का, कि, पू). The child taps the
 // bubbles that carry the TARGET matra's sign (e.g. all the "ा" ones: का, पा, मा).
 //
-// It is deliberately FORGIVING: there is no lose / time-up / exit state. A wrong
-// tap plays a soft "baaap" and costs nothing. Once the child has caught
-// CATCH_COUNT (6) target bubbles we call onDone() exactly once and the parent
-// adventure takes over — this component owns no navigation or overlays.
+// It is deliberately FORGIVING: there is no lose / time-up / exit state. Only
+// the CORRECT (target) bubbles pop when tapped; a wrong tap just gives the
+// bubble a soft "baaap" and a little wobble — it does NOT pop, so nothing is
+// lost by trying. Bubbles that are never popped drift for a while and then
+// float away on their own, so the pond keeps cycling in fresh ones. Once the
+// child has caught CATCH_COUNT (6) target bubbles we call onDone() exactly once
+// and the parent adventure takes over — this component owns no navigation.
 //
 // Motion is animated the same way as the balloon / pond games: each bubble's
 // position lives in a ref, and a SINGLE requestAnimationFrame loop writes
@@ -39,6 +42,10 @@ const MAX_BUBBLES = 7;
 const TARGET_SHARE = 0.5;
 // Bubble diameter in px (must match the .mf-bubble width/height below).
 const BUBBLE = 76;
+// How long a bubble lingers before it floats away on its own (ms). Wrong
+// bubbles are never popped, so this keeps the screen from filling up with
+// distractors and lets fresh targets keep spawning.
+const LIFE_MS = 9000;
 
 // Cheerful, high-contrast bubble fills — the syllable is drawn in dark text so
 // it stays readable on every one. We rotate through these as bubbles spawn.
@@ -64,7 +71,9 @@ interface BubbleMotion {
   y: number; // px from the top edge
   vx: number; // px per second, horizontal
   vy: number; // px per second, vertical
-  popping: boolean; // true once tapped — freezes it while the pop plays out
+  popping: boolean; // true once a TARGET is tapped — freezes it while it pops
+  leaving: boolean; // true once it has lived out its time and is floating away
+  born: number; // performance.now() when it spawned (for the lifetime)
 }
 
 // Unique class prefix so the injected styles never collide with globals.css or
@@ -129,6 +138,22 @@ const CSS = `
 .mf-pop {
   transform: scale(1.5) !important;
   opacity: 0 !important;
+}
+/* wrong tap: a quick wobble, the bubble stays (it does not pop) */
+.mf-shake {
+  animation: mf-shake 0.42s ease;
+}
+@keyframes mf-shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20% { transform: translateX(-6px) rotate(-8deg); }
+  50% { transform: translateX(6px) rotate(8deg); }
+  80% { transform: translateX(-4px) rotate(-5deg); }
+}
+/* lived out its time: gently fade + drift away (not a pop) */
+.mf-leave {
+  transform: scale(0.85) !important;
+  opacity: 0 !important;
+  transition: transform 0.45s ease-in, opacity 0.45s ease-in !important;
 }
 .mf-chip {
   position: absolute;
@@ -240,6 +265,8 @@ export default function MatraFish({ matraId, onDone }: Props) {
       vx: (Math.random() - 0.5) * 130, // fan out left/right
       vy: 48 + Math.random() * 42, // downward, into the play area
       popping: false,
+      leaving: false,
+      born: performance.now(),
     };
     motion.current.set(b.id, b);
     setBubbles((list) => [...list, b]);
@@ -256,36 +283,56 @@ export default function MatraFish({ matraId, onDone }: Props) {
   const handleTap = useCallback(
     (id: number) => {
       const b = motion.current.get(id);
-      if (!b || b.popping || doneRef.current) return;
+      if (!b || b.popping || b.leaving || doneRef.current) return;
       unlockAudio(); // first gesture unlocks audio on mobile
-
-      b.popping = true; // freeze it in the rAF loop while the pop plays
       const el = els.current.get(id);
-      if (el) {
-        const body = el.querySelector(".mf-body");
-        if (body) body.classList.add("mf-pop"); // quick scale-up + fade
+      const body = el?.querySelector(".mf-body");
+
+      if (!b.isTarget) {
+        // WRONG: only a soft "baaap" and a little wobble. The bubble does NOT
+        // pop — nothing is lost — it stays put and can be ignored.
+        playWrongSound();
+        if (body) {
+          body.classList.remove("mf-shake");
+          // force reflow so the animation can retrigger on repeated taps
+          void (body as HTMLElement).offsetWidth;
+          body.classList.add("mf-shake");
+          window.setTimeout(() => body.classList.remove("mf-shake"), 440);
+        }
+        return;
       }
 
-      if (b.isTarget) {
-        // CORRECT: speak the syllable, play a bright "bing!", count it.
-        speakSyllable(b.spoken);
-        playBingSound();
-        caughtRef.current += 1;
-        setCaught(caughtRef.current);
-        if (caughtRef.current >= CATCH_COUNT && !doneRef.current) {
-          doneRef.current = true;
-          // Small beat so the last pop animation is seen before we hand off.
-          window.setTimeout(() => onDone(), 280);
-        }
-      } else {
-        // WRONG: soft "baaap", no penalty — the bubble just pops too.
-        playWrongSound();
+      // CORRECT: pop it — speak the syllable, play a bright "bing!", count it.
+      b.popping = true; // freeze it in the rAF loop while the pop plays
+      if (body) body.classList.add("mf-pop"); // quick scale-up + fade
+      speakSyllable(b.spoken);
+      playBingSound();
+      caughtRef.current += 1;
+      setCaught(caughtRef.current);
+      if (caughtRef.current >= CATCH_COUNT && !doneRef.current) {
+        doneRef.current = true;
+        // Small beat so the last pop animation is seen before we hand off.
+        window.setTimeout(() => onDone(), 280);
       }
 
       // Remove after the ~250ms pop animation finishes.
       window.setTimeout(() => remove(id), 250);
     },
     [onDone, remove]
+  );
+
+  // ---- retire a bubble that has lived out its time (float it away) --------
+  const retire = useCallback(
+    (id: number) => {
+      const b = motion.current.get(id);
+      if (!b || b.popping || b.leaving) return;
+      b.leaving = true; // frozen in the rAF loop while it drifts off
+      const el = els.current.get(id);
+      const body = el?.querySelector(".mf-body");
+      if (body) body.classList.add("mf-leave");
+      window.setTimeout(() => remove(id), 460);
+    },
+    [remove]
   );
 
   // ---- mount: unlock audio, prime TTS once, start spawning ---------------
@@ -330,10 +377,17 @@ export default function MatraFish({ matraId, onDone }: Props) {
         const maxX = Math.max(0, w - BUBBLE);
         const maxY = Math.max(0, h - BUBBLE);
 
-        // Active (not popping) bubbles take part in movement + collisions.
+        // Active (not popping, not leaving) bubbles move + collide. Any bubble
+        // that has outlived LIFE_MS is retired so it floats away and frees a
+        // slot for a fresh one (wrong bubbles are never popped by the child).
         const active: BubbleMotion[] = [];
         motion.current.forEach((b) => {
-          if (!b.popping) active.push(b);
+          if (b.popping || b.leaving) return;
+          if (t - b.born > LIFE_MS) {
+            retire(b.id);
+            return;
+          }
+          active.push(b);
         });
 
         // 1) Move + bounce off the walls.
