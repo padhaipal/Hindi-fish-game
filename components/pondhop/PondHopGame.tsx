@@ -44,11 +44,13 @@ export default function PondHopGame({
   lockedLetter,
   lockedLevel = 1,
   rounds = 1,
+  timeBonusSeconds = 0,
   onFinish,
 }: {
   lockedLetter?: string; // adventure mode: every crossing targets this one letter
   lockedLevel?: number; // which level's difficulty to use in adventure mode
   rounds?: number; // how many crossings before handing back to the adventure
+  timeBonusSeconds?: number; // extra seconds added to the level's crossing time
   onFinish?: () => void; // called after the last crossing (adventure mode)
 } = {}) {
   const embedded = !!lockedLetter;
@@ -95,8 +97,8 @@ export default function PondHopGame({
 
     roundOverRef.current = false;
     busyRef.current = false;
-    remainingRef.current = cfg.timeSeconds * 1000;
-    totalRef.current = cfg.timeSeconds * 1000;
+    remainingRef.current = (cfg.timeSeconds + timeBonusSeconds) * 1000;
+    totalRef.current = (cfg.timeSeconds + timeBonusSeconds) * 1000;
 
     setLevel(levelNumber);
     setTarget(tgt);
@@ -109,7 +111,7 @@ export default function PondHopGame({
     setSplashId(null);
     setPhase("intro"); // frozen; the intro sound unfreezes into "playing"
     setRoundId((r) => r + 1);
-  }, []);
+  }, [timeBonusSeconds]);
 
   const newGame = useCallback(() => {
     const ids = LETTERS.map((l) => l.id);

@@ -3,17 +3,18 @@
 // ---------------------------------------------------------------------------
 // MATRA BASKET (मात्रा टोकरी) — a fruit-tree sorting game for ONE matra.
 // ---------------------------------------------------------------------------
-// A leafy tree stands across the top of the screen with 10 fruits hanging on
-// its canopy. Each fruit has a syllable written on it — 5 carry the TARGET
-// matra (का, पा, मा … when the target is ा) and 5 carry a DIFFERENT matra
+// A leafy tree stands across the top of the screen with 12 fruits hanging on
+// its canopy. Each fruit has a syllable written on it — 6 carry the TARGET
+// matra (का, पा, मा … when the target is ा) and 6 carry a DIFFERENT matra
 // (कि, कु, को …). The child DRAGS the fruits that have the target matra down
-// into the basket at the bottom, and leaves the rest.
+// into the basket at the bottom, and leaves the rest. A basketed fruit lands
+// as a visible little fruit in the basket mouth, so the pile grows as they go.
 //
 // Deliberately FORGIVING: no lose / time-up / exit. A wrong fruit dropped on
 // the basket gives a soft "baaap", shakes and snaps back — it is never counted
 // and never removed. A fruit dropped anywhere off the basket just snaps home.
-// The set of 10 fruits is FIXED for the round — nothing ever refills. Once the
-// child has basketed all 5 target fruits we call onDone() exactly once (guarded
+// The set of 12 fruits is FIXED for the round — nothing ever refills. Once the
+// child has basketed all 6 target fruits we call onDone() exactly once (guarded
 // by a ref) and the parent adventure takes over — this component owns no
 // navigation or overlays.
 //
@@ -34,7 +35,7 @@ interface Props {
 
 // How many TARGET fruits carry the matra (== how many must be basketed).
 const TARGETS = 6;
-// Total fruits on the tree (fixed for the whole round): 5 target + 5 distractor.
+// Total fruits on the tree (fixed for the whole round): 6 target + 6 distractor.
 const FRUIT_COUNT = 12;
 // Fruit size in px (kept in sync with .mb-fruit below).
 const FRUIT = 70;
@@ -69,7 +70,7 @@ interface Fruit {
   look: number; // index into LOOKS
 }
 
-// Build the fixed set of 10 fruits: 5 targets + 5 distractors, shuffled so the
+// Build the fixed set of 12 fruits: 6 targets + 6 distractors, shuffled so the
 // colours and the target/distractor fruits interleave over the tree.
 function buildFruits(matra: Matra): Fruit[] {
   const others = MATRAS.filter((m) => m.id !== matra.id);
@@ -117,6 +118,9 @@ export default function MatraBasket({ matraId, onDone }: Props) {
   const [removing, setRemoving] = useState<Set<number>>(new Set());
   const [shakeKey, setShakeKey] = useState<number | null>(null);
   const [collected, setCollected] = useState(0);
+  // Fruits that have landed in the basket — shown piled up inside it so the
+  // child can see the fruit they dropped in (they don't just vanish).
+  const [basketed, setBasketed] = useState<{ key: number; syl: string; look: number }[]>([]);
 
   const drag = useRef<{ key: number; sx: number; sy: number; pid: number } | null>(null);
   const collectedRef = useRef(0);
@@ -169,6 +173,7 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     setOffset({});
     setRemoving(new Set());
     setShakeKey(null);
+    setBasketed([]);
     elsRef.current.clear();
     setFruits(buildFruits(matra));
   }, [matra]);
@@ -245,8 +250,8 @@ export default function MatraBasket({ matraId, onDone }: Props) {
     collectedRef.current += 1;
     setCollected(collectedRef.current);
 
-    // Quick shrink-into-basket animation, then drop the fruit for good (the set
-    // is fixed — nothing refills).
+    // Quick shrink-into-basket animation, then move the fruit from the tree into
+    // the visible pile inside the basket (the set is fixed — nothing refills).
     setRemoving((s) => new Set(s).add(fruit.key));
     snapBack(fruit.key);
     const finished = collectedRef.current >= TARGETS;
@@ -257,6 +262,7 @@ export default function MatraBasket({ matraId, onDone }: Props) {
         n.delete(fruit.key);
         return n;
       });
+      setBasketed((b) => [...b, { key: fruit.key, syl: fruit.syl, look: fruit.look }]);
       elsRef.current.delete(fruit.key);
     }, 240);
 
@@ -360,6 +366,16 @@ export default function MatraBasket({ matraId, onDone }: Props) {
       <div className="mb-basket" ref={basketRef} aria-hidden>
         <span className="mb-basket-chip">{matraChip(matra)}</span>
         <span className="mb-basket-emoji">🧺</span>
+        {/* the fruit collected so far, sitting visibly in the basket mouth */}
+        {basketed.length > 0 && (
+          <div className="mb-pile">
+            {basketed.map((f) => (
+              <span key={f.key} className="mb-pile-fruit" style={{ background: LOOKS[f.look].bg }}>
+                <span className="mb-pile-syl">{f.syl}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -567,5 +583,44 @@ const CSS = `
   line-height: 1;
   margin-top: 2px;
   filter: drop-shadow(0 4px 5px rgba(0,0,0,0.22));
+}
+
+/* ---- collected fruit, visibly piled in the basket mouth --------------- */
+.mb-pile {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 58px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap-reverse;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 3px 4px;
+  pointer-events: none;
+}
+.mb-pile-fruit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  box-shadow: inset -4px -5px 8px rgba(0,0,0,0.22),
+    inset 4px 4px 7px rgba(255,255,255,0.25),
+    0 2px 4px rgba(0,0,0,0.28);
+  animation: mb-plop 0.3s ease;
+}
+.mb-pile-syl {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1;
+  color: #14263a;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.55);
+}
+@keyframes mb-plop {
+  0% { transform: translateY(-16px) scale(0.6); opacity: 0; }
+  60% { transform: translateY(0) scale(1.12); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 `;
