@@ -42,7 +42,7 @@ export const LETTERS: Letter[] = [
     char: "ब",
     roman: "ba",
     audio: "/audio/letters/ba.mp3",
-    word: "बत्तख़", // duck
+    word: "बतख", // duck
     emoji: "🦆",
     lookAlikes: ["ka"], // क has a similar vertical-stroke feel for beginners
     soundAlikes: ["pa"], // ब / प are an easy voiced-vs-unvoiced mix-up
@@ -82,7 +82,7 @@ export const LETTERS: Letter[] = [
     char: "त",
     roman: "ta",
     audio: "/audio/letters/ta.mp3",
-    word: "तरबूज़", // watermelon
+    word: "तरबूज", // watermelon
     emoji: "🍉",
     lookAlikes: ["ra"],
     soundAlikes: ["ta"],
@@ -129,39 +129,42 @@ export const LETTERS: Letter[] = [
 // `audio` paths are kept only for shape; they are never played for these.
 // ---------------------------------------------------------------------------
 const EXTRA_LETTERS: Letter[] = [
-  // --- vowels (स्वर) -------------------------------------------------------
-  { id: "a", char: "अ", roman: "a", audio: "/audio/letters/a.mp3", word: "अनानास", emoji: "🍍", lookAlikes: [], soundAlikes: [] },
+  // --- vowels (स्वर) — words/pics from the standard varnamala chart --------
+  { id: "a", char: "अ", roman: "a", audio: "/audio/letters/a.mp3", word: "अनार", emoji: "🍎", lookAlikes: [], soundAlikes: [] },
   { id: "aa", char: "आ", roman: "aa", audio: "/audio/letters/aa.mp3", word: "आम", emoji: "🥭", lookAlikes: ["a"], soundAlikes: ["a"] },
-  { id: "i", char: "इ", roman: "i", audio: "/audio/letters/i.mp3", word: "इंद्रधनुष", emoji: "🌈", lookAlikes: ["ii"], soundAlikes: ["ii"] },
+  { id: "i", char: "इ", roman: "i", audio: "/audio/letters/i.mp3", word: "इमली", emoji: "🫘", lookAlikes: ["ii"], soundAlikes: ["ii"] },
   { id: "ii", char: "ई", roman: "ii", audio: "/audio/letters/ii.mp3", word: "ईंट", emoji: "🧱", lookAlikes: ["i"], soundAlikes: ["i"] },
   { id: "u", char: "उ", roman: "u", audio: "/audio/letters/u.mp3", word: "उल्लू", emoji: "🦉", lookAlikes: ["uu"], soundAlikes: ["uu"] },
-  { id: "uu", char: "ऊ", roman: "uu", audio: "/audio/letters/uu.mp3", word: "ऊँट", emoji: "🐫", lookAlikes: ["u"], soundAlikes: ["u"] },
-  { id: "e", char: "ए", roman: "e", audio: "/audio/letters/e.mp3", word: "एड़ी", emoji: "🦶", lookAlikes: ["ai"], soundAlikes: ["ai"] },
+  { id: "uu", char: "ऊ", roman: "uu", audio: "/audio/letters/uu.mp3", word: "ऊन", emoji: "🧶", lookAlikes: ["u"], soundAlikes: ["u"] },
+  { id: "ri", char: "ऋ", roman: "ri", audio: "/audio/letters/ri.mp3", word: "ऋषि", emoji: "🧙", lookAlikes: [], soundAlikes: [] },
+  { id: "e", char: "ए", roman: "e", audio: "/audio/letters/e.mp3", word: "एक", emoji: "1️⃣", lookAlikes: ["ai"], soundAlikes: ["ai"] },
   { id: "ai", char: "ऐ", roman: "ai", audio: "/audio/letters/ai.mp3", word: "ऐनक", emoji: "👓", lookAlikes: ["e"], soundAlikes: ["e"] },
-  { id: "o", char: "ओ", roman: "o", audio: "/audio/letters/o.mp3", word: "ओस", emoji: "💧", lookAlikes: ["au"], soundAlikes: ["au"] },
-  { id: "au", char: "औ", roman: "au", audio: "/audio/letters/au.mp3", word: "औज़ार", emoji: "🔧", lookAlikes: ["o"], soundAlikes: ["o"] },
+  { id: "o", char: "ओ", roman: "o", audio: "/audio/letters/o.mp3", word: "ओखली", emoji: "🥣", lookAlikes: ["au"], soundAlikes: ["au"] },
+  { id: "au", char: "औ", roman: "au", audio: "/audio/letters/au.mp3", word: "औरत", emoji: "👩", lookAlikes: ["o"], soundAlikes: ["o"] },
+  { id: "an", char: "अं", roman: "an", audio: "/audio/letters/an.mp3", word: "अंगूर", emoji: "🍇", lookAlikes: ["a"], soundAlikes: [] },
   // --- remaining consonants (व्यंजन), varnamala order ----------------------
   { id: "kha", char: "ख", roman: "kha", audio: "/audio/letters/kha.mp3", word: "खरगोश", emoji: "🐰", lookAlikes: [], soundAlikes: ["ka"] },
-  { id: "ga", char: "ग", roman: "ga", audio: "/audio/letters/ga.mp3", word: "गाय", emoji: "🐄", lookAlikes: [], soundAlikes: ["gha"] },
+  { id: "ga", char: "ग", roman: "ga", audio: "/audio/letters/ga.mp3", word: "गमला", emoji: "🪴", lookAlikes: [], soundAlikes: ["gha"] },
   { id: "gha", char: "घ", roman: "gha", audio: "/audio/letters/gha.mp3", word: "घड़ी", emoji: "⏰", lookAlikes: [], soundAlikes: ["ga"] },
   { id: "chha", char: "छ", roman: "chha", audio: "/audio/letters/chha.mp3", word: "छाता", emoji: "☂️", lookAlikes: [], soundAlikes: ["cha"] },
-  { id: "ja", char: "ज", roman: "ja", audio: "/audio/letters/ja.mp3", word: "जहाज़", emoji: "✈️", lookAlikes: [], soundAlikes: ["jha"] },
+  { id: "ja", char: "ज", roman: "ja", audio: "/audio/letters/ja.mp3", word: "जलेबी", emoji: "🍥", lookAlikes: [], soundAlikes: ["jha"] },
   { id: "jha", char: "झ", roman: "jha", audio: "/audio/letters/jha.mp3", word: "झंडा", emoji: "🚩", lookAlikes: [], soundAlikes: ["ja"] },
   { id: "tta", char: "ट", roman: "Ta", audio: "/audio/letters/tta.mp3", word: "टमाटर", emoji: "🍅", lookAlikes: ["ttha"], soundAlikes: ["ta"] },
   { id: "ttha", char: "ठ", roman: "Tha", audio: "/audio/letters/ttha.mp3", word: "ठेला", emoji: "🛒", lookAlikes: ["tta"], soundAlikes: ["tta"] },
-  { id: "dda", char: "ड", roman: "Da", audio: "/audio/letters/dda.mp3", word: "डिब्बा", emoji: "📦", lookAlikes: [], soundAlikes: ["da"] },
-  { id: "tha", char: "थ", roman: "tha", audio: "/audio/letters/tha.mp3", word: "थैला", emoji: "👝", lookAlikes: [], soundAlikes: ["ta"] },
+  { id: "dda", char: "ड", roman: "Da", audio: "/audio/letters/dda.mp3", word: "डमरू", emoji: "🥁", lookAlikes: ["ddha"], soundAlikes: ["da"] },
+  { id: "ddha", char: "ढ", roman: "Dha", audio: "/audio/letters/ddha.mp3", word: "ढक्कन", emoji: "🫙", lookAlikes: ["dda"], soundAlikes: ["dda"] },
+  { id: "tha", char: "थ", roman: "tha", audio: "/audio/letters/tha.mp3", word: "थर्मस", emoji: "🍶", lookAlikes: [], soundAlikes: ["ta"] },
   { id: "da", char: "द", roman: "da", audio: "/audio/letters/da.mp3", word: "दरवाज़ा", emoji: "🚪", lookAlikes: [], soundAlikes: ["dha"] },
   { id: "dha", char: "ध", roman: "dha", audio: "/audio/letters/dha.mp3", word: "धनुष", emoji: "🏹", lookAlikes: [], soundAlikes: ["da"] },
-  { id: "na", char: "न", roman: "na", audio: "/audio/letters/na.mp3", word: "नाव", emoji: "⛵", lookAlikes: [], soundAlikes: [] },
-  { id: "pha", char: "फ", roman: "pha", audio: "/audio/letters/pha.mp3", word: "फूल", emoji: "🌸", lookAlikes: [], soundAlikes: ["pa"] },
+  { id: "na", char: "न", roman: "na", audio: "/audio/letters/na.mp3", word: "नल", emoji: "🚰", lookAlikes: [], soundAlikes: [] },
+  { id: "pha", char: "फ", roman: "pha", audio: "/audio/letters/pha.mp3", word: "फल", emoji: "🍏", lookAlikes: [], soundAlikes: ["pa"] },
   { id: "bha", char: "भ", roman: "bha", audio: "/audio/letters/bha.mp3", word: "भालू", emoji: "🐻", lookAlikes: [], soundAlikes: ["ba"] },
   { id: "ma", char: "म", roman: "ma", audio: "/audio/letters/ma.mp3", word: "मछली", emoji: "🐟", lookAlikes: [], soundAlikes: [] },
-  { id: "ya", char: "य", roman: "ya", audio: "/audio/letters/ya.mp3", word: "यान", emoji: "🚀", lookAlikes: [], soundAlikes: [] },
-  { id: "va", char: "व", roman: "va", audio: "/audio/letters/va.mp3", word: "वन", emoji: "🌳", lookAlikes: [], soundAlikes: ["ba"] },
-  { id: "sha", char: "श", roman: "sha", audio: "/audio/letters/sha.mp3", word: "शेर", emoji: "🦁", lookAlikes: ["shha"], soundAlikes: ["shha", "sa"] },
+  { id: "ya", char: "य", roman: "ya", audio: "/audio/letters/ya.mp3", word: "योगी", emoji: "🧘", lookAlikes: [], soundAlikes: [] },
+  { id: "va", char: "व", roman: "va", audio: "/audio/letters/va.mp3", word: "वजन", emoji: "⚖️", lookAlikes: [], soundAlikes: ["ba"] },
+  { id: "sha", char: "श", roman: "sha", audio: "/audio/letters/sha.mp3", word: "शहद", emoji: "🍯", lookAlikes: ["shha"], soundAlikes: ["shha", "sa"] },
   { id: "shha", char: "ष", roman: "Sha", audio: "/audio/letters/shha.mp3", word: "षट्कोण", emoji: "🔷", lookAlikes: ["sha"], soundAlikes: ["sha", "sa"] },
-  { id: "ha", char: "ह", roman: "ha", audio: "/audio/letters/ha.mp3", word: "हाथी", emoji: "🐘", lookAlikes: [], soundAlikes: [] },
+  { id: "ha", char: "ह", roman: "ha", audio: "/audio/letters/ha.mp3", word: "हथौड़ा", emoji: "🔨", lookAlikes: [], soundAlikes: [] },
 ];
 
 // Which ids have real voice recordings (the LETTERS above). Everything else is
@@ -175,9 +178,9 @@ export function hasLetterRecording(id: string): boolean {
 // order — vowels first, then consonants. The home screen and /letter/[id] use
 // this; getLetter resolves any of them.
 const VARNAMALA_ORDER = [
-  "a", "aa", "i", "ii", "u", "uu", "e", "ai", "o", "au",
+  "a", "aa", "i", "ii", "u", "uu", "ri", "e", "ai", "o", "au", "an",
   "ka", "kha", "ga", "gha", "cha", "chha", "ja", "jha",
-  "tta", "ttha", "dda", "ta", "tha", "da", "dha", "na",
+  "tta", "ttha", "dda", "ddha", "ta", "tha", "da", "dha", "na",
   "pa", "pha", "ba", "bha", "ma", "ya", "ra", "la", "va",
   "sha", "shha", "sa", "ha",
 ];

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ALL_LETTERS } from "@/lib/letters";
 import { MATRAS, matraChip } from "@/lib/matras";
+import ThelaIcon from "@/components/shared/ThelaIcon";
 
 // ---------------------------------------------------------------------------
 // HOME — the PadhaiPal Hindi games collection.
@@ -25,7 +26,9 @@ export default function Home() {
           {ALL_LETTERS.map((l) => (
             <Link key={l.id} href={`/letter/${l.id}`} className="letterTile" aria-label={`${l.char} की सैर`}>
               <span className="letterTileChar">{l.char}</span>
-              <span className="letterTilePic">{l.id === "la" ? "🌀" : l.emoji}</span>
+              <span className="letterTilePic">
+                {l.id === "la" ? "🌀" : l.id === "ttha" ? <ThelaIcon size={17} /> : l.emoji}
+              </span>
             </Link>
           ))}
         </nav>

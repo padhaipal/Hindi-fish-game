@@ -21,6 +21,7 @@ import { HOP_LEVELS, TOTAL_HOP_LEVELS } from "@/lib/pondhop/levels";
 import { buildHopBoard, HopStone } from "@/lib/pondhop/board";
 import { LETTERS, getLetter, Letter } from "@/lib/letters";
 import LattuIcon from "@/components/shared/LattuIcon";
+import ThelaIcon from "@/components/shared/ThelaIcon";
 import {
   playWrongSound,
   playWinSound,
@@ -279,6 +280,8 @@ export default function PondHopGame({
             <div className="hopTargetCard">
               {target.id === "la" ? (
                 <LattuIcon size={46} />
+              ) : target.id === "ttha" ? (
+                <ThelaIcon size={46} />
               ) : (
                 <span className="hopTargetEmoji">{target.emoji}</span>
               )}

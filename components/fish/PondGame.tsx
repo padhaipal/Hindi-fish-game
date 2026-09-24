@@ -38,6 +38,7 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
+import ThelaIcon from "@/components/shared/ThelaIcon";
 
 // Where the final "पाठ पर जाएं" button sends the child: a WhatsApp chat with the
 // PadhaiPal number (+91 8528097842). No text param = no auto-filled message.
@@ -669,6 +670,8 @@ function WordPicture({ letter }: { letter: Letter }) {
     <div className="wordPic" aria-label={letter.word}>
       {letter.id === "la" ? (
         <LattuIcon />
+      ) : letter.id === "ttha" ? (
+        <ThelaIcon size={78} />
       ) : (
         <span className="wordEmoji">{letter.emoji}</span>
       )}
