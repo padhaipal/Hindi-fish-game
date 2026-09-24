@@ -14,6 +14,7 @@ import TraceSlate from "@/components/lekhan/TraceSlate";
 import { getLetterStrokes } from "@/lib/lekhan/hindiStrokes";
 import { getLetter } from "@/lib/letters";
 import LattuIcon from "@/components/shared/LattuIcon";
+import ThelaIcon from "@/components/shared/ThelaIcon";
 import { playBingSound, unlockAudio } from "@/lib/audio";
 import { speakLetterWord } from "@/lib/letterVoice";
 
@@ -57,7 +58,13 @@ export default function TraceStep({ letterId, onDone }: Props) {
     <div className="advTrace">
       <div className="advPrompt">
         <div className="advPromptPic">
-          {letterId === "la" ? <LattuIcon size={62} /> : <span style={{ fontSize: 56 }}>{letter.emoji}</span>}
+          {letterId === "la" ? (
+            <LattuIcon size={62} />
+          ) : letterId === "ttha" ? (
+            <ThelaIcon size={62} />
+          ) : (
+            <span style={{ fontSize: 56 }}>{letter.emoji}</span>
+          )}
         </div>
         <span className="advPromptChar">{letter.char}</span>
         <button
