@@ -289,8 +289,11 @@ export default function MatraFish({ matraId, onDone }: Props) {
       const body = el?.querySelector(".mf-body");
 
       if (!b.isTarget) {
-        // WRONG: only a soft "baaap" and a little wobble. The bubble does NOT
-        // pop — nothing is lost — it stays put and can be ignored.
+        // WRONG: a buzz + a little wobble and a soft "baaap". The bubble does
+        // NOT pop — nothing is lost — it stays put and can be ignored.
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(90);
+        }
         playWrongSound();
         if (body) {
           body.classList.remove("mf-shake");

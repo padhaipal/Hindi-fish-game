@@ -19,10 +19,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HOP_LEVELS, TOTAL_HOP_LEVELS } from "@/lib/pondhop/levels";
 import { buildHopBoard, HopStone } from "@/lib/pondhop/board";
-import { LETTERS, getLetter, letterWordAudio, Letter } from "@/lib/letters";
+import { LETTERS, getLetter, Letter } from "@/lib/letters";
 import LattuIcon from "@/components/shared/LattuIcon";
 import {
-  playLetterSound,
   playWrongSound,
   playWinSound,
   playLoseSound,
@@ -30,6 +29,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
@@ -143,7 +143,7 @@ export default function PondHopGame({
     if (introRef.current !== roundId) {
       introRef.current = roundId;
       const rid = roundId;
-      playLetterSound(letterWordAudio(target.id), () => {
+      speakLetterWord(target.id, () => {
         setPhase((p) => (p === "intro" && rid === roundId ? "playing" : p));
       });
     }
@@ -200,7 +200,7 @@ export default function PondHopGame({
 
       if (stone.isTarget) {
         // CORRECT: speak the letter, the stone turns green, advance.
-        playLetterSound(getLetter(stone.letterId).audio);
+        speakLetterName(stone.letterId);
         const newPos = pos + 1;
         setPos(newPos);
 
@@ -289,7 +289,7 @@ export default function PondHopGame({
               className="soundBtn soundBtn--compact"
               onClick={() => {
                 unlockAudio();
-                playLetterSound(letterWordAudio(target.id));
+                speakLetterWord(target.id);
               }}
               aria-label="सुनो"
             >

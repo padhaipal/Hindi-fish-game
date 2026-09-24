@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LETTERS } from "@/lib/letters";
+import { ALL_LETTERS } from "@/lib/letters";
 import { MATRAS, matraChip } from "@/lib/matras";
 
 // ---------------------------------------------------------------------------
@@ -22,7 +22,7 @@ export default function Home() {
         {/* Per-letter adventures */}
         <h2 className="homeSection">✨ अक्षर की सैर</h2>
         <nav className="homeLetters">
-          {LETTERS.map((l) => (
+          {ALL_LETTERS.map((l) => (
             <Link key={l.id} href={`/letter/${l.id}`} className="letterTile" aria-label={`${l.char} की सैर`}>
               <span className="letterTileChar">{l.char}</span>
               <span className="letterTilePic">{l.id === "la" ? "🌀" : l.emoji}</span>
