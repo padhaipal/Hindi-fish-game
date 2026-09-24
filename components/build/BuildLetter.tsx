@@ -15,8 +15,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getLetterStrokes } from "@/lib/lekhan/hindiStrokes";
-import { getLetter, letterWordAudio } from "@/lib/letters";
-import { playLetterSound, playBingSound, playWinSound, unlockAudio } from "@/lib/audio";
+import { getLetter } from "@/lib/letters";
+import { playBingSound, playWinSound, unlockAudio } from "@/lib/audio";
+import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
 
 interface Props {
   letterId: string;
@@ -64,7 +65,7 @@ export default function BuildLetter({ letterId, onDone }: Props) {
     if (introRef.current) return;
     introRef.current = true;
     unlockAudio();
-    const t = window.setTimeout(() => playLetterSound(letterWordAudio(letterId)), 350);
+    const t = window.setTimeout(() => speakLetterWord(letterId), 350);
     return () => window.clearTimeout(t);
   }, [letterId]);
 
@@ -164,7 +165,7 @@ export default function BuildLetter({ letterId, onDone }: Props) {
         const next = { ...pl, [d.i]: true };
         if (Object.keys(next).length >= model.pieces.length && !doneRef.current) {
           doneRef.current = true;
-          playLetterSound(letter.audio);
+          speakLetterName(letterId);
           window.setTimeout(() => playWinSound(), 150);
           window.setTimeout(() => onDone(), 950);
         } else {

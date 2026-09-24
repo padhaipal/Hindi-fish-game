@@ -27,9 +27,8 @@ import Link from "next/link";
 import Fish from "./Fish";
 import { buildRound, FishSpec, RoundPlan } from "@/lib/fish/round";
 import { getLevelConfig, LevelConfig, TOTAL_LEVELS } from "@/lib/fish/levels";
-import { getLetter, letterWordAudio, Letter, LETTERS } from "@/lib/letters";
+import { getLetter, Letter, LETTERS } from "@/lib/letters";
 import {
-  playLetterSound,
   playWrongSound,
   playWinSound,
   playLoseSound,
@@ -38,6 +37,7 @@ import {
   stopWinLoseSounds,
   unlockAudio,
 } from "@/lib/audio";
+import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
 
 // Where the final "पाठ पर जाएं" button sends the child: a WhatsApp chat with the
 // PadhaiPal number (+91 8528097842). No text param = no auto-filled message.
@@ -271,7 +271,7 @@ export default function PondGame({
     // Play the PICTURE+LETTER sound once (the intro prompt); unfreeze when done.
     if (introDoneForRound.current !== roundId) {
       introDoneForRound.current = roundId;
-      playLetterSound(letterWordAudio(round.target.id), () => {
+      speakLetterWord(round.target.id, () => {
         if (currentRoundRef.current === roundId) setPhase("playing");
       });
     }
@@ -301,7 +301,7 @@ export default function PondGame({
         // CORRECT: splash away, REPLAY the letter sound, show a reward.
         caughtRef.current.add(spec.id);
         caughtTargetsRef.current += 1;
-        playLetterSound(getLetter(spec.letterId).audio);
+        speakLetterName(spec.letterId);
         el.classList.add("caught");
 
         const m = motion.current.get(spec.id);
@@ -527,7 +527,7 @@ export default function PondGame({
             className="targetSound"
             onClick={() => {
               unlockAudio();
-              playLetterSound(letterWordAudio(target.id)); // picture+letter prompt
+              speakLetterWord(target.id); // picture+letter prompt
             }}
             aria-label="play target letter sound"
           >

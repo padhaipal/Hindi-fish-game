@@ -19,8 +19,9 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
-import { playLetterSound, playWrongSound, unlockAudio } from "@/lib/audio";
+import { LETTERS, getLetter } from "@/lib/letters";
+import { playWrongSound, unlockAudio } from "@/lib/audio";
+import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
 
 interface Props {
   letterId: string;
@@ -149,6 +150,16 @@ const CSS = `
   transform: scale(1.55) !important;
   opacity: 0 !important;
 }
+/* wrong tap: a quick wobble — the balloon does NOT pop, it floats on. */
+.bpop-shake {
+  animation: bpop-shake 0.4s ease;
+}
+@keyframes bpop-shake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-6px) rotate(-7deg); }
+  55% { transform: translateX(6px) rotate(7deg); }
+  80% { transform: translateX(-4px) rotate(-4deg); }
+}
 .bpop-chip {
   position: absolute;
   top: 12px;
@@ -249,27 +260,35 @@ export default function BalloonPop({ letterId, onDone }: Props) {
       const b = motion.current.get(id);
       if (!b || b.popping || doneRef.current) return;
       unlockAudio(); // first gesture unlocks audio on mobile
-
-      b.popping = true; // freeze it in the rAF loop while the pop plays
       const el = els.current.get(id);
-      if (el) {
-        const body = el.querySelector(".bpop-body");
-        if (body) body.classList.add("bpop-pop"); // quick scale-up + fade
+      const body = el?.querySelector(".bpop-body");
+
+      if (!b.isTarget) {
+        // WRONG: only a wrong balloon must NOT pop. Buzz the phone, wobble it,
+        // and let it keep floating up — nothing is lost by a wrong tap.
+        if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+          navigator.vibrate(90);
+        }
+        playWrongSound(); // soft "baaap" too (desktop / iOS have no vibrate)
+        if (body) {
+          body.classList.remove("bpop-shake");
+          void (body as HTMLElement).offsetWidth; // reflow so it retriggers
+          body.classList.add("bpop-shake");
+          window.setTimeout(() => body.classList.remove("bpop-shake"), 420);
+        }
+        return;
       }
 
-      if (b.isTarget) {
-        // CORRECT: play the letter sound and count it toward TARGET_COUNT.
-        playLetterSound(getLetter(letterId).audio);
-        poppedRef.current += 1;
-        setPopped(poppedRef.current);
-        if (poppedRef.current >= TARGET_COUNT && !doneRef.current) {
-          doneRef.current = true;
-          // Small beat so the last pop animation is seen before we hand off.
-          window.setTimeout(() => onDone(), 260);
-        }
-      } else {
-        // WRONG: soft "baaap", no penalty — the balloon just pops too.
-        playWrongSound();
+      // CORRECT: pop it, speak the letter, count it toward TARGET_COUNT.
+      b.popping = true; // freeze it in the rAF loop while the pop plays
+      if (body) body.classList.add("bpop-pop"); // quick scale-up + fade
+      speakLetterName(letterId);
+      poppedRef.current += 1;
+      setPopped(poppedRef.current);
+      if (poppedRef.current >= TARGET_COUNT && !doneRef.current) {
+        doneRef.current = true;
+        // Small beat so the last pop animation is seen before we hand off.
+        window.setTimeout(() => onDone(), 260);
       }
 
       // Remove after the ~250ms pop animation finishes.
@@ -284,7 +303,7 @@ export default function BalloonPop({ letterId, onDone }: Props) {
     if (!introRef.current) {
       introRef.current = true;
       unlockAudio();
-      playLetterSound(letterWordAudio(letterId)); // picture+letter prompt
+      speakLetterWord(letterId); // picture+letter prompt
     }
 
     // Seed a couple of balloons immediately, then keep topping up.

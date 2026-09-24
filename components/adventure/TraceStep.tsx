@@ -12,9 +12,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import TraceSlate from "@/components/lekhan/TraceSlate";
 import { getLetterStrokes } from "@/lib/lekhan/hindiStrokes";
-import { getLetter, letterWordAudio } from "@/lib/letters";
+import { getLetter } from "@/lib/letters";
 import LattuIcon from "@/components/shared/LattuIcon";
-import { playLetterSound, playBingSound, unlockAudio } from "@/lib/audio";
+import { playBingSound, unlockAudio } from "@/lib/audio";
+import { speakLetterWord } from "@/lib/letterVoice";
 
 interface Props {
   letterId: string;
@@ -41,7 +42,7 @@ export default function TraceStep({ letterId, onDone }: Props) {
     if (introRef.current) return;
     introRef.current = true;
     unlockAudio();
-    const t = window.setTimeout(() => playLetterSound(letterWordAudio(letterId)), 350);
+    const t = window.setTimeout(() => speakLetterWord(letterId), 350);
     return () => window.clearTimeout(t);
   }, [letterId]);
 
@@ -64,7 +65,7 @@ export default function TraceStep({ letterId, onDone }: Props) {
           className="soundBtn soundBtn--compact"
           onClick={() => {
             unlockAudio();
-            playLetterSound(letterWordAudio(letterId));
+            speakLetterWord(letterId);
           }}
           aria-label="सुनो"
         >

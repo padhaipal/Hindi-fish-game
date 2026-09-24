@@ -23,7 +23,7 @@ import BalloonPop from "@/components/balloon/BalloonPop";
 import BuildLetter from "@/components/build/BuildLetter";
 import TraceStep from "@/components/adventure/TraceStep";
 import FreeWriteStep from "@/components/adventure/FreeWriteStep";
-import { getLetter, LETTERS } from "@/lib/letters";
+import { getLetter, ALL_LETTERS } from "@/lib/letters";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 
 type StepDef = { key: string; icon: string; render: (letterId: string, done: () => void) => React.ReactNode };
@@ -51,9 +51,9 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
     return () => timers.current.forEach((t) => window.clearTimeout(t));
   }, []);
 
-  // Next letter in the set (wraps around) — for the "next letter" button.
-  const idx = LETTERS.findIndex((l) => l.id === letterId);
-  const nextLetter = LETTERS[(idx + 1) % LETTERS.length];
+  // Next letter in the alphabet (wraps around) — for the "next letter" button.
+  const idx = ALL_LETTERS.findIndex((l) => l.id === letterId);
+  const nextLetter = ALL_LETTERS[(idx + 1) % ALL_LETTERS.length];
 
   const finishStep = useCallback(() => {
     if (guardRef.current) return;
