@@ -396,6 +396,10 @@ button {
   box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
 }
 
+a.replyBtn {
+  text-decoration: none;
+}
+
 .replyBtn:disabled {
   color: #8696a0;
   cursor: default;

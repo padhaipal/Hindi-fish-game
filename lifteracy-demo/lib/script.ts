@@ -72,6 +72,7 @@ export interface Script {
     win: string;
     tryAgain: string;
     startOver: string;
+    realBot: string;
     typeHint: string;
     startingMic: string;
     speakNow: string;
@@ -163,6 +164,7 @@ const EN: Script = {
       "Misread word ➜ that letter ➜ a picture hint ➜ its first sound ➜ back to the word.",
     tryAgain: "🔁 Try again",
     startOver: "🌐 Change language",
+    realBot: "Try the real bot (Hindi, on WhatsApp)",
     typeHint: "Message",
     startingMic: "Starting mic…",
     speakNow: "Speak now",
@@ -264,6 +266,7 @@ const HI: Script = {
     win: "🎉 यही है Lifteracy का सीखने का चक्र!\n\n" + "गलत शब्द ➜ वह अक्षर ➜ चित्र ➜ पहली आवाज़ ➜ वापस शब्द।",
     tryAgain: "🔁 फिर से",
     startOver: "🌐 भाषा बदलें",
+    realBot: "असली बॉट आज़माएँ (WhatsApp पर)",
     typeHint: "मैसेज",
     startingMic: "माइक शुरू हो रहा है…",
     speakNow: "अब बोलिए",
@@ -296,3 +299,6 @@ const HI: Script = {
 };
 
 export const SCRIPTS: Record<Lang, Script> = { en: EN, hi: HI };
+
+// The live Lifteracy chatbot (Hindi, on WhatsApp).
+export const REAL_BOT_URL = "https://dashboard.padhaipal.com/r/919565897842";

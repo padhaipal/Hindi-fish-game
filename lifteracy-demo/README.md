@@ -13,7 +13,8 @@ as its own Vercel project with **Root Directory = `lifteracy-demo`**.
    the English version is labelled as a preview throughout.
 2. The bot sends the word (**cat** / **कल**) as an image, plus a voice note asking the user to read it.
 3. The user replies with a voice message (tap 🎤, wait for "Speak now", speak, tap ➤). They can also type.
-   - **Read correctly** → 👍 sticker.
+   - **Read correctly** → 👍 sticker, then buttons to try again, change language,
+     or **try the real bot** (Hindi, on WhatsApp: `REAL_BOT_URL` in `lib/script.ts`).
    - **Read wrong** → the bot shows the letter they got wrong: *"What is this letter?"*
      - Right → back to the word.
      - Wrong → a **picture** that starts with the same sound (car / apple / top;
