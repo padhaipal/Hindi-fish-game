@@ -43,7 +43,6 @@ export interface LetterInfo {
 // What the commentary panel explains at each point of the conversation.
 export type NoteKey =
   | "start"
-  | "intro"
   | "word"
   | "listening"
   | "letter"
@@ -64,7 +63,6 @@ export interface Script {
   // Index of the letter the learner most likely got wrong.
   wrongLetter: (t: string) => number;
   text: {
-    intro: string;
     noStt: string;
     didntHear: string;
     heardSound: string;
@@ -74,6 +72,7 @@ export interface Script {
     win: string;
     tryAgain: string;
     startOver: string;
+    realBot: string;
     typeHint: string;
     startingMic: string;
     speakNow: string;
@@ -150,14 +149,6 @@ const EN: Script = {
     return 1; // the vowel (cut, cot, kit…)
   },
   text: {
-    intro:
-      "👋 Hi! I'm *Lifteracy*, an AI reading tutor that lives on WhatsApp.\n\n" +
-      "Children who can't read yet learn with me by sending voice messages back and forth. " +
-      "Every child gets a personal lesson: when they misread a letter, I zoom in on that letter, " +
-      "give a picture hint, and build back up to the word.\n\n" +
-      "ℹ️ *Lifteracy currently teaches Hindi.* This English version is a preview so you can follow along.\n\n" +
-      "👉 *Tip:* when I send you a word, try reading at least one letter wrong " +
-      "(say “cap” instead of “cat”) so you can experience the learning loop.",
     noStt:
       "ℹ️ This browser can't turn speech into text (Chrome works best). " +
       "You can still send voice messages and then tap a button to say whether you were right, or just type your answer.",
@@ -173,6 +164,7 @@ const EN: Script = {
       "Misread word ➜ that letter ➜ a picture hint ➜ its first sound ➜ back to the word.",
     tryAgain: "🔁 Try again",
     startOver: "🌐 Change language",
+    realBot: "Try the real bot (Hindi, on WhatsApp)",
     typeHint: "Message",
     startingMic: "Starting mic…",
     speakNow: "Speak now",
@@ -192,26 +184,24 @@ const EN: Script = {
     hindiOnly: "Lifteracy currently teaches Hindi. English is a preview for this demo.",
     notes: {
       start:
-        "Lifteracy runs entirely inside WhatsApp: no app to install, works on any cheap smartphone. Pick a language to start.",
-      intro:
-        "Children who can't read can't follow written instructions, so in the real chatbot everything is done by voice notes and pictures.",
+        "Lifteracy runs entirely inside *WhatsApp*: no app to install, and it works on any cheap smartphone. *Pick a language to start.*",
       word:
-        "The child sees a word and hears a voice note asking them to read it aloud. Tap the green mic, read the word, then tap send. Try misreading one letter!",
+        "Children who can't read can't follow written instructions, so *everything happens by voice notes and pictures*. The child sees a word and hears a voice note asking them to read it. Tap the green mic, read the word, then tap send. *Try misreading one letter* (say “cap” instead of “cat”) to see the learning loop.",
       listening:
-        "Speech recognition turns the child's voice into text. Lifteracy compares it with the word, letter by letter.",
+        "*Speech recognition* turns the child's voice into text, and Lifteracy compares it with the word *letter by letter*.",
       letter:
-        "The word was misread, so Lifteracy found the letter that caused it and zooms in on just that letter. Can the child name it?",
+        "The word was misread, so Lifteracy found *the letter that caused the mistake* and zooms in on just that letter. Can the child name it?",
       picture:
-        "Still stuck? A picture of something the child already knows, whose name starts with the same sound. Naming it is easy.",
+        "Still stuck? A *picture of something the child already knows*, whose name starts with the same sound. Naming it is easy.",
       association:
-        "The picture-letter card links the familiar picture to the letter's shape. Now the child says the first sound.",
-      back: "With the letter practised, the child goes back to the whole word and reads it again.",
+        "The *picture-letter card* links the familiar picture to the letter's shape. Now the child says *the first sound*.",
+      back: "With the letter practised, the child goes *back to the whole word* and reads it again.",
       firstTry:
-        "Correct first time, so the child gets a sticker and, in the real app, a harder word. Tap “Try again” and misread a letter to see the learning loop.",
+        "Correct first time, so the child gets a sticker and, in the real app, a harder word. *Tap “Try again” and misread a letter* to see the learning loop.",
       win:
-        "That's the loop: word ➜ letter ➜ picture ➜ sound ➜ word. In the real app the next words adapt to each child, extra practice on weak letters and harder words after success, and teachers see every child's progress, letter by letter.",
+        "That's the loop: *word ➜ letter ➜ picture ➜ sound ➜ word*. In the real app the next words *adapt to each child*: extra practice on weak letters, harder words after success. Teachers see every child's progress, letter by letter.",
       didntHear:
-        "The browser's speech recognition is built for words, so a single sound like /b/ often comes back empty. Speak once the mic says “Speak now”, or tap a button so the demo can carry on.",
+        "*Hold the mic closer and try speaking in a full sentence.* Sometimes speech-to-text isn't reliable, but we have honed it further in our real version by using *an ensemble of speech-to-text engines*. You can also tap a button to carry on.",
     },
   },
 };
@@ -263,14 +253,6 @@ const HI: Script = {
     return /^[kcq]/.test(w) ? 1 : 0;
   },
   text: {
-    intro:
-      "👋 नमस्ते! मैं *Lifteracy* हूँ, WhatsApp पर एक AI पढ़ाई साथी।\n\n" +
-      "जो बच्चे अभी पढ़ना नहीं जानते, वे मुझसे वॉइस मैसेज के ज़रिए पढ़ना सीखते हैं। " +
-      "हर बच्चे को अपना पाठ मिलता है: अगर कोई अक्षर गलत पढ़ा, तो मैं उसी अक्षर पर ध्यान देता हूँ, " +
-      "चित्र से मदद देता हूँ, और फिर वापस शब्द तक ले जाता हूँ।\n\n" +
-      "ℹ️ यह सिर्फ़ एक डेमो है, जो आपके ब्राउज़र में चलता है।\n\n" +
-      "👉 *सुझाव:* जब मैं शब्द भेजूँ, तो कम से कम एक अक्षर गलत पढ़िए " +
-      "(जैसे “कल” की जगह “कम”), ताकि आप सीखने का पूरा चक्र देख सकें।",
     noStt:
       "ℹ️ यह ब्राउज़र आवाज़ को टेक्स्ट में नहीं बदल सकता (Chrome सबसे अच्छा है)। " +
       "आप फिर भी वॉइस मैसेज भेज सकते हैं और फिर बटन दबाकर बता सकते हैं कि जवाब सही था या नहीं, या जवाब टाइप कर सकते हैं।",
@@ -284,6 +266,7 @@ const HI: Script = {
     win: "🎉 यही है Lifteracy का सीखने का चक्र!\n\n" + "गलत शब्द ➜ वह अक्षर ➜ चित्र ➜ पहली आवाज़ ➜ वापस शब्द।",
     tryAgain: "🔁 फिर से",
     startOver: "🌐 भाषा बदलें",
+    realBot: "असली बॉट आज़माएँ (WhatsApp पर)",
     typeHint: "मैसेज",
     startingMic: "माइक शुरू हो रहा है…",
     speakNow: "अब बोलिए",
@@ -301,19 +284,21 @@ const HI: Script = {
     tag: "डेमो गाइड · चैट का हिस्सा नहीं",
     steps: ["शब्द", "अक्षर", "चित्र", "आवाज़", "शब्द ✓"],
     notes: {
-      start: "Lifteracy पूरी तरह WhatsApp के अंदर चलता है: कोई ऐप डाउनलोड नहीं, किसी भी सस्ते स्मार्टफ़ोन पर। शुरू करने के लिए भाषा चुनें।",
-      intro: "जो बच्चे पढ़ नहीं सकते, वे लिखे निर्देश भी नहीं पढ़ सकते। इसलिए असली चैटबॉट में सब कुछ वॉइस नोट और चित्रों से होता है।",
-      word: "बच्चा एक शब्द देखता है और वॉइस नोट सुनता है जो उसे शब्द पढ़ने को कहता है। हरा माइक दबाएँ, शब्द पढ़ें, फिर भेजें। एक अक्षर गलत पढ़कर देखिए!",
-      listening: "स्पीच रिकग्निशन बच्चे की आवाज़ को टेक्स्ट में बदलता है। Lifteracy उसे शब्द से अक्षर-अक्षर मिलाता है।",
-      letter: "शब्द गलत पढ़ा गया, तो Lifteracy ने वह अक्षर ढूँढा जिसकी वजह से गलती हुई, और अब सिर्फ़ उसी अक्षर पर ध्यान देता है। क्या बच्चा उसे पहचानता है?",
-      picture: "अब भी मुश्किल? एक जानी-पहचानी चीज़ का चित्र, जिसका नाम उसी आवाज़ से शुरू होता है। उसका नाम बताना आसान है।",
-      association: "चित्र-अक्षर कार्ड जानी-पहचानी चीज़ को अक्षर के आकार से जोड़ता है। अब बच्चा पहली आवाज़ बताता है।",
-      back: "अक्षर का अभ्यास हो गया, अब बच्चा फिर से पूरा शब्द पढ़ता है।",
-      firstTry: "पहली बार में सही, तो स्टिकर मिलता है और असली ऐप में अगला शब्द कठिन होता है। “फिर से” दबाएँ और एक अक्षर गलत पढ़कर सीखने का चक्र देखें।",
-      win: "यही है चक्र: शब्द ➜ अक्षर ➜ चित्र ➜ आवाज़ ➜ शब्द। असली ऐप में अगले शब्द हर बच्चे के हिसाब से बदलते हैं, और शिक्षक हर बच्चे की प्रगति अक्षर-अक्षर देख सकते हैं।",
-      didntHear: "ब्राउज़र का स्पीच रिकग्निशन शब्दों के लिए बना है, इसलिए /ब/ जैसी अकेली आवाज़ अक्सर पकड़ में नहीं आती। “अब बोलिए” दिखने के बाद बोलिए, या बटन दबाकर डेमो आगे बढ़ाइए।",
+      start: "Lifteracy पूरी तरह *WhatsApp* के अंदर चलता है: कोई ऐप डाउनलोड नहीं, किसी भी सस्ते स्मार्टफ़ोन पर। *शुरू करने के लिए भाषा चुनें।*",
+      word: "जो बच्चे पढ़ नहीं सकते, वे लिखे निर्देश भी नहीं पढ़ सकते, इसलिए *सब कुछ वॉइस नोट और चित्रों से होता है*। बच्चा एक शब्द देखता है और वॉइस नोट सुनता है जो उसे शब्द पढ़ने को कहता है। हरा माइक दबाएँ, शब्द पढ़ें, फिर भेजें। *एक अक्षर गलत पढ़कर देखिए* (जैसे “कल” की जगह “कम”), ताकि सीखने का चक्र दिखे।",
+      listening: "*स्पीच रिकग्निशन* बच्चे की आवाज़ को टेक्स्ट में बदलता है, और Lifteracy उसे शब्द से *अक्षर-अक्षर* मिलाता है।",
+      letter: "शब्द गलत पढ़ा गया, तो Lifteracy ने *वह अक्षर ढूँढा जिसकी वजह से गलती हुई*, और अब सिर्फ़ उसी अक्षर पर ध्यान देता है। क्या बच्चा उसे पहचानता है?",
+      picture: "अब भी मुश्किल? *एक जानी-पहचानी चीज़ का चित्र*, जिसका नाम उसी आवाज़ से शुरू होता है। उसका नाम बताना आसान है।",
+      association: "*चित्र-अक्षर कार्ड* जानी-पहचानी चीज़ को अक्षर के आकार से जोड़ता है। अब बच्चा *पहली आवाज़* बताता है।",
+      back: "अक्षर का अभ्यास हो गया, अब बच्चा *फिर से पूरा शब्द* पढ़ता है।",
+      firstTry: "पहली बार में सही, तो स्टिकर मिलता है और असली ऐप में अगला शब्द कठिन होता है। *“फिर से” दबाएँ और एक अक्षर गलत पढ़ें*, ताकि सीखने का चक्र दिखे।",
+      win: "यही है चक्र: *शब्द ➜ अक्षर ➜ चित्र ➜ आवाज़ ➜ शब्द*। असली ऐप में अगले शब्द *हर बच्चे के हिसाब से बदलते हैं*, और शिक्षक हर बच्चे की प्रगति अक्षर-अक्षर देख सकते हैं।",
+      didntHear: "*माइक को पास रखें और पूरे वाक्य में बोलकर देखें।* कभी-कभी स्पीच-टू-टेक्स्ट भरोसेमंद नहीं होता, लेकिन हमने अपने असली वर्ज़न में इसे *कई स्पीच-टू-टेक्स्ट इंजनों के समूह* से और बेहतर बनाया है। आगे बढ़ने के लिए आप बटन भी दबा सकते हैं।",
     },
   },
 };
 
 export const SCRIPTS: Record<Lang, Script> = { en: EN, hi: HI };
+
+// The live Lifteracy chatbot (Hindi, on WhatsApp).
+export const REAL_BOT_URL = "https://dashboard.padhaipal.com/r/919565897842";

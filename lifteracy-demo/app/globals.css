@@ -396,6 +396,10 @@ button {
   box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
 }
 
+a.replyBtn {
+  text-decoration: none;
+}
+
 .replyBtn:disabled {
   color: #8696a0;
   cursor: default;
@@ -726,6 +730,10 @@ button {
   color: #fff;
 }
 
+.cmNote b {
+  color: var(--green);
+}
+
 .cmNote {
   margin: 0;
   font-size: 14.5px;
@@ -797,6 +805,10 @@ button {
   .cmSteps li.now {
     background: #fcd34d;
     color: #1e1b4b;
+  }
+
+  .cmNote b {
+    color: #fde68a;
   }
 }
 

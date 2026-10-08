@@ -11,11 +11,10 @@ as its own Vercel project with **Root Directory = `lifteracy-demo`**.
 
 1. Buttons: **English (preview)** or **हिंदी**. Lifteracy currently teaches Hindi;
    the English version is labelled as a preview throughout.
-2. A text message introduces Lifteracy, says it's a demo, and suggests reading
-   at least one letter wrong to see the learning loop.
-3. The bot sends the word (**cat** / **कल**) as an image, plus a voice note asking the user to read it.
-4. The user replies with a voice message (tap 🎤, wait for "Speak now", speak, tap ➤). They can also type.
-   - **Read correctly** → 👍 sticker.
+2. The bot sends the word (**cat** / **कल**) as an image, plus a voice note asking the user to read it.
+3. The user replies with a voice message (tap 🎤, wait for "Speak now", speak, tap ➤). They can also type.
+   - **Read correctly** → 👍 sticker, then buttons to try again, change language,
+     or **try the real bot** (Hindi, on WhatsApp: `REAL_BOT_URL` in `lib/script.ts`).
    - **Read wrong** → the bot shows the letter they got wrong: *"What is this letter?"*
      - Right → back to the word.
      - Wrong → a **picture** that starts with the same sound (car / apple / top;
@@ -26,7 +25,8 @@ The bot works out which letter was wrong from what it heard: "cap" → **t**,
 "cut" → **a**, "bat" → **c**; "कम" → **ल**, "जल" → **क**. It judges the last
 real word of an answer, so "the letter is bar" counts as "bar".
 
-A **commentary panel** explains each step for the audience: beside the phone on
+A **commentary panel** introduces Lifteracy (there's no intro message in the
+chat), suggests misreading a letter, and explains each step for the audience: beside the phone on
 a wide screen; on a phone, a dark "demo guide" strip along the bottom, styled so it
 clearly isn't part of the chat (tap its header to hide it).
 
@@ -38,7 +38,8 @@ clearly isn't part of the chat (tap its header to hide it).
   said before the mic is live is lost.
 - **Single sounds** (/b/, /t/) are the weak spot: browser recognition is built for
   words and often returns nothing for a lone consonant. When the mic heard a sound
-  but no words came back, the bot says so and offers **✅ / ❌** buttons. The same
+  but no words came back, the bot says so and offers **✅ / ❌** buttons, and the
+  commentary suggests holding the mic closer and speaking a full sentence. The same
   buttons appear whenever nothing was recognised, so the demo never gets stuck.
 - **The bot's voice** is the device's text-to-speech (en-IN / hi-IN). English sounds are spelt so it says the sound, not the letter name ("kuh", not "see").
 - **Repeated transcripts:** Android Chrome re-sends everything said so far in each update ("but", "but it", "but it was"…). The recorder keeps only the newest version, so transcripts don't repeat.

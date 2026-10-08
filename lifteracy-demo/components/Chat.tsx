@@ -9,15 +9,17 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SCRIPTS, type Lang, type NoteKey, type Picture, type VoiceNote } from "@/lib/script";
+import { REAL_BOT_URL, SCRIPTS, type Lang, type NoteKey, type Picture, type VoiceNote } from "@/lib/script";
 import type { Segment } from "@/lib/player";
 import * as player from "@/lib/player";
 import { Recorder, sttSupported } from "@/lib/recorder";
 import LattuIcon from "./LattuIcon";
 import Commentary from "./Commentary";
+import Rich from "./Rich";
 import {
   BackIcon,
   BotAvatar,
+  LinkIcon,
   CameraIcon,
   ClipIcon,
   EmojiIcon,
@@ -39,7 +41,7 @@ type Card =
   | { type: "word" | "letter"; text: string }
   | { type: "picture"; picture: Picture }
   | { type: "association"; picture: Picture; letter: string };
-type Option = { label: string; value: string };
+type Option = { label: string; value: string; href?: string };
 
 type Msg = { id: string; from: From; time: string } & (
   | { kind: "text"; text: string }
@@ -180,10 +182,8 @@ export default function Chat() {
     S.current = { ...S.current, lang, step: null, letter: 0, pictureTries: 0, loops: 0 };
     const sc = SCRIPTS[lang];
     setNoteLang(lang);
-    setNote("intro");
-    await botText(g, sc.text.intro);
+    // No intro message: the commentary explains Lifteracy.
     if (!sttSupported()) await botText(g, sc.text.noStt);
-    await pause(2500, g);
     await askWord(g, false);
   };
 
@@ -192,6 +192,7 @@ export default function Chat() {
     return [
       { label: sc.text.tryAgain, value: "again" },
       { label: sc.text.startOver, value: "restart" },
+      { label: sc.text.realBot, value: "real", href: REAL_BOT_URL },
     ];
   };
 
@@ -306,6 +307,7 @@ export default function Chat() {
   // ------------------------------------------------------------- inputs --
 
   const onButton = (msgId: string, opt: Option) => {
+    if (opt.href) return; // a link button: the <a> opens it; the chat carries on
     setMsgs((p) => p.map((m) => (m.id === msgId && m.kind === "buttons" ? { ...m, used: opt.value } : m)));
     if (opt.value === "restart") return restart();
     push({ from: "user", kind: "text", text: opt.label });
@@ -506,12 +508,6 @@ function LevelMeter({ level }: { level: number }) {
 
 // ----------------------------------------------------------------- bubbles --
 
-// WhatsApp-style *bold*.
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/\*([^*\n]+)\*/g);
-  return <>{parts.map((p, i) => (i % 2 ? <b key={i}>{p}</b> : p))}</>;
-}
-
 function PictureArt({ picture, size }: { picture: Picture; size: number }) {
   return "emoji" in picture ? (
     <span className="cardEmoji" style={{ fontSize: size * 0.8 }}>
@@ -588,16 +584,22 @@ function Message({ m, tail, onButton }: { m: Msg; tail: boolean; onButton: (id: 
             </span>
             <Meta m={m} />
           </div>
-          {m.options.map((o) => (
-            <button
-              key={o.value}
-              className={`replyBtn${m.used === o.value ? " chosen" : ""}`}
-              disabled={!!m.used}
-              onClick={() => onButton(m.id, o)}
-            >
-              <ReplyIcon /> {o.label}
-            </button>
-          ))}
+          {m.options.map((o) =>
+            o.href ? (
+              <a key={o.value} className="replyBtn" href={o.href} target="_blank" rel="noopener noreferrer">
+                <LinkIcon /> {o.label}
+              </a>
+            ) : (
+              <button
+                key={o.value}
+                className={`replyBtn${m.used === o.value ? " chosen" : ""}`}
+                disabled={!!m.used}
+                onClick={() => onButton(m.id, o)}
+              >
+                <ReplyIcon /> {o.label}
+              </button>
+            ),
+          )}
         </div>
       </div>
     );

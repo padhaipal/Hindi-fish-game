@@ -74,6 +74,13 @@ export const TrashIcon = ({ size = 24, className }: P) =>
 export const ReplyIcon = ({ size = 18, className }: P) =>
   svg(size, className, <path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z" />);
 
+export const LinkIcon = ({ size = 18, className }: P) =>
+  svg(
+    size,
+    className,
+    <path d="M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />,
+  );
+
 export const TicksIcon = ({ size = 16, className }: P) => (
   <svg width={size} height={size * 0.69} viewBox="0 0 16 11" className={className} aria-hidden="true" fill="currentColor">
     <path d="M11.07.65 10.4.13a.48.48 0 0 0-.68.08L4.5 6.9 2.3 4.84a.48.48 0 0 0-.68.02l-.5.53a.48.48 0 0 0 .02.68l3.07 2.9c.2.19.52.17.7-.05l6.24-7.6a.48.48 0 0 0-.08-.67z" />
