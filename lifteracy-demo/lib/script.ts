@@ -5,43 +5,54 @@
 // The flow (see components/Chat.tsx):
 //   word ──right──▶ 👍 sticker
 //     └─wrong──▶ letter "what is this?" ──right──▶ back to word
-//                  └─wrong──▶ picture "what is this?" ──▶ "first sound?" ──▶ back to word
+//                  └─wrong──▶ picture "what is this?" ──▶ picture→letter card,
+//                             "what is the first sound?" ──▶ back to word
 //
-// A voice note is a list of segments: spoken text (browser text-to-speech) or
-// a recorded clip (an mp3 path). Any voice note with a `rec` key is first tried
-// as a recording at /audio/voice/<lang>/<rec>.mp3 and only falls back to
-// text-to-speech if that file is missing. See README.md for the list.
+// Voice notes are spoken with the device's text-to-speech. Any voice note is
+// first tried as a recording at /audio/voice/<lang>/<rec>.mp3, so real
+// recordings can replace it without code changes. See README.md for the list.
 // ---------------------------------------------------------------------------
 
-import { firstConsonant, normalize, tokens } from "./match";
+import { answerOf, firstConsonant, normalize } from "./match";
 
 export type Lang = "en" | "hi";
 
-export type Segment = { say: string } | { src: string };
-
 export interface VoiceNote {
-  rec?: string; // optional recording key: /audio/voice/<lang>/<rec>.mp3
-  segments: Segment[];
+  rec: string; // recording key: /audio/voice/<lang>/<rec>.mp3
+  say: string; // text-to-speech fallback
 }
 
-export type Picture = { emoji: string } | { icon: "lattu" };
+export type Picture = { emoji: string } | { icon: "top" };
 
 export interface LetterInfo {
   char: string;
-  sound?: string; // recorded letter sound
   picture: Picture;
   pictureName: string;
   // Was this answer to "what is this letter?" / "what's the first sound?" right?
   isLetter: (t: string) => boolean;
   // Was this answer to "what is this?" (the picture) right?
   isPicture: (t: string) => boolean;
-  // Bot lines that mention this letter / picture.
-  pictureWrong: VoiceNote; // "This is a tiger. Can you say tiger?"
-  pictureWrongMoveOn: VoiceNote; // "This is a tiger. What is the first sound in tiger?"
-  pictureRight: VoiceNote; // "Yes, tiger! What is the first sound in tiger?"
+  pictureWrong: VoiceNote; // "This is a top. Can you say top?"
+  pictureWrongMoveOn: VoiceNote; // "This is a top."
+  pictureRight: VoiceNote; // "Yes, a top!"
+  firstSoundQ: VoiceNote; // "What is the first sound in top?"
   firstSoundRight: VoiceNote;
   firstSoundWrong: VoiceNote;
 }
+
+// What the commentary panel explains at each point of the conversation.
+export type NoteKey =
+  | "start"
+  | "intro"
+  | "word"
+  | "listening"
+  | "letter"
+  | "picture"
+  | "association"
+  | "back"
+  | "firstTry"
+  | "win"
+  | "didntHear";
 
 export interface Script {
   lang: Lang;
@@ -56,6 +67,7 @@ export interface Script {
     intro: string;
     noStt: string;
     didntHear: string;
+    heardSound: string;
     btnRight: string;
     btnWrong: string;
     firstTry: string;
@@ -63,6 +75,8 @@ export interface Script {
     tryAgain: string;
     startOver: string;
     typeHint: string;
+    startingMic: string;
+    speakNow: string;
   };
   voice: {
     readWord: VoiceNote;
@@ -72,56 +86,38 @@ export interface Script {
     whatPicture: VoiceNote;
     wellDone: VoiceNote;
   };
+  commentary: {
+    title: string;
+    steps: string[]; // the loop, for the progress strip
+    hindiOnly?: string; // English only: Lifteracy teaches Hindi today
+    notes: Record<NoteKey, string>;
+  };
 }
 
-const say = (s: string): Segment => ({ say: s });
-const src = (s: string): Segment => ({ src: s });
-const v = (rec: string, ...segments: Segment[]): VoiceNote => ({ rec, segments });
-
-const anyToken = (t: string, re: RegExp) => tokens(t).some((w) => re.test(w));
+const v = (rec: string, say: string): VoiceNote => ({ rec, say });
 
 // ---------------------------------------------------------------- ENGLISH ---
 
-const EN_C = "/audio/sounds/en/c.mp3";
-const EN_A = "/audio/sounds/en/a.mp3";
-const EN_T = "/audio/sounds/en/t.mp3";
+// Words people wrap around their answer ("the letter is t", "it's a car").
+// "a" is deliberately not here: it's also an answer.
+const EN_FILLER = new Set(
+  "the letter word is it its it s this that thats that s i think sound sounds says say makes like um uh hmm er ok okay".split(" "),
+);
 
-function enLetter(
-  key: string,
-  char: string,
-  sound: string,
-  emoji: string,
-  name: string,
-  letterRe: RegExp,
-  pictureRe: RegExp,
-): LetterInfo {
+function enLetter(key: string, char: string, picture: Picture, name: string, letterRe: RegExp, pictureRe: RegExp): LetterInfo {
+  const ans = (t: string) => answerOf(t, EN_FILLER);
   return {
     char,
-    sound,
-    picture: { emoji },
+    picture,
     pictureName: name,
-    isLetter: (t) => anyToken(t, letterRe),
-    isPicture: (t) => anyToken(t, pictureRe),
-    pictureWrong: v(`picture-wrong-${key}`, say(`This is a ${name}. Can you say ${name}?`)),
-    pictureWrongMoveOn: v(
-      `picture-wrong-again-${key}`,
-      say(`This is a ${name}. What is the first sound in ${name}?`),
-    ),
-    pictureRight: v(`picture-right-${key}`, say(`Yes, a ${name}! What is the first sound in ${name}?`)),
-    firstSoundRight: v(
-      `first-sound-right-${key}`,
-      say(`Well done! ${name} starts with`),
-      src(sound),
-      say(`This letter says`),
-      src(sound),
-    ),
-    firstSoundWrong: v(
-      `first-sound-wrong-${key}`,
-      say(`Listen. ${name} starts with`),
-      src(sound),
-      say(`This letter says`),
-      src(sound),
-    ),
+    isLetter: (t) => letterRe.test(ans(t)),
+    isPicture: (t) => pictureRe.test(ans(t)),
+    pictureWrong: v(`picture-wrong-${key}`, `This is a ${name}. Can you say ${name}?`),
+    pictureWrongMoveOn: v(`picture-wrong-again-${key}`, `This is a ${name}.`),
+    pictureRight: v(`picture-right-${key}`, `Yes, a ${name}!`),
+    firstSoundQ: v(`first-sound-${key}`, `What is the first sound in ${name}?`),
+    firstSoundRight: v(`first-sound-right-${key}`, `Well done! ${name} starts with the letter ${char}.`),
+    firstSoundWrong: v(`first-sound-wrong-${key}`, `Listen. ${name} starts with the letter ${char}.`),
   };
 }
 
@@ -131,13 +127,13 @@ const EN: Script = {
   ttsLang: "en-IN",
   word: "cat",
   letters: [
-    enLetter("c", "c", EN_C, "🚗", "car", /^(c|cc|see|sea|si|cee|k|kay|ka|kuh|cuh|ke|key|kh|kk)$/, /^(car|cars|kar|carr|kaar|caar)$/),
-    enLetter("a", "a", EN_A, "🍎", "apple", /^(a|ay|aye|eh|ah|aa|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
-    enLetter("t", "t", EN_T, "🐯", "tiger", /^(t|tt|tee|tea|ti|tuh|ta|tah|tu|to|too|two|the)$/, /^(tiger|tigers|tigar|tigger)$/),
+    enLetter("c", "c", { emoji: "🚗" }, "car", /^(c|cc|see|sea|si|cee|kay|key|kk|[ckq][aeiou]?h?)$/, /^(car|cars|kar|carr|kaar|caar)$/),
+    enLetter("a", "a", { emoji: "🍎" }, "apple", /^(a|ay|aye|eh|ah|aa|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
+    enLetter("t", "t", { icon: "top" }, "top", /^(tt|tee|tea|too|two|t[aeiou]?h?)$/, /^(top|tops|topp|taap|spinning)$/),
   ],
-  isWord: (t) => anyToken(t, /^(cat|cats|kat|katt|catt|khat)$/),
+  isWord: (t) => /^(cat|cats|kat|katt|catt|khat)$/.test(answerOf(t, EN_FILLER)),
   wrongLetter: (t) => {
-    const w = (tokens(t)[0] ?? "").replace(/s$/, "");
+    const w = answerOf(t, EN_FILLER).replace(/s$/, "");
     if (!/^[ckq]/.test(w)) return 0; // didn't start with /k/
     if (!/t$/.test(w)) return 2; // didn't end with /t/  (cap, can, cab…)
     return 1; // the vowel (cut, cot, kit…)
@@ -148,13 +144,14 @@ const EN: Script = {
       "Children who can't read yet learn with me by sending voice messages back and forth. " +
       "Every child gets a personal lesson: when they misread a letter, I zoom in on that letter, " +
       "give a picture hint, and build back up to the word.\n\n" +
-      "ℹ️ This is just a demo that runs in your browser.\n\n" +
+      "🇮🇳 *Lifteracy currently teaches Hindi.* This English version is a preview so you can follow along.\n\n" +
       "👉 *Tip:* when I send you a word, try reading at least one letter wrong " +
       "(say “cap” instead of “cat”) so you can experience the learning loop.",
     noStt:
       "ℹ️ This browser can't turn speech into text (Chrome works best). " +
       "You can still send voice messages and then tap a button to say whether you were right, or just type your answer.",
     didntHear: "🎧 Sorry, I couldn't hear that clearly. Try again, or tap below:",
+    heardSound: "🎧 I heard a sound, but couldn't tell which one. Did you say it right?",
     btnRight: "✅ I got it right",
     btnWrong: "❌ I got it wrong",
     firstTry:
@@ -162,66 +159,76 @@ const EN: Script = {
       "To see how Lifteracy teaches, try again and read one letter wrong.",
     win:
       "🎉 That's the Lifteracy learning loop!\n\n" +
-      "Misread word ➜ that letter ➜ a picture hint ➜ its first sound ➜ back to the word.\n\n" +
-      "In the real chatbot this adapts across hundreds of words, and teachers can see every child's progress, letter by letter.",
+      "Misread word ➜ that letter ➜ a picture hint ➜ its first sound ➜ back to the word.",
     tryAgain: "🔁 Try again",
     startOver: "🌐 Change language",
     typeHint: "Message",
+    startingMic: "Starting mic…",
+    speakNow: "Speak now",
   },
   voice: {
-    readWord: v("read-word", say("Can you read this word? Tap the microphone, and send me a voice message.")),
-    readAgain: v("read-again", say("Now read the word again.")),
-    whatLetter: v("what-letter", say("Let's look at this letter. What is this letter?")),
-    letterRight: v("letter-right", say("Yes! That's right.")),
-    whatPicture: v("what-picture", say("Here's a hint. What is this?")),
-    wellDone: v("well-done", say("Brilliant! You read it perfectly.")),
+    readWord: v("read-word", "Can you read this word? Tap the microphone, and send me a voice message."),
+    readAgain: v("read-again", "Now read the word again."),
+    whatLetter: v("what-letter", "Let's look at this letter. What is this letter?"),
+    letterRight: v("letter-right", "Yes! That's right."),
+    whatPicture: v("what-picture", "Look at this picture. What is this?"),
+    wellDone: v("well-done", "Brilliant! You read it perfectly."),
+  },
+  commentary: {
+    title: "What's happening",
+    steps: ["Word", "Letter", "Picture", "Sound", "Word ✓"],
+    hindiOnly: "Lifteracy currently teaches Hindi. English is a preview for this demo.",
+    notes: {
+      start:
+        "Lifteracy runs entirely inside WhatsApp: no app to install, works on any cheap smartphone. Pick a language to start.",
+      intro:
+        "Children who can't read can't follow written instructions, so in the real chatbot everything is done by voice notes and pictures.",
+      word:
+        "The child sees a word and hears a voice note asking them to read it aloud. Tap the green mic, read the word, then tap send. Try misreading one letter!",
+      listening:
+        "Speech recognition turns the child's voice into text. Lifteracy compares it with the word, letter by letter.",
+      letter:
+        "The word was misread, so Lifteracy found the letter that caused it and zooms in on just that letter. Can the child name it?",
+      picture:
+        "Still stuck? A picture of something the child already knows, whose name starts with the same sound. Naming it is easy.",
+      association:
+        "The picture-letter card links the familiar picture to the letter's shape. Now the child says the first sound.",
+      back: "With the letter practised, the child goes back to the whole word and reads it again.",
+      firstTry:
+        "Correct first time, so the child gets a sticker and, in the real app, a harder word. Tap “Try again” and misread a letter to see the learning loop.",
+      win:
+        "That's the loop: word ➜ letter ➜ picture ➜ sound ➜ word. In the real app the next words adapt to each child, extra practice on weak letters and harder words after success, and teachers see every child's progress, letter by letter.",
+      didntHear:
+        "The browser's speech recognition is built for words, so a single sound like /b/ often comes back empty. Speak once the mic says “Speak now”, or tap a button so the demo can carry on.",
+    },
   },
 };
 
 // ------------------------------------------------------------------ HINDI ---
 
-const HI_KA = "/audio/sounds/hi/ka.mp3";
-const HI_LA = "/audio/sounds/hi/la.mp3";
+const HI_FILLER = new Set("यह ये है हैं अक्षर शब्द का की के वाला वाली मुझे लगता तो और".split(" "));
 
 function hiLetter(
   key: string,
   char: string,
-  sound: string,
   picture: Picture,
   name: string,
-  pictureClip: string,
   latin: RegExp,
   pictureRe: RegExp,
 ): LetterInfo {
+  const ans = (t: string) => answerOf(t, HI_FILLER);
   return {
     char,
-    sound,
     picture,
     pictureName: name,
-    isLetter: (t) => firstConsonant(t) === char || anyToken(t, latin),
+    isLetter: (t) => firstConsonant(ans(t)) === char || latin.test(ans(t)),
     isPicture: (t) => pictureRe.test(normalize(t)),
-    pictureWrong: v(`picture-wrong-${key}`, say("यह"), src(pictureClip), say(`है। बोलो, ${name}।`)),
-    pictureWrongMoveOn: v(
-      `picture-wrong-again-${key}`,
-      say("यह"),
-      src(pictureClip),
-      say(`है। ${name} की पहली आवाज़ क्या है?`),
-    ),
-    pictureRight: v(`picture-right-${key}`, say(`हाँ, ${name}! ${name} की पहली आवाज़ क्या है?`)),
-    firstSoundRight: v(
-      `first-sound-right-${key}`,
-      say(`शाबाश! ${name} की पहली आवाज़ है`),
-      src(sound),
-      say("यह अक्षर है"),
-      src(sound),
-    ),
-    firstSoundWrong: v(
-      `first-sound-wrong-${key}`,
-      say(`सुनो। ${name} की पहली आवाज़ है`),
-      src(sound),
-      say("यह अक्षर है"),
-      src(sound),
-    ),
+    pictureWrong: v(`picture-wrong-${key}`, `यह ${name} है। बोलो, ${name}।`),
+    pictureWrongMoveOn: v(`picture-wrong-again-${key}`, `यह ${name} है।`),
+    pictureRight: v(`picture-right-${key}`, `हाँ, ${name}!`),
+    firstSoundQ: v(`first-sound-${key}`, `${name} की पहली आवाज़ क्या है?`),
+    firstSoundRight: v(`first-sound-right-${key}`, `शाबाश! ${name} की पहली आवाज़ है ${char}। यह अक्षर है ${char}।`),
+    firstSoundWrong: v(`first-sound-wrong-${key}`, `सुनो। ${name} की पहली आवाज़ है ${char}। यह अक्षर है ${char}।`),
   };
 }
 
@@ -231,15 +238,15 @@ const HI: Script = {
   ttsLang: "hi-IN",
   word: "कल",
   letters: [
-    hiLetter("ka", "क", HI_KA, { emoji: "🕊️" }, "कबूतर", "/audio/pictures/hi/ka.mp3", /^(k|ka|kaa|kah|c|ca|q|kay|key)$/, /कबूत|कबुत|kab(oo|u)tar|kabutar|pigeon/),
-    hiLetter("la", "ल", HI_LA, { icon: "lattu" }, "लट्टू", "/audio/pictures/hi/la.mp3", /^(l|la|laa|lah|el|ell)$/, /लट्ट|लटू|लट्टु|lat+(u|oo)|lattoo|spinning|top/),
+    hiLetter("ka", "क", { emoji: "🕊️" }, "कबूतर", /^(k|ka|kaa|kah|c|ca|q|kay|key)$/, /कबूत|कबुत|kab(oo|u)tar|kabutar|pigeon/),
+    hiLetter("la", "ल", { icon: "top" }, "लट्टू", /^(l|la|laa|lah|el|ell)$/, /लट्ट|लटू|लट्टु|lat+(u|oo)|lattoo|spinning|top/),
   ],
   isWord: (t) => {
-    const n = normalize(t);
-    return tokens(n).some((w) => w === "कल" || /^(kal|kall|cal|call|kul)$/.test(w));
+    const w = answerOf(t, HI_FILLER);
+    return w === "कल" || /^(kal|kall|cal|call|kul)$/.test(w);
   },
   wrongLetter: (t) => {
-    const w = tokens(t)[0] ?? "";
+    const w = answerOf(t, HI_FILLER);
     if (/[ऀ-ॿ]/.test(w)) return firstConsonant(w) === "क" ? 1 : 0;
     return /^[kcq]/.test(w) ? 1 : 0;
   },
@@ -248,7 +255,7 @@ const HI: Script = {
       "👋 नमस्ते! मैं *Lifteracy* हूँ, WhatsApp पर एक AI पढ़ाई साथी।\n\n" +
       "जो बच्चे अभी पढ़ना नहीं जानते, वे मुझसे वॉइस मैसेज के ज़रिए पढ़ना सीखते हैं। " +
       "हर बच्चे को अपना पाठ मिलता है: अगर कोई अक्षर गलत पढ़ा, तो मैं उसी अक्षर पर ध्यान देता हूँ, " +
-      "तस्वीर से इशारा देता हूँ, और फिर वापस शब्द तक ले जाता हूँ।\n\n" +
+      "चित्र से मदद देता हूँ, और फिर वापस शब्द तक ले जाता हूँ।\n\n" +
       "ℹ️ यह सिर्फ़ एक डेमो है, जो आपके ब्राउज़र में चलता है।\n\n" +
       "👉 *सुझाव:* जब मैं शब्द भेजूँ, तो कम से कम एक अक्षर गलत पढ़िए " +
       "(जैसे “कल” की जगह “कम”), ताकि आप सीखने का पूरा चक्र देख सकें।",
@@ -256,26 +263,43 @@ const HI: Script = {
       "ℹ️ यह ब्राउज़र आवाज़ को टेक्स्ट में नहीं बदल सकता (Chrome सबसे अच्छा है)। " +
       "आप फिर भी वॉइस मैसेज भेज सकते हैं और फिर बटन दबाकर बता सकते हैं कि जवाब सही था या नहीं, या जवाब टाइप कर सकते हैं।",
     didntHear: "🎧 माफ़ कीजिए, मैं ठीक से सुन नहीं पाया। फिर से कोशिश करें, या नीचे दबाएँ:",
+    heardSound: "🎧 मैंने एक आवाज़ सुनी, पर पहचान नहीं पाया कि कौन सी। क्या आपने सही बोला?",
     btnRight: "✅ सही पढ़ा",
     btnWrong: "❌ गलत पढ़ा",
     firstTry:
       "पहली बार में सही! असली ऐप में अगला शब्द थोड़ा कठिन होता।\n\n" +
       "Lifteracy कैसे सिखाता है यह देखने के लिए, फिर से कोशिश करें और एक अक्षर गलत पढ़ें।",
-    win:
-      "🎉 यही है Lifteracy का सीखने का चक्र!\n\n" +
-      "गलत शब्द ➜ वह अक्षर ➜ तस्वीर का इशारा ➜ पहली आवाज़ ➜ वापस शब्द।\n\n" +
-      "असली चैटबॉट सैकड़ों शब्दों में ऐसे ही ढलता है, और शिक्षक हर बच्चे की प्रगति, अक्षर-अक्षर देख सकते हैं।",
+    win: "🎉 यही है Lifteracy का सीखने का चक्र!\n\n" + "गलत शब्द ➜ वह अक्षर ➜ चित्र ➜ पहली आवाज़ ➜ वापस शब्द।",
     tryAgain: "🔁 फिर से",
     startOver: "🌐 भाषा बदलें",
     typeHint: "मैसेज",
+    startingMic: "माइक शुरू हो रहा है…",
+    speakNow: "अब बोलिए",
   },
   voice: {
-    readWord: v("read-word", say("क्या तुम यह शब्द पढ़ सकते हो? माइक दबाओ, और मुझे अपनी आवाज़ में भेजो।")),
-    readAgain: v("read-again", say("अब यह शब्द फिर से पढ़ो।")),
-    whatLetter: v("what-letter", say("इस अक्षर को देखो। यह कौन सा अक्षर है?")),
-    letterRight: v("letter-right", say("हाँ! बिल्कुल सही।")),
-    whatPicture: v("what-picture", say("यह इशारा देखो। यह क्या है?")),
-    wellDone: v("well-done", say("वाह! तुमने बिल्कुल सही पढ़ा।")),
+    readWord: v("read-word", "क्या तुम यह शब्द पढ़ सकते हो? माइक दबाओ, और मुझे अपनी आवाज़ में भेजो।"),
+    readAgain: v("read-again", "अब यह शब्द फिर से पढ़ो।"),
+    whatLetter: v("what-letter", "इस अक्षर को देखो। यह कौन सा अक्षर है?"),
+    letterRight: v("letter-right", "हाँ! बिल्कुल सही।"),
+    whatPicture: v("what-picture", "यह चित्र देखो। यह क्या है?"),
+    wellDone: v("well-done", "वाह! तुमने बिल्कुल सही पढ़ा।"),
+  },
+  commentary: {
+    title: "क्या हो रहा है",
+    steps: ["शब्द", "अक्षर", "चित्र", "आवाज़", "शब्द ✓"],
+    notes: {
+      start: "Lifteracy पूरी तरह WhatsApp के अंदर चलता है: कोई ऐप डाउनलोड नहीं, किसी भी सस्ते स्मार्टफ़ोन पर। शुरू करने के लिए भाषा चुनें।",
+      intro: "जो बच्चे पढ़ नहीं सकते, वे लिखे निर्देश भी नहीं पढ़ सकते। इसलिए असली चैटबॉट में सब कुछ वॉइस नोट और चित्रों से होता है।",
+      word: "बच्चा एक शब्द देखता है और वॉइस नोट सुनता है जो उसे शब्द पढ़ने को कहता है। हरा माइक दबाएँ, शब्द पढ़ें, फिर भेजें। एक अक्षर गलत पढ़कर देखिए!",
+      listening: "स्पीच रिकग्निशन बच्चे की आवाज़ को टेक्स्ट में बदलता है। Lifteracy उसे शब्द से अक्षर-अक्षर मिलाता है।",
+      letter: "शब्द गलत पढ़ा गया, तो Lifteracy ने वह अक्षर ढूँढा जिसकी वजह से गलती हुई, और अब सिर्फ़ उसी अक्षर पर ध्यान देता है। क्या बच्चा उसे पहचानता है?",
+      picture: "अब भी मुश्किल? एक जानी-पहचानी चीज़ का चित्र, जिसका नाम उसी आवाज़ से शुरू होता है। उसका नाम बताना आसान है।",
+      association: "चित्र-अक्षर कार्ड जानी-पहचानी चीज़ को अक्षर के आकार से जोड़ता है। अब बच्चा पहली आवाज़ बताता है।",
+      back: "अक्षर का अभ्यास हो गया, अब बच्चा फिर से पूरा शब्द पढ़ता है।",
+      firstTry: "पहली बार में सही, तो स्टिकर मिलता है और असली ऐप में अगला शब्द कठिन होता है। “फिर से” दबाएँ और एक अक्षर गलत पढ़कर सीखने का चक्र देखें।",
+      win: "यही है चक्र: शब्द ➜ अक्षर ➜ चित्र ➜ आवाज़ ➜ शब्द। असली ऐप में अगले शब्द हर बच्चे के हिसाब से बदलते हैं, और शिक्षक हर बच्चे की प्रगति अक्षर-अक्षर देख सकते हैं।",
+      didntHear: "ब्राउज़र का स्पीच रिकग्निशन शब्दों के लिए बना है, इसलिए /ब/ जैसी अकेली आवाज़ अक्सर पकड़ में नहीं आती। “अब बोलिए” दिखने के बाद बोलिए, या बटन दबाकर डेमो आगे बढ़ाइए।",
+    },
   },
 };
 

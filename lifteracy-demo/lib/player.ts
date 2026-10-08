@@ -6,7 +6,8 @@
 // no progress events, so progress there is estimated from the text length.
 // ---------------------------------------------------------------------------
 
-import type { Segment } from "./script";
+// A voice note is spoken text, recorded clips, or a mix.
+export type Segment = { say: string } | { src: string };
 
 export interface PlayState {
   id: string | null;
