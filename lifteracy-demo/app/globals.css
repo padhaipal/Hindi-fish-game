@@ -726,6 +726,10 @@ button {
   color: #fff;
 }
 
+.cmNote b {
+  color: var(--green);
+}
+
 .cmNote {
   margin: 0;
   font-size: 14.5px;
@@ -797,6 +801,10 @@ button {
   .cmSteps li.now {
     background: #fcd34d;
     color: #1e1b4b;
+  }
+
+  .cmNote b {
+    color: #fde68a;
   }
 }
 

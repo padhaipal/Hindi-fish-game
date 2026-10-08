@@ -5,11 +5,11 @@
 
 import { useRef, useState } from "react";
 import { SCRIPTS, type Lang, type NoteKey } from "@/lib/script";
+import Rich from "./Rich";
 
 // Where each moment sits in the learning loop (see `steps`).
 const STAGE: Record<NoteKey, number> = {
   start: -1,
-  intro: -1,
   word: 0,
   listening: -2, // keep the previous highlight
   didntHear: -2,
@@ -48,7 +48,7 @@ export default function Commentary({ lang, note }: { lang: Lang | null; note: No
             ))}
           </ol>
           <p key={note} className="cmNote">
-            {c.notes[note]}
+            <Rich text={c.notes[note]} />
           </p>
         </div>
       )}

@@ -15,6 +15,7 @@ import * as player from "@/lib/player";
 import { Recorder, sttSupported } from "@/lib/recorder";
 import LattuIcon from "./LattuIcon";
 import Commentary from "./Commentary";
+import Rich from "./Rich";
 import {
   BackIcon,
   BotAvatar,
@@ -180,10 +181,8 @@ export default function Chat() {
     S.current = { ...S.current, lang, step: null, letter: 0, pictureTries: 0, loops: 0 };
     const sc = SCRIPTS[lang];
     setNoteLang(lang);
-    setNote("intro");
-    await botText(g, sc.text.intro);
+    // No intro message: the commentary explains Lifteracy.
     if (!sttSupported()) await botText(g, sc.text.noStt);
-    await pause(2500, g);
     await askWord(g, false);
   };
 
@@ -505,12 +504,6 @@ function LevelMeter({ level }: { level: number }) {
 }
 
 // ----------------------------------------------------------------- bubbles --
-
-// WhatsApp-style *bold*.
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/\*([^*\n]+)\*/g);
-  return <>{parts.map((p, i) => (i % 2 ? <b key={i}>{p}</b> : p))}</>;
-}
 
 function PictureArt({ picture, size }: { picture: Picture; size: number }) {
   return "emoji" in picture ? (
