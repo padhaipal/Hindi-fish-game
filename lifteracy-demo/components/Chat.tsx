@@ -9,10 +9,12 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SCRIPTS, type Lang, type Picture, type Segment, type VoiceNote } from "@/lib/script";
+import { SCRIPTS, type Lang, type NoteKey, type Picture, type VoiceNote } from "@/lib/script";
+import type { Segment } from "@/lib/player";
 import * as player from "@/lib/player";
 import { Recorder, sttSupported } from "@/lib/recorder";
 import LattuIcon from "./LattuIcon";
+import Commentary from "./Commentary";
 import {
   BackIcon,
   BotAvatar,
@@ -33,7 +35,10 @@ import {
 } from "./Icons";
 
 type From = "bot" | "user";
-type Card = { type: "word" | "letter"; text: string } | { type: "picture"; picture: Picture };
+type Card =
+  | { type: "word" | "letter"; text: string }
+  | { type: "picture"; picture: Picture }
+  | { type: "association"; picture: Picture; letter: string };
 type Option = { label: string; value: string };
 
 type Msg = { id: string; from: From; time: string } & (
@@ -59,7 +64,7 @@ const WELCOME: NewMsg = {
   kind: "buttons",
   text: "Welcome to *Lifteracy*! 👋\nWhich language would you like to try?\n\nआप किस भाषा में आज़माना चाहेंगे?",
   options: [
-    { label: "English", value: "lang:en" },
+    { label: "English (preview)", value: "lang:en" },
     { label: "हिंदी", value: "lang:hi" },
   ],
 };
@@ -72,8 +77,13 @@ export default function Chat() {
   const [recStart, setRecStart] = useState<number | null>(null);
   const [recNow, setRecNow] = useState(0);
   const [menu, setMenu] = useState(false);
+  const [note, setNote] = useState<NoteKey>("start");
+  const [noteLang, setNoteLang] = useState<Lang | null>(null);
+  const [recLive, setRecLive] = useState(false);
+  const [level, setLevel] = useState<number | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const recorder = useRef<Recorder | null>(null);
+  const noteBeforeRec = useRef<NoteKey>("word");
   const S = useRef({ gen: 0, lang: "en" as Lang, step: null as Step, letter: 0, pictureTries: 0, loops: 0 });
 
   // ------------------------------------------------------------- helpers --
@@ -120,11 +130,12 @@ export default function Chat() {
     setStatus("recording audio…");
     await pause(900, g);
     setStatus("online");
-    const seconds = Math.max(1, Math.round(player.estimateSeconds(note.segments)));
-    const url = note.rec ? `/audio/voice/${sc.lang}/${note.rec}.mp3` : undefined;
-    const id = push({ from: "bot", kind: "voice", seconds, lang: sc.ttsLang, url, segments: note.segments });
+    const segments: Segment[] = [{ say: note.say }];
+    const seconds = Math.max(1, Math.round(player.estimateSeconds(segments)));
+    const url = `/audio/voice/${sc.lang}/${note.rec}.mp3`;
+    const id = push({ from: "bot", kind: "voice", seconds, lang: sc.ttsLang, url, segments });
     await pause(250, g);
-    await player.play({ id, lang: sc.ttsLang, url, segments: note.segments, seconds });
+    await player.play({ id, lang: sc.ttsLang, url, segments, seconds });
     await pause(300, g);
   };
 
@@ -159,6 +170,7 @@ export default function Chat() {
 
   const askWord = async (g: number, again: boolean) => {
     const sc = script();
+    setNote(again ? "back" : "word");
     await botCard(g, { type: "word", text: sc.word });
     await botVoice(g, again ? sc.voice.readAgain : sc.voice.readWord);
     listen("word");
@@ -167,6 +179,8 @@ export default function Chat() {
   const startLesson = async (g: number, lang: Lang) => {
     S.current = { ...S.current, lang, step: null, letter: 0, pictureTries: 0, loops: 0 };
     const sc = SCRIPTS[lang];
+    setNoteLang(lang);
+    setNote("intro");
     await botText(g, sc.text.intro);
     if (!sttSupported()) await botText(g, sc.text.noStt);
     await pause(2500, g);
@@ -190,6 +204,7 @@ export default function Chat() {
       case "word":
         if (ok) {
           st.step = null;
+          setNote(st.loops === 0 ? "firstTry" : "win");
           await botSticker(g);
           await botVoice(g, sc.voice.wellDone);
           await botButtons(g, st.loops === 0 ? sc.text.firstTry : sc.text.win, endButtons());
@@ -198,6 +213,7 @@ export default function Chat() {
         st.loops++;
         st.letter = wrongIdx ?? sc.letters.length - 1;
         st.pictureTries = 0;
+        setNote("letter");
         await botCard(g, { type: "letter", text: sc.letters[st.letter].char });
         await botVoice(g, sc.voice.whatLetter);
         return listen("letter");
@@ -207,21 +223,21 @@ export default function Chat() {
           await botVoice(g, sc.voice.letterRight);
           return askWord(g, true);
         }
+        setNote("picture");
         await botCard(g, { type: "picture", picture: L.picture });
         await botVoice(g, sc.voice.whatPicture);
         return listen("picture");
 
       case "picture":
-        if (ok) {
-          await botVoice(g, L.pictureRight);
-          return listen("firstSound");
-        }
-        st.pictureTries++;
-        if (st.pictureTries < 2) {
+        if (!ok && ++st.pictureTries < 2) {
           await botVoice(g, L.pictureWrong);
           return listen("picture");
         }
-        await botVoice(g, L.pictureWrongMoveOn);
+        await botVoice(g, ok ? L.pictureRight : L.pictureWrongMoveOn);
+        // The picture-letter card: the picture, an arrow, and its first letter.
+        setNote("association");
+        await botCard(g, { type: "association", picture: L.picture, letter: L.char });
+        await botVoice(g, L.firstSoundQ);
         return listen("firstSound");
 
       case "firstSound":
@@ -231,7 +247,7 @@ export default function Chat() {
   };
 
   // Judge what the learner said (or typed) for the current step.
-  const answer = (transcripts: string[]) => {
+  const answer = (transcripts: string[], heardSound = false) => {
     const sc = script();
     const st = S.current;
     const L = sc.letters[st.letter];
@@ -239,7 +255,11 @@ export default function Chat() {
     player.stop();
     run(async (g) => {
       if (!transcripts.length) {
-        await botButtons(g, sc.text.didntHear, [
+        setNote("didntHear");
+        // Single sounds (/b/) often come back with no words even though the
+        // mic heard them; say so rather than "I couldn't hear you".
+        const soundStep = st.step === "letter" || st.step === "firstSound";
+        await botButtons(g, heardSound && soundStep ? sc.text.heardSound : sc.text.didntHear, [
           { label: sc.text.btnRight, value: "right" },
           { label: sc.text.btnWrong, value: "wrong" },
         ]);
@@ -273,6 +293,8 @@ export default function Chat() {
     setStatus("online");
     setText("");
     setMsgs([]);
+    setNote("start");
+    setNoteLang(null);
     push(WELCOME);
   }, [push]);
 
@@ -321,7 +343,13 @@ export default function Chat() {
     recorder.current = r;
     setRecStart(performance.now());
     setRecNow(performance.now());
-    await r.start(script().sttLang);
+    setRecLive(false);
+    setLevel(null);
+    noteBeforeRec.current = note;
+    setNote("listening");
+    await r.start(script().sttLang, () => {
+      if (recorder.current === r) setRecLive(true);
+    });
   };
 
   const sendRecording = async () => {
@@ -338,10 +366,11 @@ export default function Chat() {
       url: rec.audioUrl,
       transcript: rec.transcripts[0] ?? "",
     });
-    answer(rec.transcripts);
+    answer(rec.transcripts, rec.heardSound);
   };
 
   const cancelRecording = () => {
+    setNote(noteBeforeRec.current);
     recorder.current?.cancel();
     recorder.current = null;
     setRecStart(null);
@@ -349,7 +378,10 @@ export default function Chat() {
 
   useEffect(() => {
     if (recStart === null) return;
-    const t = window.setInterval(() => setRecNow(performance.now()), 250);
+    const t = window.setInterval(() => {
+      setRecNow(performance.now());
+      setLevel(recorder.current?.level() ?? null);
+    }, 100);
     return () => window.clearInterval(t);
   }, [recStart]);
 
@@ -365,6 +397,7 @@ export default function Chat() {
   const lang = S.current.lang;
 
   return (
+    <div className="stage">
     <div className="wa">
       <header className="waHeader">
         <button className="iconBtn" aria-label="Restart demo" onClick={restart}>
@@ -407,9 +440,12 @@ export default function Chat() {
             <button className="iconBtn trash" aria-label="Cancel recording" onClick={cancelRecording}>
               <TrashIcon />
             </button>
-            <span className="recDot" />
+            <span className={`recDot${recLive ? " live" : ""}`} />
             <span className="recTime">{mmss((recNow - (recStart ?? recNow)) / 1000)}</span>
-            <span className="recHint">{lang === "hi" ? "बोलिए…" : "Speak now…"}</span>
+            {recLive && level !== null && <LevelMeter level={level} />}
+            <span className={`recHint${recLive ? " live" : ""}`}>
+              {recLive ? `🎙️ ${SCRIPTS[lang].text.speakNow}` : SCRIPTS[lang].text.startingMic}
+            </span>
           </div>
         ) : (
           <div className="pill">
@@ -452,6 +488,19 @@ export default function Chat() {
         )}
       </footer>
     </div>
+    <Commentary lang={noteLang} note={note} />
+    </div>
+  );
+}
+
+// A few bars that jump with the microphone level.
+function LevelMeter({ level }: { level: number }) {
+  return (
+    <span className="level" aria-hidden="true">
+      {[0.15, 0.35, 0.55, 0.75, 0.9].map((t, i) => (
+        <span key={i} className={level > t * 0.6 ? "on" : ""} style={{ height: `${30 + i * 14}%` }} />
+      ))}
+    </span>
   );
 }
 
@@ -461,6 +510,16 @@ export default function Chat() {
 function Rich({ text }: { text: string }) {
   const parts = text.split(/\*([^*\n]+)\*/g);
   return <>{parts.map((p, i) => (i % 2 ? <b key={i}>{p}</b> : p))}</>;
+}
+
+function PictureArt({ picture, size }: { picture: Picture; size: number }) {
+  return "emoji" in picture ? (
+    <span className="cardEmoji" style={{ fontSize: size * 0.8 }}>
+      {picture.emoji}
+    </span>
+  ) : (
+    <LattuIcon size={size} />
+  );
 }
 
 function Meta({ m }: { m: Msg }) {
@@ -503,11 +562,13 @@ function Message({ m, tail, onButton }: { m: Msg; tail: boolean; onButton: (id: 
         <div className={`${cls} media`}>
           <div className={`card card-${m.card.type}`}>
             {m.card.type === "picture" ? (
-              "emoji" in m.card.picture ? (
-                <span className="cardEmoji">{m.card.picture.emoji}</span>
-              ) : (
-                <LattuIcon size={150} />
-              )
+              <PictureArt picture={m.card.picture} size={150} />
+            ) : m.card.type === "association" ? (
+              <>
+                <PictureArt picture={m.card.picture} size={110} />
+                <span className="assocArrow">↓</span>
+                <span className="assocLetter">{m.card.letter}</span>
+              </>
             ) : (
               <span className="cardText">{m.card.text}</span>
             )}

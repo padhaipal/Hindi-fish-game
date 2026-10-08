@@ -19,3 +19,10 @@ export function firstConsonant(s: string): string {
   const m = s.normalize("NFC").match(/[क-हक़-य़]/);
   return m ? m[0] : "";
 }
+
+// The answer inside an utterance: its last word that isn't filler.
+// "the letter is bar" → "bar", "it's a car" → "car", "यह लट्टू है" → "लट्टू".
+export function answerOf(s: string, filler: Set<string>): string {
+  const words = tokens(s).filter((w) => !filler.has(w));
+  return words[words.length - 1] ?? "";
+}
