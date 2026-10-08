@@ -27,7 +27,8 @@ The bot works out which letter was wrong from what it heard: "cap" → **t**,
 real word of an answer, so "the letter is bar" counts as "bar".
 
 A **commentary panel** explains each step for the audience: beside the phone on
-a wide screen, along the bottom on a phone (tap its header to hide it).
+a wide screen; on a phone, a dark "demo guide" strip along the bottom, styled so it
+clearly isn't part of the chat (tap its header to hide it).
 
 ## Speech
 
@@ -39,7 +40,8 @@ a wide screen, along the bottom on a phone (tap its header to hide it).
   words and often returns nothing for a lone consonant. When the mic heard a sound
   but no words came back, the bot says so and offers **✅ / ❌** buttons. The same
   buttons appear whenever nothing was recognised, so the demo never gets stuck.
-- **The bot's voice** is the device's text-to-speech (en-IN / hi-IN).
+- **The bot's voice** is the device's text-to-speech (en-IN / hi-IN). English sounds are spelt so it says the sound, not the letter name ("kuh", not "see").
+- **Repeated transcripts:** Android Chrome re-sends everything said so far in each update ("but", "but it", "but it was"…). The recorder keeps only the newest version, so transcripts don't repeat.
 
 ### Swapping in real recordings
 
@@ -59,8 +61,8 @@ file is missing. Record each as one whole sentence:
 | `picture-wrong-<l>` | This is a top. Can you say top? | यह लट्टू है। बोलो, लट्टू। |
 | `picture-wrong-again-<l>` | This is a top. | यह लट्टू है। |
 | `first-sound-<l>` | What is the first sound in top? | लट्टू की पहली आवाज़ क्या है? |
-| `first-sound-right-<l>` | Well done! Top starts with the letter t. | शाबाश! लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
-| `first-sound-wrong-<l>` | Listen. Top starts with the letter t. | सुनो। लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
+| `first-sound-right-<l>` | Well done! Top starts with the sound /t/. | शाबाश! लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
+| `first-sound-wrong-<l>` | Listen. Top starts with the sound /t/. /t/, top. | सुनो। लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
 
 `<l>` is the letter: `c`, `a`, `t` (English) or `ka`, `la` (Hindi). For example
 `public/audio/voice/hi/first-sound-la.mp3`. All the wording lives in `lib/script.ts`.

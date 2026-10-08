@@ -740,6 +740,66 @@ button {
   }
 }
 
+.cmTag {
+  display: none;
+}
+
+/* On a phone the guide sits right under the chat, so make it look nothing
+   like WhatsApp: a dark presenter's panel with its own label. */
+@media (max-width: 899px) {
+  .stage {
+    background: #1e1b4b;
+  }
+
+  .commentary {
+    background: #1e1b4b;
+    color: #eceafd;
+    border-top: 0;
+    box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .cmToggle {
+    color: #fcd34d;
+    padding-top: 10px;
+  }
+
+  .cmToggle > span:first-child {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+
+  .cmTag {
+    display: inline;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: #a5a3cf;
+  }
+
+  .cmBadge {
+    background: rgba(252, 211, 77, 0.14);
+    color: #fde68a;
+  }
+
+  .cmSteps li {
+    background: rgba(255, 255, 255, 0.08);
+    color: #a5a3cf;
+  }
+
+  .cmSteps li.done {
+    background: rgba(134, 239, 172, 0.18);
+    color: #86efac;
+  }
+
+  .cmSteps li.now {
+    background: #fcd34d;
+    color: #1e1b4b;
+  }
+}
+
 @media (min-width: 900px) {
   .commentary {
     flex: 0 0 340px;
