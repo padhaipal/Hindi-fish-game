@@ -187,13 +187,33 @@ export class Recorder {
   }
 
   private transcripts(): string[] {
-    if (!this.finals.length) return this.interim ? [this.interim] : [];
-    const best = this.finals.map((a) => a[0]).join(" ").trim();
-    const out = [best];
+    if (!this.finals.length) return this.interim ? [collapse(this.interim)] : [];
+    // Android Chrome re-sends the whole utterance so far in each new result
+    // ("but", "but it", "but it was"…). Keep only the newest of such a run
+    // instead of joining them all.
+    const merged: string[][] = [];
+    for (const alts of this.finals) {
+      const prev = merged[merged.length - 1];
+      const cur = squash(alts[0]);
+      const before = prev ? squash(prev[0]) : "";
+      if (prev && cur.startsWith(before)) merged[merged.length - 1] = alts;
+      else if (prev && before.includes(cur)) continue;
+      else merged.push(alts);
+    }
+    const out = [collapse(merged.map((a) => a[0]).join(" "))];
     // Alternatives only make sense for a single utterance.
-    if (this.finals.length === 1) out.push(...this.finals[0].slice(1));
-    // Android sometimes repeats the whole phrase in each result; also offer the last.
-    if (this.finals.length > 1) out.push(this.finals[this.finals.length - 1][0]);
+    if (merged.length === 1) out.push(...merged[0].slice(1));
     return out.filter(Boolean);
   }
+}
+
+const squash = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+// Drop a word repeated straight after itself ("cat cat cat" → "cat").
+function collapse(s: string): string {
+  return s
+    .split(/\s+/)
+    .filter((w, i, ws) => i === 0 || w.toLowerCase() !== ws[i - 1].toLowerCase())
+    .join(" ")
+    .trim();
 }

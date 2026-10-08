@@ -31,12 +31,15 @@ export default function Commentary({ lang, note }: { lang: Lang | null; note: No
   return (
     <aside className={`commentary${open ? "" : " closed"}`} aria-live="polite">
       <button className="cmToggle" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span>💡 {c.title}</span>
+        <span>
+          💡 {c.title}
+          <span className="cmTag">{c.tag}</span>
+        </span>
         <span className="cmChevron">{open ? "▾" : "▴"}</span>
       </button>
       {open && (
         <div className="cmBody">
-          {lang === "en" && c.hindiOnly && <div className="cmBadge">🇮🇳 {c.hindiOnly}</div>}
+          {lang === "en" && c.hindiOnly && <div className="cmBadge">ℹ️ {c.hindiOnly}</div>}
           <ol className="cmSteps">
             {c.steps.map((label, i) => (
               <li key={i} className={i === stage ? "now" : i < stage ? "done" : ""}>

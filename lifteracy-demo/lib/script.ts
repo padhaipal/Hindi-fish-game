@@ -88,6 +88,7 @@ export interface Script {
   };
   commentary: {
     title: string;
+    tag: string; // phone only: makes clear the panel isn't part of the chat
     steps: string[]; // the loop, for the progress strip
     hindiOnly?: string; // English only: Lifteracy teaches Hindi today
     notes: Record<NoteKey, string>;
@@ -104,7 +105,17 @@ const EN_FILLER = new Set(
   "the letter word is it its it s this that thats that s i think sound sounds says say makes like um uh hmm er ok okay".split(" "),
 );
 
-function enLetter(key: string, char: string, picture: Picture, name: string, letterRe: RegExp, pictureRe: RegExp): LetterInfo {
+// `sound` is the letter's sound spelt so text-to-speech says the sound, not
+// the letter's name ("kuh", not "see").
+function enLetter(
+  key: string,
+  char: string,
+  sound: string,
+  picture: Picture,
+  name: string,
+  letterRe: RegExp,
+  pictureRe: RegExp,
+): LetterInfo {
   const ans = (t: string) => answerOf(t, EN_FILLER);
   return {
     char,
@@ -116,8 +127,8 @@ function enLetter(key: string, char: string, picture: Picture, name: string, let
     pictureWrongMoveOn: v(`picture-wrong-again-${key}`, `This is a ${name}.`),
     pictureRight: v(`picture-right-${key}`, `Yes, a ${name}!`),
     firstSoundQ: v(`first-sound-${key}`, `What is the first sound in ${name}?`),
-    firstSoundRight: v(`first-sound-right-${key}`, `Well done! ${name} starts with the letter ${char}.`),
-    firstSoundWrong: v(`first-sound-wrong-${key}`, `Listen. ${name} starts with the letter ${char}.`),
+    firstSoundRight: v(`first-sound-right-${key}`, `Well done! ${name} starts with the sound, ${sound}.`),
+    firstSoundWrong: v(`first-sound-wrong-${key}`, `Listen. ${name} starts with the sound, ${sound}. ${sound}, ${name}.`),
   };
 }
 
@@ -127,9 +138,9 @@ const EN: Script = {
   ttsLang: "en-IN",
   word: "cat",
   letters: [
-    enLetter("c", "c", { emoji: "🚗" }, "car", /^(c|cc|see|sea|si|cee|kay|key|kk|[ckq][aeiou]?h?)$/, /^(car|cars|kar|carr|kaar|caar)$/),
-    enLetter("a", "a", { emoji: "🍎" }, "apple", /^(a|ay|aye|eh|ah|aa|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
-    enLetter("t", "t", { icon: "top" }, "top", /^(tt|tee|tea|too|two|t[aeiou]?h?)$/, /^(top|tops|topp|taap|spinning)$/),
+    enLetter("c", "c", "kuh", { emoji: "🚗" }, "car", /^(c|cc|see|sea|si|cee|kay|key|kk|[ckq][aeiou]?h?)$/, /^(car|cars|kar|carr|kaar|caar)$/),
+    enLetter("a", "a", "ah", { emoji: "🍎" }, "apple", /^(a|ay|aye|eh|ah|aa|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
+    enLetter("t", "t", "tuh", { icon: "top" }, "top", /^(tt|tee|tea|too|two|t[aeiou]?h?)$/, /^(top|tops|topp|taap|spinning)$/),
   ],
   isWord: (t) => /^(cat|cats|kat|katt|catt|khat)$/.test(answerOf(t, EN_FILLER)),
   wrongLetter: (t) => {
@@ -144,7 +155,7 @@ const EN: Script = {
       "Children who can't read yet learn with me by sending voice messages back and forth. " +
       "Every child gets a personal lesson: when they misread a letter, I zoom in on that letter, " +
       "give a picture hint, and build back up to the word.\n\n" +
-      "🇮🇳 *Lifteracy currently teaches Hindi.* This English version is a preview so you can follow along.\n\n" +
+      "ℹ️ *Lifteracy currently teaches Hindi.* This English version is a preview so you can follow along.\n\n" +
       "👉 *Tip:* when I send you a word, try reading at least one letter wrong " +
       "(say “cap” instead of “cat”) so you can experience the learning loop.",
     noStt:
@@ -176,6 +187,7 @@ const EN: Script = {
   },
   commentary: {
     title: "What's happening",
+    tag: "Demo guide · not part of the chat",
     steps: ["Word", "Letter", "Picture", "Sound", "Word ✓"],
     hindiOnly: "Lifteracy currently teaches Hindi. English is a preview for this demo.",
     notes: {
@@ -286,6 +298,7 @@ const HI: Script = {
   },
   commentary: {
     title: "क्या हो रहा है",
+    tag: "डेमो गाइड · चैट का हिस्सा नहीं",
     steps: ["शब्द", "अक्षर", "चित्र", "आवाज़", "शब्द ✓"],
     notes: {
       start: "Lifteracy पूरी तरह WhatsApp के अंदर चलता है: कोई ऐप डाउनलोड नहीं, किसी भी सस्ते स्मार्टफ़ोन पर। शुरू करने के लिए भाषा चुनें।",
