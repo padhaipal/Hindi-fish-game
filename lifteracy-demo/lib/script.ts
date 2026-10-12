@@ -135,18 +135,20 @@ const EN: Script = {
   lang: "en",
   sttLang: "en-IN",
   ttsLang: "en-IN",
-  word: "cat",
+  word: "mat",
+  // Each letter accepts its name or its sound: "em" or "mmm"/"ma",
+  // "ay" or "ah", "tee" or "tuh".
   letters: [
-    enLetter("c", "c", "kuh", { emoji: "🚗" }, "car", /^(c|cc|see|sea|si|cee|kay|key|kk|[ckq][aeiou]?h?)$/, /^(car|cars|kar|carr|kaar|caar)$/),
-    enLetter("a", "a", "ah", { emoji: "🍎" }, "apple", /^(a|ay|aye|eh|ah|aa|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
+    enLetter("m", "m", "mmm", { emoji: "🥭" }, "mango", /^(m|mm+|em+|um+|hm+|ma+h?|muh|mu|mo|me|mi)$/, /^(mango|mangoes|mangos|mangow|mengo)$/),
+    enLetter("a", "a", "ah", { emoji: "🍎" }, "apple", /^(a|ay|aye|eh|ah|aa+|uh|ae|air|hey|ha)$/, /^(apple|apples|appel|aple)$/),
     enLetter("t", "t", "tuh", { icon: "top" }, "top", /^(tt|tee|tea|too|two|t[aeiou]?h?)$/, /^(top|tops|topp|taap|spinning)$/),
   ],
-  isWord: (t) => /^(cat|cats|kat|katt|catt|khat)$/.test(answerOf(t, EN_FILLER)),
+  isWord: (t) => /^(mat|mats|matt|matte|maat|mett)$/.test(answerOf(t, EN_FILLER)),
   wrongLetter: (t) => {
     const w = answerOf(t, EN_FILLER).replace(/s$/, "");
-    if (!/^[ckq]/.test(w)) return 0; // didn't start with /k/
-    if (!/t$/.test(w)) return 2; // didn't end with /t/  (cap, can, cab…)
-    return 1; // the vowel (cut, cot, kit…)
+    if (!/^m/.test(w)) return 0; // didn't start with /m/  (bat, cat, sat…)
+    if (!/t$/.test(w)) return 2; // didn't end with /t/  (map, man, mad…)
+    return 1; // the vowel (met, mit, mutt…)
   },
   text: {
     noStt:
@@ -186,7 +188,7 @@ const EN: Script = {
       start:
         "Lifteracy runs entirely inside *WhatsApp*: no app to install, and it works on any cheap smartphone. *Pick a language to start.*",
       word:
-        "Children who can't read can't follow written instructions, so *everything happens by voice notes and pictures*. The child sees a word and hears a voice note asking them to read it. Tap the green mic, read the word, then tap send. *Try misreading one letter* (say “cap” instead of “cat”) to see the learning loop.",
+        "Children who can't read can't follow written instructions, so *everything happens by voice notes and pictures*. The child sees a word and hears a voice note asking them to read it. Tap the green mic, read the word, then tap send. *Try misreading one letter* (say “map” instead of “mat”) to see the learning loop.",
       listening:
         "*Speech recognition* turns the child's voice into text, and Lifteracy compares it with the word *letter by letter*.",
       letter:

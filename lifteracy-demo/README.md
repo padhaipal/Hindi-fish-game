@@ -11,19 +11,21 @@ as its own Vercel project with **Root Directory = `lifteracy-demo`**.
 
 1. Buttons: **English (preview)** or **हिंदी**. Lifteracy currently teaches Hindi;
    the English version is labelled as a preview throughout.
-2. The bot sends the word (**cat** / **कल**) as an image, plus a voice note asking the user to read it.
+2. The bot sends the word (**mat** / **कल**) as an image, plus a voice note asking the user to read it.
 3. The user replies with a voice message (tap 🎤, wait for "Speak now", speak, tap ➤). They can also type.
    - **Read correctly** → 👍 sticker, then buttons to try again, change language,
      or **try the real bot** (Hindi, on WhatsApp: `REAL_BOT_URL` in `lib/script.ts`).
    - **Read wrong** → the bot shows the letter they got wrong: *"What is this letter?"*
      - Right → back to the word.
-     - Wrong → a **picture** that starts with the same sound (car / apple / top;
+     - Wrong → a **picture** that starts with the same sound (mango / apple / top;
        कबूतर / लट्टू): *"What is this?"* Then a **picture → letter card** and
        *"What is the first sound?"*, then back to the word.
 
-The bot works out which letter was wrong from what it heard: "cap" → **t**,
-"cut" → **a**, "bat" → **c**; "कम" → **ल**, "जल" → **क**. It judges the last
-real word of an answer, so "the letter is bar" counts as "bar".
+The bot works out which letter was wrong from what it heard: "map" → **t**,
+"met" → **a**, "bat" → **m**; "कम" → **ल**, "जल" → **क**. It judges the last
+real word of an answer, so "the letter is bar" counts as "bar". For a letter
+or a first sound it accepts the name or the sound: "em", "mmm" or "ma"; "ay" or
+"ah"; "tee" or "tuh".
 
 A **commentary panel** introduces Lifteracy (there's no intro message in the
 chat), suggests misreading a letter, and explains each step for the audience: beside the phone on
@@ -41,7 +43,7 @@ clearly isn't part of the chat (tap its header to hide it).
   but no words came back, the bot says so and offers **✅ / ❌** buttons, and the
   commentary suggests holding the mic closer and speaking a full sentence. The same
   buttons appear whenever nothing was recognised, so the demo never gets stuck.
-- **The bot's voice** is the device's text-to-speech (en-IN / hi-IN). English sounds are spelt so it says the sound, not the letter name ("kuh", not "see").
+- **The bot's voice** is the device's text-to-speech (en-IN / hi-IN). English sounds are spelt so it says the sound, not the letter name ("tuh", not "tee").
 - **Repeated transcripts:** Android Chrome re-sends everything said so far in each update ("but", "but it", "but it was"…). The recorder keeps only the newest version, so transcripts don't repeat.
 
 ### Swapping in real recordings
@@ -65,7 +67,7 @@ file is missing. Record each as one whole sentence:
 | `first-sound-right-<l>` | Well done! Top starts with the sound /t/. | शाबाश! लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
 | `first-sound-wrong-<l>` | Listen. Top starts with the sound /t/. /t/, top. | सुनो। लट्टू की पहली आवाज़ है ल। यह अक्षर है ल। |
 
-`<l>` is the letter: `c`, `a`, `t` (English) or `ka`, `la` (Hindi). For example
+`<l>` is the letter: `m`, `a`, `t` (English) or `ka`, `la` (Hindi). For example
 `public/audio/voice/hi/first-sound-la.mp3`. All the wording lives in `lib/script.ts`.
 
 ## Running locally
