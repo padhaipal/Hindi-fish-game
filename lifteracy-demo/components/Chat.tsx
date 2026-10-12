@@ -46,7 +46,15 @@ type Option = { label: string; value: string; href?: string };
 type Msg = { id: string; from: From; time: string } & (
   | { kind: "text"; text: string }
   | { kind: "card"; card: Card }
-  | { kind: "voice"; seconds: number; lang: string; url?: string; segments?: Segment[]; transcript?: string }
+  | {
+      kind: "voice";
+      seconds: number;
+      lang: string;
+      url?: string;
+      segments?: Segment[];
+      transcript?: string;
+      error?: string; // why nothing was recognised
+    }
   | { kind: "sticker" }
   | { kind: "buttons"; text: string; options: Option[]; used?: string }
 );
@@ -83,6 +91,7 @@ export default function Chat() {
   const [noteLang, setNoteLang] = useState<Lang | null>(null);
   const [recLive, setRecLive] = useState(false);
   const [level, setLevel] = useState<number | null>(null);
+  const [micProblem, setMicProblem] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const recorder = useRef<Recorder | null>(null);
   const noteBeforeRec = useRef<NoteKey>("word");
@@ -347,6 +356,7 @@ export default function Chat() {
     setRecNow(performance.now());
     setRecLive(false);
     setLevel(null);
+    setMicProblem("");
     noteBeforeRec.current = note;
     setNote("listening");
     await r.start(script().sttLang, () => {
@@ -367,6 +377,7 @@ export default function Chat() {
       lang: script().sttLang,
       url: rec.audioUrl,
       transcript: rec.transcripts[0] ?? "",
+      error: rec.error,
     });
     answer(rec.transcripts, rec.heardSound);
   };
@@ -383,6 +394,7 @@ export default function Chat() {
     const t = window.setInterval(() => {
       setRecNow(performance.now());
       setLevel(recorder.current?.level() ?? null);
+      setMicProblem(recorder.current?.problem() ?? "");
     }, 100);
     return () => window.clearInterval(t);
   }, [recStart]);
@@ -445,8 +457,12 @@ export default function Chat() {
             <span className={`recDot${recLive ? " live" : ""}`} />
             <span className="recTime">{mmss((recNow - (recStart ?? recNow)) / 1000)}</span>
             {recLive && level !== null && <LevelMeter level={level} />}
-            <span className={`recHint${recLive ? " live" : ""}`}>
-              {recLive ? `🎙️ ${SCRIPTS[lang].text.speakNow}` : SCRIPTS[lang].text.startingMic}
+            <span className={`recHint${micProblem ? " problem" : recLive ? " live" : ""}`}>
+              {micProblem
+                ? `⚠️ ${micProblem}`
+                : recLive
+                  ? `🎙️ ${SCRIPTS[lang].text.speakNow}`
+                  : SCRIPTS[lang].text.startingMic}
             </span>
           </div>
         ) : (
@@ -645,7 +661,13 @@ function VoiceBubble({ m, cls, side }: { m: Extract<Msg, { kind: "voice" }>; cls
           <Meta m={m} />
         </div>
         {m.from === "user" && (
-          <div className="transcript">{m.transcript ? `“${m.transcript}”` : "(no speech recognised)"}</div>
+          <div className="transcript">
+            {m.transcript
+              ? `“${m.transcript}”`
+              : m.error
+                ? `(no speech recognised: ${m.error})`
+                : "(no speech recognised)"}
+          </div>
         )}
       </div>
     </div>

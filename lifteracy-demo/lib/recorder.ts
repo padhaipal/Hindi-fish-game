@@ -15,6 +15,28 @@ export interface Recording {
   heardSound: boolean; // the mic picked up sound, even if no words came back
   audioUrl?: string;
   seconds: number;
+  error?: string; // why nothing was recognised, in plain words, if we know
+}
+
+// Recognition errors that won't fix themselves by listening again.
+const FATAL = new Set(["not-allowed", "service-not-allowed", "audio-capture", "network", "language-not-supported"]);
+const MAX_RESTARTS = 15;
+
+// Plain-words reason for a recognition error.
+export function describeError(code: string): string {
+  switch (code) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "microphone blocked: allow it in the browser's address bar";
+    case "audio-capture":
+      return "microphone not available: is another app using it?";
+    case "network":
+      return "speech service unreachable: check the internet connection";
+    case "language-not-supported":
+      return "this browser can't recognise this language";
+    default:
+      return code;
+  }
 }
 
 function Recognition(): any {
@@ -43,21 +65,42 @@ export class Recorder {
   private analyser: AnalyserNode | null = null;
   private ctx: AudioContext | null = null;
   private buf: Uint8Array<ArrayBuffer> | null = null;
+  private lastError = "";
+  private restarts = 0;
+  private starting: Promise<void> = Promise.resolve();
+  private droppedMedia = false;
 
   // `onListening` fires once the microphone is actually live: speech before
   // that is lost, so the UI waits for it before saying "speak now".
-  async start(lang: string, onListening: () => void): Promise<void> {
+  start(lang: string, onListening: () => void): Promise<void> {
+    this.starting = this.begin(lang, onListening);
+    return this.starting;
+  }
+
+  private async begin(lang: string, onListening: () => void): Promise<void> {
     this.active = true;
     this.finals = [];
     this.interim = "";
     this.chunks = [];
     this.heard = false;
+    this.lastError = "";
+    this.restarts = 0;
     this.startedAt = performance.now();
 
     const R = Recognition();
     if (!R || !isMobile()) await this.startMedia();
+    // Sent or cancelled while the mic was still starting: let it go.
+    if (!this.active) return this.release();
     if (R) this.startRecognition(R, lang, onListening);
     else onListening();
+  }
+
+  // The latest recognition error, in plain words ("" if none worth showing).
+  problem(): string {
+    const err = this.lastError;
+    // audio-capture is retried once without MediaRecorder before it counts.
+    if (err === "audio-capture" && this.media && !this.droppedMedia) return "";
+    return err && FATAL.has(err) ? describeError(err) : "";
   }
 
   // Microphone loudness 0..1 for the level meter, or null when not measured.
@@ -116,17 +159,29 @@ export class Recorder {
       live = true;
     };
     rec.onsoundstart = rec.onspeechstart = () => (this.heard = true);
-    rec.onerror = () => {};
+    rec.onerror = (e: any) => {
+      this.lastError = e.error ?? "error";
+    };
     rec.onend = () => {
-      // Phones stop listening after a pause; keep going until "send".
-      if (this.active) {
-        try {
-          rec.start();
-          return;
-        } catch {
-          /* fall through */
-        }
+      const err = this.lastError;
+      // Recognition couldn't get the mic while MediaRecorder holds it: give
+      // up the playback recording (recognition matters more) and retry once.
+      if (this.active && err === "audio-capture" && this.media && !this.droppedMedia) {
+        this.droppedMedia = true;
+        this.lastError = "";
+        this.stopMedia().then(() => this.restart(rec));
+        return;
       }
+      // Phones stop listening after a pause; keep going until "send". Never
+      // retry an error that won't go away: that spins in a tight loop and
+      // freezes the page.
+      if (this.active && !FATAL.has(err) && this.restarts < MAX_RESTARTS) {
+        this.restarts++;
+        this.lastError = "";
+        window.setTimeout(() => this.restart(rec), 250);
+        return;
+      }
+      if (this.active && FATAL.has(err)) onListening(); // don't sit on "Starting mic…"
       this.endResolve();
     };
     try {
@@ -136,6 +191,25 @@ export class Recorder {
       this.endResolve();
       onListening();
     }
+  }
+
+  private restart(rec: any) {
+    if (!this.active) return this.endResolve();
+    try {
+      rec.start();
+    } catch {
+      this.endResolve();
+    }
+  }
+
+  // Stop MediaRecorder (keeping what it recorded) and free the mic.
+  private async stopMedia() {
+    if (this.media && this.media.state !== "inactive") {
+      const stopped = new Promise<void>((r) => (this.media!.onstop = () => r()));
+      this.media.stop();
+      await stopped;
+    }
+    this.release();
   }
 
   private release() {
@@ -148,15 +222,13 @@ export class Recorder {
   async stop(): Promise<Recording> {
     this.active = false;
     const seconds = Math.max(1, Math.round((performance.now() - this.startedAt) / 1000));
+    await Promise.race([this.starting, new Promise((r) => setTimeout(r, 1500))]);
 
-    let audioUrl: string | undefined;
-    if (this.media && this.media.state !== "inactive") {
-      const stopped = new Promise<void>((r) => (this.media!.onstop = () => r()));
-      this.media.stop();
-      await stopped;
-      if (this.chunks.length) audioUrl = URL.createObjectURL(new Blob(this.chunks, { type: this.media.mimeType }));
-    }
-    this.release();
+    await this.stopMedia();
+    const audioUrl =
+      this.media && this.chunks.length
+        ? URL.createObjectURL(new Blob(this.chunks, { type: this.media.mimeType }))
+        : undefined;
 
     if (this.rec) {
       try {
@@ -168,7 +240,9 @@ export class Recorder {
       await Promise.race([this.ended, new Promise((r) => setTimeout(r, 2500))]);
     }
 
-    return { transcripts: this.transcripts(), audioUrl, seconds, heardSound: this.heard };
+    const transcripts = this.transcripts();
+    const error = transcripts.length ? undefined : this.problem() || undefined;
+    return { transcripts, audioUrl, seconds, heardSound: this.heard, error };
   }
 
   cancel() {

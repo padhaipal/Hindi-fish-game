@@ -651,6 +651,14 @@ a.replyBtn {
   font-weight: 600;
 }
 
+.recHint.problem {
+  color: #c2410c;
+  font-weight: 600;
+  white-space: normal;
+  font-size: 12.5px;
+  line-height: 1.25;
+}
+
 @keyframes blink {
   50% {
     opacity: 0.2;
