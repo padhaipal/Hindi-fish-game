@@ -25,6 +25,7 @@ import TraceStep from "@/components/adventure/TraceStep";
 import FreeWriteStep from "@/components/adventure/FreeWriteStep";
 import { getLetter, ALL_LETTERS } from "@/lib/letters";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
+import { trackStepReached, trackAdventureComplete } from "@/lib/analytics";
 
 type StepDef = { key: string; icon: string; render: (letterId: string, done: () => void) => React.ReactNode };
 
@@ -50,6 +51,13 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
   useEffect(() => {
     return () => timers.current.forEach((t) => window.clearTimeout(t));
   }, []);
+
+  // Analytics: which step of this journey the child has reached, and whether
+  // they finished it. Fires on entering each step (incl. after "फिर से").
+  useEffect(() => {
+    if (phase === "playing") trackStepReached(STEPS[step].key, step + 1, STEPS.length);
+    else if (phase === "done") trackAdventureComplete(STEPS.length);
+  }, [step, phase]);
 
   // Next letter in the alphabet (wraps around) — for the "next letter" button.
   const idx = ALL_LETTERS.findIndex((l) => l.id === letterId);

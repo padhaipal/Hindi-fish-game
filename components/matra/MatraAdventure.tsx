@@ -23,6 +23,7 @@ import MatraBasket from "@/components/matra/MatraBasket";
 import MatraWriteStep from "@/components/matra/MatraWriteStep";
 import { MATRAS, getMatra, matraChip } from "@/lib/matras";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
+import { trackStepReached, trackAdventureComplete } from "@/lib/analytics";
 import { stopTts } from "@/lib/tts";
 
 type StepDef = {
@@ -51,6 +52,13 @@ export default function MatraAdventure({ matraId }: { matraId: string }) {
   const timers = useRef<number[]>([]);
 
   useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), []);
+
+  // Analytics: which step of this journey the child has reached, and whether
+  // they finished it. Fires on entering each step (incl. after "फिर से").
+  useEffect(() => {
+    if (phase === "playing") trackStepReached(STEPS[step].key, step + 1, STEPS.length);
+    else if (phase === "done") trackAdventureComplete(STEPS.length);
+  }, [step, phase]);
 
   const idx = MATRAS.findIndex((m) => m.id === matraId);
   const nextMatra = MATRAS[(idx + 1) % MATRAS.length];
