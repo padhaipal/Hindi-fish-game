@@ -349,3 +349,7 @@ never breaks — the worst case is the fully-offline fallback.
 - The prompt sound reuses the picture+letter recording
   (`public/audio/letters-word/<id>.mp3`) for letters and the word recording
   (`public/audio/words/<id>.mp3`) for words.
+
+## Licence
+
+Code: [MIT](LICENSE). The LIFTeracy name and logo are **not** licensed; forks must not use them.
