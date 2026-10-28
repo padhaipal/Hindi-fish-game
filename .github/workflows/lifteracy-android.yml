@@ -1,5 +1,6 @@
-# Builds the LIFTeracy teacher app (lifteracy-app/) into an installable APK.
-# Download it from the run's "Artifacts" section (lifteracy-debug-apk).
+# Builds the LIFTeracy teacher app (lifteracy-app/) into an installable APK
+# and publishes it as the latest release, so a phone can download it from:
+#   https://github.com/padhaipal/Hindi-fish-game/releases/latest/download/lifteracy.apk
 name: LIFTeracy Android APK
 
 on:
@@ -8,6 +9,9 @@ on:
       - "lifteracy-app/**"
       - ".github/workflows/lifteracy-android.yml"
   workflow_dispatch:
+
+permissions:
+  contents: write # to publish the release
 
 jobs:
   apk:
@@ -52,3 +56,13 @@ jobs:
         with:
           name: lifteracy-debug-apk
           path: lifteracy-app/lifteracy.apk
+
+      - name: Publish as the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete lifteracy-app --yes --cleanup-tag || true
+          gh release create lifteracy-app lifteracy.apk \
+            --target "$GITHUB_SHA" --latest \
+            --title "LIFTeracy app (latest build)" \
+            --notes "Built from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. On the phone, open https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/lifteracy.apk and install it."

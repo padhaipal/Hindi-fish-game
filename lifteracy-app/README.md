@@ -86,11 +86,14 @@ entry in `letters.ts`. `npm test` checks that every lesson step has media.
 
 ## Getting the APK
 
-Every push that changes `lifteracy-app/` runs the **LIFTeracy Android APK**
-GitHub Action. While logged in to GitHub, open the run, scroll to
-*Artifacts* and download `lifteracy-debug-apk`. Unzip it and send
-`lifteracy.apk` to the phone (WhatsApp, Drive…), then tap it to install
-(allow "install unknown apps"). Reinstalling keeps the students' data.
+Every push that changes `lifteracy-app/` builds the app and publishes it as
+the latest release. On the phone, open this link in the browser:
+
+**https://github.com/padhaipal/Hindi-fish-game/releases/latest/download/lifteracy.apk**
+
+When it has downloaded, tap it and allow "install unknown apps" for the
+browser if Android asks. To update, download and install it again; the
+students' data is kept.
 
 ## Developing
 
