@@ -74,8 +74,16 @@ async function bodhan(wav: Blob, key: string): Promise<string> {
   return r.text ?? "";
 }
 
+// Variable names as typed into Vercel, upper-cased, so `Azure_Speech_Key`
+// works as well as `AZURE_SPEECH_KEY`. Values are trimmed of pasted spaces.
+function upperEnv(): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(process.env)) if (v?.trim()) out[k.toUpperCase()] = v.trim();
+  return out;
+}
+
 function engines(): [string, (wav: Blob) => Promise<string>][] {
-  const env = process.env;
+  const env = upperEnv();
   const list: [string, (wav: Blob) => Promise<string>][] = [];
   if (env.SARVAM_API_KEY) list.push(["Sarvam", (w) => sarvam(w, env.SARVAM_API_KEY!)]);
   if (env.AZURE_SPEECH_KEY && env.AZURE_SPEECH_ENDPOINT)
@@ -85,7 +93,7 @@ function engines(): [string, (wav: Blob) => Promise<string>][] {
 }
 
 const allowed = (request: Request) => {
-  const code = process.env.APP_ACCESS_CODE;
+  const code = upperEnv().APP_ACCESS_CODE;
   return !code || request.headers.get("x-access-code") === code;
 };
 
