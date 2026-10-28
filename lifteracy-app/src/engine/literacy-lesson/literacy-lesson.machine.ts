@@ -1,0 +1,1228 @@
+import { setup, assign, and, not } from 'xstate';
+import {
+  markWord,
+  markLetter,
+  markImage,
+  detectIncorrectEndMatra,
+  detectIncorrectMiddleMatra,
+  detectInsertion,
+} from './evaluate-answer.utils';
+import {
+  assessSentence,
+  FLAT_READ_ERROR_BUDGET,
+  FLAT_READ_ERROR_BUDGET_LEVELS,
+  MIN_READ_WPM,
+  selectDrillWord,
+} from './sentence-assessment';
+import { identifyCharacterStatus } from './identify-character-status.utils';
+import { aserCountVerdict, type AserState } from '../aser/aser';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+export const WELCOME_MESSAGE_STATE_TRANSITION_ID = 'welcome-message';
+export const AUDIO_ONLY_REQUEST_STATE_TRANSITION_ID = 'audio-only-request';
+// Not a lesson transition: the "What is Lifteracy?" explainer clip sent to
+// parents over WhatsApp and linked from the teacher dashboard
+// (GET /users/:id/public → explainer_url). Swapping the clip is an upload
+// under this stid, not a deploy.
+export const EXPLAINER_VIDEO_STATE_TRANSITION_ID = 'lifteracy-explainer';
+export const STALE_LESSON_RESTART_STATE_TRANSITION_ID = 'stale-lesson-restart';
+// Not machine transitions: the service appends one of these after the
+// machine's `${answerId}-comprehension-complete` stid on a comprehension flow
+// tap, so right/wrong feedback (e.g. a sticker) is seeded ONCE under a fixed
+// stid instead of per answer option (whose UUID prefix defeats the `_`
+// generic key). Swapping the media is an upload, not a deploy.
+export const COMPREHENSION_ANSWER_CORRECT_STATE_TRANSITION_ID =
+  'comprehension-answer-correct';
+export const COMPREHENSION_ANSWER_INCORRECT_STATE_TRANSITION_ID =
+  'comprehension-answer-incorrect';
+// Not a machine transition either: the service appends
+// `${letter}-letter-score-floor` at the end of a turn's stids whenever a
+// wrong answer tried to push that letter's score below ScoreService's
+// MIN_SCORE (-10) and was held there. Per letter, so it is a column in the
+// /media-metadata coverage grid (media-metadata-coverage.service.ts).
+export const LETTER_SCORE_FLOOR_STID_SUFFIX = 'letter-score-floor';
+// Sentence failed but no teachable drill word exists (every badly-read word
+// contains a conjunct/nukta/other grapheme outside TEACHABLE_GRAPHEMES, or
+// the failure was ordering) — the child simply retries the sentence.
+export const SENTENCE_WRONG_RETRY_STATE_TRANSITION_ID =
+  'sentence-sentence-wrong-retry';
+
+// Passage level whose correct read goes straight to `complete` instead of
+// the comprehension state (<10 words — see passageLevelFromWordCount).
+export const SENTENCE_COMPLETE_LEVEL = 8;
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Context {
+  word: string;
+  // Words of the sentence in display order; null for a plain word lesson.
+  sentence: string[] | null;
+  // media_metadata id of the reading passage this sentence lesson came from.
+  // Null for word lessons (and for pre-passage snapshots, which can no longer
+  // reach the comprehension state anyway). Drives the comprehension stids.
+  passageId: string | null;
+  // Lesson level the passage was selected at (word-count level, 8–12). Null
+  // for word lessons and for snapshots persisted before this field existed
+  // (those rehydrate with `level: undefined`, so guards use `=== 8` only).
+  // Level 8 (<10 words) skips the comprehension state entirely.
+  level: number | null;
+  // Level 11+ (2026-09): the lesson starts in `comprehension` — the passage
+  // rides inside the flow, no read-aloud, no drill. Old snapshots rehydrate
+  // with undefined (= false).
+  readInFlow: boolean;
+  // ASER letter test (2026-10): the lesson walks the bank letters
+  // (wrongLetters) through the letter loop, counting each letter's FIRST
+  // answer. Once 4 right / 7 wrong decide it, the queue is cut to the
+  // current letter, so the loop leaves through its normal `…-last` return
+  // to `word` — on wordIfPassed (letters passed) or wordIfFailed, which `word` then
+  // holds. `done` stops further counting (a later drill inside that word
+  // is an ordinary drill). Null outside the letter test; old snapshots
+  // rehydrate with undefined.
+  aserLetters: {
+    correct: number;
+    incorrect: number;
+    done: boolean;
+    wordIfPassed: string;
+    wordIfFailed: string;
+  } | null;
+  // ASER test state riding along (aser/aser.ts). The machine never reads or
+  // changes it; LiteracyLessonService advances it between turns. Null (or
+  // undefined on old snapshots) outside a test.
+  aser: AserState | null;
+  sentenceErrors: number;
+  wrongLetters: string[];
+  wordErrors: number;
+  imageErrors: number;
+  letterErrors: number;
+  letterImageErrors: number;
+  letterNoImageErrors: number;
+  answer: string | undefined;
+  answerCorrect: boolean | null;
+  stateTransitionId: string;
+  userMessageId: string;
+  pendingCorrect: string[];
+  pendingIncorrect: string[];
+}
+
+type CounterKey = keyof {
+  [K in keyof Context as Context[K] extends number ? K : never]: true;
+};
+
+function normalizeKeys(keys: CounterKey | CounterKey[]): CounterKey[] {
+  return Array.isArray(keys) ? keys : [keys];
+}
+
+type AnswerEvent = {
+  type: 'ANSWER';
+  studentAnswer: string;
+  // Per-STT-engine transcripts. Sentence matching must never run over the
+  // concatenation of two engines' outputs (the seam can fake an in-order
+  // match), so sentence guards evaluate each transcript individually.
+  studentTranscripts?: string[];
+  // Length of the voice note in ms (media_details.duration_ms), for the
+  // reading-speed gate on passage reads; null / absent = no gate.
+  durationMs?: number | null;
+};
+
+// The child tapped an option in the comprehension WhatsApp Flow and hit
+// submit. The service resolves the selected option entity (answerId is its
+// media_metadata id) and its correctness before sending this event — the
+// machine never touches the database.
+type ComprehensionAnswerEvent = {
+  type: 'COMPREHENSION_ANSWER';
+  answerId: string;
+  answerCorrect: boolean;
+};
+
+type Events = AnswerEvent | ComprehensionAnswerEvent;
+
+// Sentence guards fall back to the combined answer when per-engine
+// transcripts are absent (e.g. a snapshot driven by an older caller).
+function transcriptsOf(event: AnswerEvent): string[] {
+  return event.studentTranscripts && event.studentTranscripts.length > 0
+    ? event.studentTranscripts
+    : [event.studentAnswer];
+}
+
+// Reading-speed gate: from level 9 up a passage read slower than
+// MIN_READ_WPM is a failed read (2026-10). Level 8 (the shortest passages)
+// and snapshots without a level have no gate.
+export const READ_SPEED_GATE_FROM_LEVEL = SENTENCE_COMPLETE_LEVEL + 1;
+function minWpmFor(level: number | null | undefined): number | null {
+  return level != null && level >= READ_SPEED_GATE_FROM_LEVEL
+    ? MIN_READ_WPM
+    : null;
+}
+
+// Levels 9 and 10 allow a flat three errors (the ASER rule, 2026-10);
+// every other level keeps the 10% budget.
+function maxErrorsFor(level: number | null | undefined): number | null {
+  return level != null && FLAT_READ_ERROR_BUDGET_LEVELS.has(level)
+    ? FLAT_READ_ERROR_BUDGET
+    : null;
+}
+
+// What every sentence guard hands to assessSentence: the words, each
+// engine's transcript, the speed gate and the error budget for the level.
+function sentenceArgs(context: Context, event: AnswerEvent) {
+  return {
+    words: context.sentence ?? [],
+    transcripts: transcriptsOf(event),
+    durationMs: event.durationMs ?? null,
+    minWpm: minWpmFor(context.level),
+    maxErrors: maxErrorsFor(context.level),
+  };
+}
+
+const NO_IMAGE_LETTERS = new Set(['ञ', 'ण']);
+
+// ASER letter test: a right answer now decides it (→ the `…-last` exit).
+function aserLetterEndsOnCorrect(context: Context): boolean {
+  const a = context.aserLetters;
+  return (
+    a != null &&
+    !a.done &&
+    aserCountVerdict({ correct: a.correct + 1, incorrect: a.incorrect }) !==
+      null
+  );
+}
+const COUNT_RIGHT = {
+  type: 'countAserLetter',
+  params: { correct: true },
+} as const;
+const COUNT_WRONG = {
+  type: 'countAserLetter',
+  params: { correct: false },
+} as const;
+
+// ─── Machine ─────────────────────────────────────────────────────────────────
+
+export const machine = setup({
+  types: {
+    context: {} as Context,
+    events: {} as Events,
+    input: {} as {
+      word: string;
+      userMessageId: string;
+      sentence?: string[];
+      passageId?: string;
+      level?: number;
+      // Level 11+ (2026-09): skip the read-aloud and open on the
+      // comprehension flow with the passage inside it.
+      readInFlow?: boolean;
+      // ASER letter test: the letters still to ask (in order), the counts
+      // carried from earlier in the run, and the word each verdict returns to.
+      aserLetters?: {
+        letters: string[];
+        correct: number;
+        incorrect: number;
+        wordIfPassed: string;
+        wordIfFailed: string;
+      };
+      aser?: AserState | null;
+    },
+  },
+
+  guards: {
+    checkAnswer: (
+      { context, event },
+      params: {
+        fn: (args: { correctAnswer: string; studentAnswer: string }) => boolean;
+      },
+    ) => {
+      if (event.type !== 'ANSWER') {
+        return false;
+      }
+      if (!context.answer || !event.studentAnswer) {
+        throw new Error(
+          'checkAnswer guard requires context.answer and event.studentAnswer to be set',
+        );
+      }
+      const result = params.fn({
+        correctAnswer: context.answer,
+        studentAnswer: event.studentAnswer,
+      });
+      return result;
+    },
+  },
+
+  actions: {
+    clearPendingScores: assign({
+      pendingCorrect: () => [],
+      pendingIncorrect: () => [],
+    }),
+    increment: assign(
+      ({ context }, params: { keys: CounterKey | CounterKey[] }) => {
+        const updates: Partial<Context> = {};
+        for (const key of normalizeKeys(params.keys)) {
+          updates[key] = context[key] + 1;
+        }
+        return updates;
+      },
+    ),
+    // ASER letter test: count the asked letter's first answer; once 4
+    // right / 7 wrong decide it, cut the queue to this letter and point
+    // `word` at the word the loop's `…-last` exit returns to.
+    countAserLetter: assign(({ context }, params: { correct: boolean }) => {
+      const a = context.aserLetters;
+      if (!a || a.done) return {};
+      const counts = {
+        correct: a.correct + (params.correct ? 1 : 0),
+        incorrect: a.incorrect + (params.correct ? 0 : 1),
+      };
+      const verdict = aserCountVerdict(counts);
+      if (!verdict) return { aserLetters: { ...a, ...counts } };
+      return {
+        aserLetters: { ...a, ...counts, done: true },
+        wrongLetters: context.wrongLetters.slice(0, 1),
+        word: verdict === 'passed' ? a.wordIfPassed : a.wordIfFailed,
+      };
+    }),
+    dropFirstWrongLetter: assign({
+      wrongLetters: ({ context }) => context.wrongLetters.slice(1),
+    }),
+    resetToZero: assign(
+      ({ context: _context }, params: { keys: CounterKey | CounterKey[] }) => {
+        const updates: Partial<Context> = {};
+        for (const key of normalizeKeys(params.keys)) {
+          updates[key] = 0;
+        }
+        return updates;
+      },
+    ),
+  },
+}).createMachine({
+  id: 'literacy-lesson',
+  initial: 'start',
+
+  context: ({ input }) => {
+    // Normalize once: an empty sentence array is a word lesson everywhere
+    // (context, answer, stid, and the start router must all agree).
+    const sentence =
+      input.sentence && input.sentence.length > 0 ? input.sentence : null;
+    const aserLetters =
+      input.aserLetters && input.aserLetters.letters.length > 0 && !sentence
+        ? input.aserLetters
+        : null;
+    return {
+      word: input.word,
+      sentence,
+      passageId: input.passageId ?? null,
+      level: input.level ?? null,
+      readInFlow: input.readInFlow === true && !!input.passageId && !!sentence,
+      aserLetters: aserLetters
+        ? {
+            correct: aserLetters.correct,
+            incorrect: aserLetters.incorrect,
+            done: false,
+            wordIfPassed: aserLetters.wordIfPassed,
+            wordIfFailed: aserLetters.wordIfFailed,
+          }
+        : null,
+      aser: input.aser ?? null,
+      sentenceErrors: 0,
+      wrongLetters: aserLetters ? [...aserLetters.letters] : [],
+      wordErrors: 0,
+      imageErrors: 0,
+      letterErrors: 0,
+      letterImageErrors: 0,
+      letterNoImageErrors: 0,
+      answer: sentence ? sentence.join(' ') : input.word,
+      answerCorrect: null,
+      // The ASER letter test opens with the letter drill's own prompt.
+      stateTransitionId:
+        input.readInFlow === true && input.passageId && sentence
+          ? `${input.passageId}-passage-comprehension-initial`
+          : sentence
+            ? 'sentence-start-sentence-initial'
+            : aserLetters
+              ? `${aserLetters.letters[0]}-word-routeWrongLetter-drillLetters`
+              : `${input.word}-start-word-initial`,
+      userMessageId: input.userMessageId,
+      pendingCorrect: [],
+      pendingIncorrect: [],
+    };
+  },
+
+  states: {
+    // Pure router so a lesson can begin at either level. Guards use `!= null`
+    // (not a strict null check) because snapshots persisted before the
+    // sentence layer rehydrate with `sentence: undefined`.
+    start: {
+      always: [
+        // Level 11+: straight to the question flow (passage inside it).
+        {
+          guard: ({ context }) => context.readInFlow === true,
+          target: 'comprehension',
+        },
+        // ASER letter test: straight into the letter loop.
+        {
+          guard: ({ context }) => context.aserLetters != null,
+          target: 'routeWrongLetter',
+        },
+        {
+          guard: ({ context }) =>
+            context.sentence != null && context.sentence.length > 0,
+          target: 'sentence',
+        },
+        {
+          target: 'word',
+        },
+      ],
+    },
+
+    sentence: {
+      entry: [
+        assign({ answer: ({ context }) => (context.sentence ?? []).join(' ') }),
+      ],
+      on: {
+        ANSWER: [
+          // Level 8 (<10 words): a correct read ends the lesson — no
+          // comprehension question (too short to ask one that isn't
+          // guessable). The `${passageId}-sentence-complete-correct-*` stids
+          // resolve to the fixed `sentence-sentence-complete-correct-*` media
+          // (see findMediaByStateTransitionId) and count as a first-try pass
+          // for sentence-band progression (sentence-band-signal.utils.ts).
+          {
+            guard: and([
+              ({ context, event }) =>
+                assessSentence(sentenceArgs(context, event)).passed,
+              ({ context }) => context.sentenceErrors === 0,
+              ({ context }) => context.level === SENTENCE_COMPLETE_LEVEL,
+            ]),
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.passageId}-sentence-complete-correct-first`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) =>
+                  Array.from((context.sentence ?? []).join('')),
+              }),
+            ],
+          },
+          {
+            guard: and([
+              ({ context, event }) =>
+                assessSentence(sentenceArgs(context, event)).passed,
+              ({ context }) => context.level === SENTENCE_COMPLETE_LEVEL,
+            ]),
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.passageId}-sentence-complete-correct-retry`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) =>
+                  Array.from((context.sentence ?? []).join('')),
+              }),
+            ],
+          },
+          // Student read the whole sentence correctly on the first attempt —
+          // mark every letter of every word correct and move on to the
+          // comprehension question (the flow media lives under the passage's
+          // `…-sentence-comprehension` stid; the -correct-first/-retry
+          // runtime stids are mapped back to it in the media lookup).
+          {
+            guard: and([
+              ({ context, event }) =>
+                assessSentence(sentenceArgs(context, event)).passed,
+              ({ context }) => context.sentenceErrors === 0,
+            ]),
+            target: 'comprehension',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.passageId}-sentence-comprehension-correct-first`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) =>
+                  Array.from((context.sentence ?? []).join('')),
+              }),
+            ],
+          },
+          // Student read the whole sentence correctly on the retry —
+          // mark every letter of every word correct, then comprehension.
+          {
+            guard: ({ context, event }) =>
+              assessSentence(sentenceArgs(context, event)).passed,
+            target: 'comprehension',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.passageId}-sentence-comprehension-correct-retry`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) =>
+                  Array.from((context.sentence ?? []).join('')),
+              }),
+            ],
+          },
+          // Second failed attempt at the sentence, move on to the next lesson.
+          {
+            guard: ({ context }) => context.sentenceErrors >= 1,
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: () => 'sentence-sentence-complete-maxErrors',
+              }),
+            ],
+          },
+          // First failed attempt with a teachable drill word (a substituted/
+          // omitted word per the SAME assessment that failed the sentence;
+          // largest akshara distance, random ties, never a conjunct/nukta
+          // word): drill it through the existing word lesson, then come back
+          // for the retry.
+          {
+            guard: ({ context, event }) =>
+              selectDrillWord(
+                assessSentence(sentenceArgs(context, event)).words,
+              ) !== null,
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              { type: 'increment', params: { keys: 'sentenceErrors' } },
+              assign({
+                word: ({ context, event }) =>
+                  selectDrillWord(
+                    assessSentence(sentenceArgs(context, event)).words,
+                  ) ?? context.word,
+              }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-sentence-word-drillWord`,
+              }),
+            ],
+          },
+          // First failed attempt but every badly-read word is unteachable
+          // (conjunct/nukta) or no single word is to blame: retry the whole
+          // sentence instead of entering the word loop.
+          {
+            target: 'sentence',
+            reenter: true,
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              { type: 'increment', params: { keys: 'sentenceErrors' } },
+              assign({
+                stateTransitionId: () =>
+                  SENTENCE_WRONG_RETRY_STATE_TRANSITION_ID,
+              }),
+            ],
+          },
+        ],
+      },
+    },
+
+    // Awaiting the comprehension flow submission (nfm_reply → service →
+    // COMPREHENSION_ANSWER). No retry mechanism: one tap completes the
+    // lesson; the explanation media lives under the selected answer's
+    // `${answerId}-comprehension-complete` stid.
+    comprehension: {
+      on: {
+        COMPREHENSION_ANSWER: {
+          target: 'complete',
+          actions: [
+            { type: 'clearPendingScores' },
+            assign({
+              answerCorrect: ({ event }) => event.answerCorrect,
+              answer: ({ event }) => event.answerId,
+            }),
+            assign({
+              stateTransitionId: ({ event }) =>
+                `${event.answerId}-comprehension-complete`,
+            }),
+          ],
+        },
+        // A voice note while we're waiting for the flow tap: nudge by
+        // re-sending the comprehension flow, record nothing.
+        ANSWER: {
+          target: 'comprehension',
+          reenter: false,
+          actions: [
+            { type: 'clearPendingScores' },
+            assign({ answerCorrect: () => null }),
+            assign({
+              stateTransitionId: ({ context }) =>
+                `${context.passageId}-sentence-comprehension-correct-retry`,
+            }),
+          ],
+        },
+      },
+    },
+
+    word: {
+      entry: [
+        assign({
+          answer: ({ context }) => context.word,
+          wrongLetters: () => [],
+        }),
+      ],
+      on: {
+        ANSWER: [
+          // (Sentence drill) student got the drilled word correct on the first
+          // try — mark its letters correct and return for the sentence retry.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markWord } },
+              ({ context }) => context.sentence != null,
+              ({ context }) => context.wordErrors === 0,
+            ]),
+            target: 'sentence',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: () =>
+                  'sentence-word-sentence-correct-retrySentence',
+              }),
+              assign({
+                pendingCorrect: ({ context }) => Array.from(context.word),
+              }),
+            ],
+          },
+          // (Sentence drill) student got the drilled word correct on a
+          // subsequent try — return for the sentence retry, no score change.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markWord } },
+              ({ context }) => context.sentence != null,
+            ]),
+            target: 'sentence',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: () =>
+                  'sentence-word-sentence-correct-retrySentence',
+              }),
+            ],
+          },
+          // Student got the word correct on the first try, mark all letters in the word as correct.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markWord } },
+              ({ context }) => context.wordErrors === 0,
+            ]),
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-complete-correct-first`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) => Array.from(context.word),
+              }),
+            ],
+          },
+          // Student got the word correct on a subsequent try, no score change.
+          {
+            guard: { type: 'checkAnswer', params: { fn: markWord } },
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-complete-correct-retry`,
+              }),
+            ],
+          },
+          // Student got the word wrong three times, move on to the next word.
+          {
+            guard: ({ context }) => context.wordErrors >= 2,
+            target: 'complete',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-complete-maxErrors`,
+              }),
+            ],
+          },
+          // The student only made an end matra error on the first attempt, mark all letters in the word as correct.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: detectIncorrectEndMatra } },
+              ({ context }) => context.wordErrors === 0,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-endMatra-first`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+              assign({
+                pendingCorrect: ({ context }) => Array.from(context.word),
+              }),
+            ],
+          },
+          // The student only made an end matra error on a subsequent try, no score change.
+          {
+            guard: {
+              type: 'checkAnswer',
+              params: { fn: detectIncorrectEndMatra },
+            },
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-endMatra-retry`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+            ],
+          },
+          // The student only made a middle matra error on the first attempt, mark all letters in the word as correct.
+          {
+            guard: and([
+              {
+                type: 'checkAnswer',
+                params: { fn: detectIncorrectMiddleMatra },
+              },
+              ({ context }) => context.wordErrors === 0,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-middleMatra-first`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+              assign({
+                pendingCorrect: ({ context }) => Array.from(context.word),
+              }),
+            ],
+          },
+          // The student only made a middle matra error on a subsequent try, no score change.
+          {
+            guard: {
+              type: 'checkAnswer',
+              params: { fn: detectIncorrectMiddleMatra },
+            },
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-middleMatra-retry`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+            ],
+          },
+          // The student only made an insertion error on the first attempt, mark all letters in the word as correct.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: detectInsertion } },
+              ({ context }) => context.wordErrors === 0,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-insertion-first`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+              assign({
+                pendingCorrect: ({ context }) => Array.from(context.word),
+              }),
+            ],
+          },
+          // The student only made an insertion error on a subsequent try, no score change.
+          {
+            guard: { type: 'checkAnswer', params: { fn: detectInsertion } },
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-insertion-retry`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+            ],
+          },
+          // Only make the student go through the letter loop once.
+          {
+            guard: ({ context }) => context.wordErrors >= 1,
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-word-word-loopBack`,
+              }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+            ],
+          },
+          // The student got one or more letters wrong on the first attempt.
+          {
+            guard: not({ type: 'checkAnswer', params: { fn: markWord } }),
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              { type: 'increment', params: { keys: 'wordErrors' } },
+              assign({
+                wrongLetters: ({ context, event }) => {
+                  const { incorrectChars } = identifyCharacterStatus({
+                    correctAnswer: context.word,
+                    studentAnswer: event.studentAnswer,
+                  });
+                  return incorrectChars;
+                },
+              }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-word-routeWrongLetter-drillLetters`,
+              }),
+            ],
+          },
+          // This transition should never be reached — all cases are handled above.
+          {
+            actions: () => {
+              throw new Error(
+                'Unhandled ANSWER transition in word state — this should be unreachable',
+              );
+            },
+          },
+        ],
+      },
+    },
+
+    routeWrongLetter: {
+      always: [
+        {
+          guard: ({ context }) => NO_IMAGE_LETTERS.has(context.wrongLetters[0]),
+          target: 'letterNoImage',
+        },
+        {
+          target: 'letter',
+        },
+      ],
+    },
+
+    letter: {
+      entry: [assign({ answer: ({ context }) => context.wrongLetters[0] })],
+      on: {
+        ANSWER: [
+          // Student got the letter correct and it is the last letter in wrongLetters, mark the letter as correct and go back to the word state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) =>
+                context.wrongLetters.length === 1 ||
+                aserLetterEndsOnCorrect(context),
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_RIGHT,
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letter-word-correct-last`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter correct but it isn't the last letter in wrongLetters, mark the letter as correct and to the next letter state.
+          {
+            guard: { type: 'checkAnswer', params: { fn: markLetter } },
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_RIGHT,
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letter-routeWrongLetter-correct-more`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter wrong, mark the letter as incorrect and go to the image state.
+          {
+            guard: not({ type: 'checkAnswer', params: { fn: markLetter } }),
+            target: 'image',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_WRONG,
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-letter-image-wrong`,
+              }),
+              assign({
+                pendingIncorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+            ],
+          },
+          // This transition should never be reached — all cases are handled above.
+          {
+            actions: () => {
+              throw new Error(
+                'Unhandled ANSWER transition in letter state — this should be unreachable',
+              );
+            },
+          },
+        ],
+      },
+    },
+
+    image: {
+      entry: [assign({ answer: ({ context }) => context.wrongLetters[0] })],
+      on: {
+        ANSWER: [
+          // Student got the image correct, go to the letterImage state.
+          {
+            guard: { type: 'checkAnswer', params: { fn: markImage } },
+            target: 'letterImage',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-image-letterImage-correct`,
+              }),
+            ],
+          },
+          // This is the student's second attempt, go to the letterImage state.
+          {
+            guard: ({ context }) => context.imageErrors >= 1,
+            target: 'letterImage',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-image-letterImage-maxErrors`,
+              }),
+              { type: 'resetToZero', params: { keys: 'imageErrors' } },
+            ],
+          },
+          // The student got the image wrong on the first attempt.
+          {
+            target: 'image',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-image-image-wrong-first`,
+              }),
+              { type: 'increment', params: { keys: 'imageErrors' } },
+            ],
+          },
+        ],
+      },
+    },
+
+    letterImage: {
+      entry: [assign({ answer: ({ context }) => context.wrongLetters[0] })],
+      on: {
+        ANSWER: [
+          // Student got the letter correct and it is the last letter in wrongLetters, go back to the word state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) => context.wrongLetters.length === 1,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letterImage-word-correct-last`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter correct but it isn't the last letter in wrongLetters, go to the next letter state.
+          {
+            guard: { type: 'checkAnswer', params: { fn: markLetter } },
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letterImage-routeWrongLetter-correct-more`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter wrong, it is their first attempt.
+          {
+            guard: ({ context }) => context.letterErrors === 0,
+            target: 'letterImage',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-letterImage-letterImage-wrong-first`,
+              }),
+              { type: 'increment', params: { keys: 'letterErrors' } },
+            ],
+          },
+          // Student got the letter wrong, it is their second attempt.
+          {
+            guard: ({ context }) => context.letterErrors === 1,
+            target: 'letterImage',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-letterImage-letterImage-wrong-second`,
+              }),
+              { type: 'increment', params: { keys: 'letterErrors' } },
+            ],
+          },
+          // Student got the letter wrong three times, it is the last letter in wrongLetters.
+          {
+            guard: and([
+              ({ context }) => context.letterErrors >= 2,
+              ({ context }) => context.wrongLetters.length === 1,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letterImage-word-maxErrors-last`,
+              }),
+              { type: 'resetToZero', params: { keys: 'letterErrors' } },
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter wrong three times, more letters remain.
+          {
+            guard: and([
+              ({ context }) => context.letterErrors >= 2,
+              ({ context }) => context.wrongLetters.length > 1,
+            ]),
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letterImage-routeWrongLetter-maxErrors-more`,
+              }),
+              { type: 'resetToZero', params: { keys: 'letterErrors' } },
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // This transition should never be reached — all cases are handled above.
+          {
+            actions: () => {
+              throw new Error(
+                'Unhandled ANSWER transition in letterImage state — this should be unreachable',
+              );
+            },
+          },
+        ],
+      },
+    },
+
+    letterNoImage: {
+      entry: [assign({ answer: ({ context }) => context.wrongLetters[0] })],
+      on: {
+        ANSWER: [
+          // Student got the letter correct first go and it is the last letter in wrongLetters, mark the letter as correct and go back to the word state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) => context.letterNoImageErrors === 0,
+              ({ context }) =>
+                context.wrongLetters.length === 1 ||
+                aserLetterEndsOnCorrect(context),
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_RIGHT,
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letterNoImage-word-correct-first-last`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter correct first go but it isn't the last letter in wrongLetters, mark the letter as correct and go to the routeWrongLetter state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) => context.letterNoImageErrors === 0,
+              ({ context }) => context.wrongLetters.length >= 2,
+            ]),
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_RIGHT,
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letterNoImage-routeWrongLetter-correct-first-more`,
+              }),
+              assign({
+                pendingCorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+              { type: 'dropFirstWrongLetter' },
+            ],
+          },
+          // Student got the letter correct second go and it is the last letter in wrongLetters, go back to the word state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) => context.letterNoImageErrors >= 1,
+              ({ context }) => context.wrongLetters.length === 1,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letterNoImage-word-correct-retry-last`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+              { type: 'resetToZero', params: { keys: 'letterNoImageErrors' } },
+            ],
+          },
+          // Student got the letter correct second go but it isn't the last letter in wrongLetters, go to the routeWrongLetter state.
+          {
+            guard: and([
+              { type: 'checkAnswer', params: { fn: markLetter } },
+              ({ context }) => context.letterNoImageErrors >= 1,
+              ({ context }) => context.wrongLetters.length >= 2,
+            ]),
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => true }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letterNoImage-routeWrongLetter-correct-retry-more`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+              { type: 'resetToZero', params: { keys: 'letterNoImageErrors' } },
+            ],
+          },
+          // Student got the letter wrong first go, mark the letter as incorrect and go to the letterNoImage state.
+          {
+            guard: and([({ context }) => context.letterNoImageErrors === 0]),
+            target: 'letterNoImage',
+            actions: [
+              { type: 'clearPendingScores' },
+              COUNT_WRONG,
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[0]}-letterNoImage-letterNoImage-wrong-first`,
+              }),
+              assign({
+                pendingIncorrect: ({ context }) => [context.wrongLetters[0]],
+              }),
+              { type: 'increment', params: { keys: 'letterNoImageErrors' } },
+            ],
+          },
+          // Student got the letter wrong second go and it is the last letter in wrongLetters, go to the word state.
+          {
+            guard: and([
+              ({ context }) => context.letterNoImageErrors >= 1,
+              ({ context }) => context.wrongLetters.length === 1,
+            ]),
+            target: 'word',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.word}-letterNoImage-word-wrong-last`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+              { type: 'resetToZero', params: { keys: 'letterNoImageErrors' } },
+            ],
+          },
+          // Student got the letter wrong second go and it is not the last letter in wrongLetters, go to the routeWrongLetter state.
+          {
+            guard: and([
+              ({ context }) => context.letterNoImageErrors >= 1,
+              ({ context }) => context.wrongLetters.length >= 2,
+            ]),
+            target: 'routeWrongLetter',
+            actions: [
+              { type: 'clearPendingScores' },
+              assign({ answerCorrect: () => false }),
+              assign({
+                stateTransitionId: ({ context }) =>
+                  `${context.wrongLetters[1]}-letterNoImage-routeWrongLetter-wrong-more`,
+              }),
+              { type: 'dropFirstWrongLetter' },
+              { type: 'resetToZero', params: { keys: 'letterNoImageErrors' } },
+            ],
+          },
+          // This transition should never be reached — all cases are handled above.
+          {
+            actions: () => {
+              throw new Error(
+                'Unhandled ANSWER transition in letterNoImage state — this should be unreachable',
+              );
+            },
+          },
+        ],
+      },
+    },
+
+    // Reaching this final state makes the persisted snapshot's status 'done'.
+    // The lesson-level progression SQL in literacy-lesson.service.ts
+    // (selectNextString) matches snapshot->>'status' = 'done' to count a
+    // lesson as completed — keep in sync if this state or the snapshot shape
+    // changes.
+    complete: {
+      type: 'final',
+    },
+  },
+});

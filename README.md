@@ -30,6 +30,12 @@ And one health game for adults, built for **tb.care**:
   regenerates that list from the game), and the scene photographs it can use are
   prompted in **[docs/tb-art-prompts.md](docs/tb-art-prompts.md)**.
 
+And an Android app:
+
+- **📱 LIFTeracy teacher app** (`lifteracy-app/`) — the LIFTeracy reading lessons on
+  a teacher's phone: pick the child, they read into the mic, games built in. See
+  **[lifteracy-app/README.md](lifteracy-app/README.md)**.
+
 ---
 
 # 🐟 Hindi Fish Game

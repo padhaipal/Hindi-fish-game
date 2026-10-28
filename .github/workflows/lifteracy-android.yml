@@ -1,0 +1,46 @@
+# Builds the LIFTeracy teacher app (lifteracy-app/) into an installable
+# debug APK. Download it from the run's "Artifacts" section.
+name: LIFTeracy Android APK
+
+on:
+  push:
+    paths:
+      - "lifteracy-app/**"
+      - ".github/workflows/lifteracy-android.yml"
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lifteracy-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lifteracy-app/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: lifteracy-app/android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifteracy-debug-apk
+          path: lifteracy-app/android/app/build/outputs/apk/debug/app-debug.apk

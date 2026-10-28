@@ -1,0 +1,1199 @@
+/* ───────── constants ───────── */
+const CONSONANT_SET = new Set(
+  'अआइईउऊऋॠऌॡएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसहabcdefghijklmnopqrstuvwxyz'.split(
+    '',
+  ),
+);
+
+const VOWEL_MATRA_SET = new Set(
+  'ा ि ी ु ू ृ ॄ े ै ो ौ ॢ ॣ'.replace(/\s+/g, '').split(''),
+);
+
+const LONG_A = 'ा';
+
+// Perso-Arabic nukta letters (क़ ख़ ग़ ज़ फ़) are deliberately absent: nukta
+// spellings are accepted per word via NUKTA_VARIANTS, not as a general rule.
+const FAMILIES: string[][] = [
+  ['क', 'ख'],
+  ['ग', 'घ'],
+  ['च', 'छ'],
+  ['ज', 'झ'],
+  ['ट', 'ठ', 'त', 'थ'],
+  ['ड', 'ढ', 'द', 'ध'],
+  ['प', 'फ'],
+  ['ब', 'भ'],
+  ['श', 'ष', 'स'],
+  ['र', 'ड़', 'ढ़'],
+  ['य', 'ए', 'ऐ', 'े', 'ै'],
+  ['ओ', 'औ', 'ो', 'ौ'],
+  ['अ', 'आ', 'ा'],
+  ['इ', 'ई', 'ि', 'ी'],
+  ['उ', 'ऊ', 'ु', 'ू'],
+  ['ऋ', 'ॠ', 'ृ', 'ॄ'],
+  ['ऌ', 'ॡ', 'ॢ', 'ॣ'],
+  ['ं', 'ः', 'ँ'],
+  ['ड', 'ड़'],
+  ['ङ'],
+  ['ञ'],
+  ['ण', 'न'],
+  ['म'],
+  ['ल', 'र'],
+  ['व'],
+  ['ह'],
+];
+
+const sameFamily = (a: string, b: string) =>
+  FAMILIES.some((fam) => fam.includes(a) && fam.includes(b));
+
+// clean() NFC-normalizes, which keeps a nukta as its own code point after its
+// consonant (क़ ख़ ग़ ज़ फ़ ड़ ढ़ are Unicode composition exclusions). Splitting
+// per code point would compare that nukta against the next letter, so group
+// it with its consonant: 'कुकड़' → ['क', 'ु', 'क', 'ड़'], letting the ड़ entries
+// in FAMILIES actually match.
+const NUKTA = '\u093C';
+const letters = (word: string): string[] =>
+  Array.from(word).reduce<string[]>((out, ch) => {
+    if (ch === NUKTA && out.length > 0) out[out.length - 1] += ch;
+    else out.push(ch);
+    return out;
+  }, []);
+
+// Hard coding: words the transcription engines may spell with or without a
+// nukta (नज़र / नजर). Deliberately per word rather than a general rule: every
+// word-list.json word that takes a nukta in its Urdu/English-origin spelling,
+// plus फट (Bodhan hears फ़त). Each spelling in a group is accepted for any
+// other, in both directions. Sentence assessment already strips nuktas
+// (normalizeForAlignment), so passage words need no entries here.
+const NUKTA_VARIANTS: Record<string, string[]> = {
+  कदम: ['क़दम'],
+  कलम: ['क़लम'],
+  कानून: ['क़ानून'],
+  किला: ['क़िला'],
+  हक: ['हक़'],
+  अकल: ['अक़ल'],
+  कसूरी: ['क़सूरी'],
+  चाकू: ['चाक़ू'],
+  खत: ['ख़त'],
+  खून: ['ख़ून'],
+  खुदा: ['ख़ुदा'],
+  खुशी: ['ख़ुशी'],
+  खरीद: ['ख़रीद'],
+  खरगोश: ['ख़रगोश'],
+  नाखून: ['नाख़ून'],
+  तारीख: ['तारीख़'],
+  कारखाना: ['कारख़ाना'],
+  खरबूजा: ['ख़रबूजा', 'खरबूज़ा', 'ख़रबूज़ा'],
+  गम: ['ग़म'],
+  गलत: ['ग़लत'],
+  गजब: ['ग़जब', 'गज़ब', 'ग़ज़ब'],
+  बलगम: ['बलग़म'],
+  बगीचा: ['बग़ीचा'],
+  कागज: ['काग़ज', 'कागज़', 'काग़ज़'],
+  बाजार: ['बाज़ार'],
+  औजार: ['औज़ार'],
+  मेज: ['मेज़'],
+  तरबूज: ['तरबूज़'],
+  दरवाजा: ['दरवाज़ा'],
+  हजम: ['हज़म'],
+  मजदूर: ['मज़दूर'],
+  जहाज: ['जहाज़'],
+  सजा: ['सज़ा'],
+  गज: ['गज़'],
+  जीरा: ['ज़ीरा'],
+  फसल: ['फ़सल'],
+  सफाई: ['सफ़ाई'],
+  काफी: ['काफ़ी', 'कॉफ़ी'],
+  टिफिन: ['टिफ़िन'],
+  फरवरी: ['फ़रवरी'],
+  जिराफ: ['जिराफ़'],
+  माफ: ['माफ़'],
+  सफेद: ['सफ़ेद'],
+  फट: ['फ़ट', 'फ़त'],
+};
+
+const NUKTA_GROUP = new Map<string, string>(
+  Object.entries(NUKTA_VARIANTS).flatMap(([plain, forms]) =>
+    [plain, ...forms].map((form): [string, string] => [form, plain]),
+  ),
+);
+
+const sameNuktaGroup = (a: string, b: string) => {
+  const group = NUKTA_GROUP.get(a);
+  return group !== undefined && group === NUKTA_GROUP.get(b);
+};
+
+const MATRA_TO_VOWEL: Record<string, string> = {
+  'ा': 'आ',
+  'ि': 'इ',
+  'ी': 'ई',
+  'ु': 'उ',
+  'ू': 'ऊ',
+  'ृ': 'ऋ',
+  'े': 'ए',
+  'ै': 'ऐ',
+  'ो': 'ओ',
+  'ौ': 'औ',
+  'ं': 'अ',
+};
+
+type MarkArgs = { correctAnswer: string; studentAnswer: string };
+
+// Every code point that appears in word-list.json (52 as of 2026-07-27:
+// anusvara + independent vowels + consonants + matras; notably NO halant and
+// NO nukta forms). The letter loop (word → letter → image → letterImage) can
+// only teach these — a word containing anything outside this set (conjuncts,
+// nukta consonants, rare vowels) must never be selected as a sentence drill
+// word. Regenerate by unioning the code points of word-list.json if the list
+// changes.
+export const TEACHABLE_GRAPHEMES = new Set([
+  'ं',
+  'अ',
+  'आ',
+  'इ',
+  'ई',
+  'उ',
+  'ऊ',
+  'ऋ',
+  'ए',
+  'ऐ',
+  'ओ',
+  'औ',
+  'क',
+  'ख',
+  'ग',
+  'घ',
+  'च',
+  'छ',
+  'ज',
+  'झ',
+  'ट',
+  'ठ',
+  'ड',
+  'ढ',
+  'ण',
+  'त',
+  'थ',
+  'द',
+  'ध',
+  'न',
+  'प',
+  'फ',
+  'ब',
+  'भ',
+  'म',
+  'य',
+  'र',
+  'ल',
+  'व',
+  'श',
+  'ष',
+  'स',
+  'ह',
+  'ा',
+  'ि',
+  'ी',
+  'ु',
+  'ू',
+  'े',
+  'ै',
+  'ो',
+  'ौ',
+]);
+
+/* ───────── utility class ───────── */
+class EvaluateAnswer {
+  /* helpers */
+  private static isConsonant = (ch: string) => CONSONANT_SET.has(ch);
+
+  private static consonantCount(word: string): number {
+    let c = 0;
+    for (const ch of [...word.normalize('NFC')]) {
+      if (this.isConsonant(ch)) c++;
+    }
+    return c;
+  }
+
+  static clean(str: string): string {
+    return str
+      .normalize('NFC')
+      .trim()
+      .replace(/[^\p{L}\p{M}\p{N}]/gu, '')
+      .toLocaleLowerCase();
+  }
+
+  /* public APIs --------------------------------------------------- */
+
+  static markWord({ correctAnswer, studentAnswer }: MarkArgs): boolean {
+    const cleanedCorrectAnswer = this.clean(correctAnswer);
+    const cleanedFullStudentAnswer = this.clean(studentAnswer);
+    const studentWords = studentAnswer.split(/\s+/);
+
+    const isEquivalent = (a: string, b: string) => a === b || sameFamily(a, b);
+
+    // Hard coding: transcription engine splits multi-syllable words into separate words.
+    // Using .includes() because combinedTranscript concatenates sarvam+azure transcripts.
+    if (
+      cleanedCorrectAnswer === 'अमरस' &&
+      cleanedFullStudentAnswer.includes('अमररस')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'कागज' &&
+      cleanedFullStudentAnswer.includes('कागज')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'खटमल' &&
+      cleanedFullStudentAnswer.includes('खटमल')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'टमटम' &&
+      cleanedFullStudentAnswer.includes('टमटम')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नटखट' &&
+      cleanedFullStudentAnswer.includes('नटखट')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'बलगम' &&
+      cleanedFullStudentAnswer.includes('बलगम')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'पीपल' &&
+      cleanedFullStudentAnswer.includes('पीपल')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'परसो' &&
+      cleanedFullStudentAnswer.includes('परसो')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'हलचल' &&
+      cleanedFullStudentAnswer.includes('हलचल')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'हरदम' &&
+      cleanedFullStudentAnswer.includes('हरदम')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'कलाकार' &&
+      cleanedFullStudentAnswer.includes('कलाकार')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'दोपहर' &&
+      cleanedFullStudentAnswer.includes('दोपहर')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नाखून' &&
+      cleanedFullStudentAnswer.includes('नाखून')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'भूगोल' &&
+      cleanedFullStudentAnswer.includes('भूगोल')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'चौकीदार' &&
+      cleanedFullStudentAnswer.includes('चौकीदार')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'कारखाना' &&
+      cleanedFullStudentAnswer.includes('कारखाना')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'दालचीनी' &&
+      cleanedFullStudentAnswer.includes('दालचीनी')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नाशपाती' &&
+      cleanedFullStudentAnswer.includes('नाशपाती')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'सोयाबीन' &&
+      cleanedFullStudentAnswer.includes('सोयाबीन')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'तकिया' &&
+      cleanedFullStudentAnswer.includes('तकया')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'तौलिया' &&
+      cleanedFullStudentAnswer.includes('तौलया')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'करेला' &&
+      cleanedFullStudentAnswer.includes('करेला')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'पुलिस' &&
+      cleanedFullStudentAnswer.includes('पुलइस')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'अलमारी' &&
+      cleanedFullStudentAnswer.includes('अलमारी')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नाना' &&
+      cleanedFullStudentAnswer.includes('नाना')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'मामा' &&
+      cleanedFullStudentAnswer.includes('मामा')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'माता' &&
+      cleanedFullStudentAnswer.includes('माता')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'दादा' &&
+      cleanedFullStudentAnswer.includes('दादा')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'चाचा' &&
+      cleanedFullStudentAnswer.includes('चाचा')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'केला' &&
+      cleanedFullStudentAnswer.includes('केला')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'हलवा' &&
+      cleanedFullStudentAnswer.includes('हलवा')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'हलवा' &&
+      cleanedFullStudentAnswer.includes('हलवह')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'राजमा' &&
+      cleanedFullStudentAnswer.includes('राजमा')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'बुलबुल' &&
+      cleanedFullStudentAnswer.includes('बुलबुल')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'हाथी' &&
+      cleanedFullStudentAnswer.includes('हाथही')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'अचकन' &&
+      cleanedFullStudentAnswer.includes('अचिकन')
+    )
+      return true;
+    // Word split by the transcription engine into separate words.
+    if (
+      cleanedCorrectAnswer === 'पनघट' &&
+      cleanedFullStudentAnswer.includes('पनघट')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'खटमल' &&
+      cleanedFullStudentAnswer.includes('कटमें')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नटखट' &&
+      cleanedFullStudentAnswer.includes('नेटघट')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'नटखट' &&
+      cleanedFullStudentAnswer.includes('नेटखट')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'टीवी' &&
+      cleanedFullStudentAnswer.includes('टीवी')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'भजन' &&
+      cleanedFullStudentAnswer.includes('भजन')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'औसत' &&
+      cleanedFullStudentAnswer.includes('औसत')
+    )
+      return true;
+    if (
+      cleanedCorrectAnswer === 'औसत' &&
+      cleanedFullStudentAnswer.includes('असत')
+    )
+      return true;
+
+    // Two-letter words the engine split. Exact equality rather than .includes()
+    // because a two-letter target would otherwise match inside a longer word.
+    if (cleanedCorrectAnswer === 'आओ' && cleanedFullStudentAnswer === 'आओ')
+      return true;
+    if (cleanedCorrectAnswer === 'आए' && cleanedFullStudentAnswer === 'आए')
+      return true;
+    if (cleanedCorrectAnswer === 'गई' && cleanedFullStudentAnswer === 'गई')
+      return true;
+    if (cleanedCorrectAnswer === 'गए' && cleanedFullStudentAnswer === 'गए')
+      return true;
+    if (cleanedCorrectAnswer === 'नए' && cleanedFullStudentAnswer === 'नए')
+      return true;
+    if (cleanedCorrectAnswer === 'भय' && cleanedFullStudentAnswer === 'भय')
+      return true;
+    if (cleanedCorrectAnswer === 'ऊन' && cleanedFullStudentAnswer === 'ऊन')
+      return true;
+    if (cleanedCorrectAnswer === 'चख' && cleanedFullStudentAnswer === 'चख')
+      return true;
+
+    return studentWords.some((studentWord) => {
+      const cleanedStudentWord = this.clean(studentWord);
+      if (cleanedStudentWord === cleanedCorrectAnswer) return true;
+      if (sameNuktaGroup(cleanedCorrectAnswer, cleanedStudentWord)) return true;
+
+      // Hard coding some common transcription engine mistakes.
+      if (cleanedCorrectAnswer === 'ईख' && cleanedStudentWord === 'एक')
+        return true;
+      if (cleanedCorrectAnswer === 'हथौड़ा' && cleanedStudentWord === 'हथौड़ी')
+        return true;
+      if (cleanedCorrectAnswer === 'हथौड़ी' && cleanedStudentWord === 'हथौड़ा')
+        return true;
+      if (cleanedCorrectAnswer === 'और' && cleanedStudentWord === 'ओर')
+        return true;
+      if (cleanedCorrectAnswer === 'ओर' && cleanedStudentWord === 'और')
+        return true;
+      if (cleanedCorrectAnswer === 'पढ़' && cleanedStudentWord === 'पड़')
+        return true;
+      if (cleanedCorrectAnswer === 'पड़' && cleanedStudentWord === 'पढ़')
+        return true;
+      if (cleanedCorrectAnswer === 'गए' && cleanedStudentWord === 'गये')
+        return true;
+      if (cleanedCorrectAnswer === 'गये' && cleanedStudentWord === 'गए')
+        return true;
+      if (cleanedCorrectAnswer === 'डर' && cleanedStudentWord === 'दर')
+        return true;
+      if (cleanedCorrectAnswer === 'दर' && cleanedStudentWord === 'डर')
+        return true;
+      if (cleanedCorrectAnswer === 'एक' && cleanedStudentWord === '1')
+        return true;
+      if (cleanedCorrectAnswer === 'एक' && cleanedStudentWord === 'एकाएक')
+        return true;
+      if (cleanedCorrectAnswer === 'दो' && cleanedStudentWord === '2')
+        return true;
+      if (cleanedCorrectAnswer === 'तीन' && cleanedStudentWord === '3')
+        return true;
+      if (cleanedCorrectAnswer === 'चार' && cleanedStudentWord === '4')
+        return true;
+      if (cleanedCorrectAnswer === 'पाँच' && cleanedStudentWord === '5')
+        return true;
+      if (cleanedCorrectAnswer === 'छह' && cleanedStudentWord === '6')
+        return true;
+      if (cleanedCorrectAnswer === 'सात' && cleanedStudentWord === '7')
+        return true;
+      if (cleanedCorrectAnswer === 'आठ' && cleanedStudentWord === '8')
+        return true;
+      if (cleanedCorrectAnswer === 'नौ' && cleanedStudentWord === '9')
+        return true;
+      if (cleanedCorrectAnswer === 'दस' && cleanedStudentWord === '10')
+        return true;
+      if (cleanedCorrectAnswer === 'बीस' && cleanedStudentWord === '20')
+        return true;
+      if (cleanedCorrectAnswer === 'तीस' && cleanedStudentWord === '30')
+        return true;
+      if (cleanedCorrectAnswer === 'चालीस' && cleanedStudentWord === '40')
+        return true;
+      if (cleanedCorrectAnswer === 'पचास' && cleanedStudentWord === '50')
+        return true;
+      if (cleanedCorrectAnswer === 'साठ' && cleanedStudentWord === '60')
+        return true;
+      if (cleanedCorrectAnswer === 'सत्तर' && cleanedStudentWord === '70')
+        return true;
+      if (cleanedCorrectAnswer === 'अस्सी' && cleanedStudentWord === '80')
+        return true;
+      if (cleanedCorrectAnswer === 'नब्बे' && cleanedStudentWord === '90')
+        return true;
+      if (cleanedCorrectAnswer === 'सौ' && cleanedStudentWord === '100')
+        return true;
+      if (cleanedCorrectAnswer === 'चख' && cleanedStudentWord === 'चकाचक')
+        return true;
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'थपाथप')
+        return true;
+      if (cleanedCorrectAnswer === 'तन' && cleanedStudentWord === 'टनाटन')
+        return true;
+      if (cleanedCorrectAnswer === 'फट' && cleanedStudentWord === 'फटाफट')
+        return true;
+      if (cleanedCorrectAnswer === 'भर' && cleanedStudentWord === 'बराबर')
+        return true;
+      if (cleanedCorrectAnswer === 'हट' && cleanedStudentWord === 'हताहत')
+        return true;
+      if (cleanedCorrectAnswer === 'गुण' && cleanedStudentWord === 'गुन')
+        return true;
+      if (cleanedCorrectAnswer === 'गुण' && cleanedStudentWord === 'गुड़')
+        return true;
+      if (cleanedCorrectAnswer === 'गुण' && cleanedStudentWord === 'गुर')
+        return true;
+      if (cleanedCorrectAnswer === 'गुण' && cleanedStudentWord === 'गुड')
+        return true;
+      if (cleanedCorrectAnswer === 'नहीं' && cleanedStudentWord === 'नई')
+        return true;
+      if (cleanedCorrectAnswer === 'नई' && cleanedStudentWord === 'नहीं')
+        return true;
+      if (cleanedCorrectAnswer === 'बच' && cleanedStudentWord === 'बच्च')
+        return true;
+      if (cleanedCorrectAnswer === 'हाँ' && cleanedStudentWord === 'हां')
+        return true;
+      if (cleanedCorrectAnswer === 'भय' && cleanedStudentWord === 'भाई')
+        return true;
+      if (cleanedCorrectAnswer === 'ऊन' && cleanedStudentWord === 'उन')
+        return true;
+      if (cleanedCorrectAnswer === 'उन' && cleanedStudentWord === 'ऊन')
+        return true;
+      if (cleanedCorrectAnswer === 'वह' && cleanedStudentWord === 'वे')
+        return true;
+      if (cleanedCorrectAnswer === 'वे' && cleanedStudentWord === 'वह')
+        return true;
+      if (cleanedCorrectAnswer === 'इडली' && cleanedStudentWord === 'इटली')
+        return true;
+      // Nuqta and nasal-mark variants of the same word.
+      if (cleanedCorrectAnswer === 'गज' && cleanedStudentWord === 'गाज')
+        return true;
+      if (cleanedCorrectAnswer === 'गज' && cleanedStudentWord === 'गाज़')
+        return true;
+      if (cleanedCorrectAnswer === 'गज' && cleanedStudentWord === 'गज्ज')
+        return true;
+      if (cleanedCorrectAnswer === 'दुख' && cleanedStudentWord === 'दुःख')
+        return true;
+      if (cleanedCorrectAnswer === 'दुख' && cleanedStudentWord === 'दुखी')
+        return true;
+      if (cleanedCorrectAnswer === 'यश' && cleanedStudentWord === 'यशः')
+        return true;
+      if (cleanedCorrectAnswer === 'आए' && cleanedStudentWord === 'आएँ')
+        return true;
+      if (cleanedCorrectAnswer === 'पोछा' && cleanedStudentWord === 'पोंछा')
+        return true;
+      if (cleanedCorrectAnswer === 'पूछ' && cleanedStudentWord === 'पूंछ')
+        return true;
+      if (cleanedCorrectAnswer === 'डोसा' && cleanedStudentWord === 'डोंसा')
+        return true;
+      if (cleanedCorrectAnswer === 'घटा' && cleanedStudentWord === 'घंटा')
+        return true;
+
+      // Doubled consonant produced by the engine.
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'ठप्प')
+        return true;
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'ठप्पू')
+        return true;
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'थाप')
+        return true;
+      if (cleanedCorrectAnswer === 'तन' && cleanedStudentWord === 'तन्न')
+        return true;
+      if (cleanedCorrectAnswer === 'छत' && cleanedStudentWord === 'छत्त')
+        return true;
+      if (cleanedCorrectAnswer === 'फट' && cleanedStudentWord === 'फट्ट')
+        return true;
+      if (cleanedCorrectAnswer === 'घट' && cleanedStudentWord === 'घट्ट')
+        return true;
+      if (cleanedCorrectAnswer === 'शक' && cleanedStudentWord === 'शक्क')
+        return true;
+      if (cleanedCorrectAnswer === 'सच' && cleanedStudentWord === 'सच्च')
+        return true;
+      if (cleanedCorrectAnswer === 'चुन' && cleanedStudentWord === 'चुन्न')
+        return true;
+      if (cleanedCorrectAnswer === 'हजम' && cleanedStudentWord === 'हज्जम')
+        return true;
+
+      // Other recurring engine substitutions.
+      if (cleanedCorrectAnswer === 'नए' && cleanedStudentWord === 'नहीं')
+        return true;
+      if (cleanedCorrectAnswer === 'ढोल' && cleanedStudentWord === 'धौल')
+        return true;
+      if (cleanedCorrectAnswer === 'ढक' && cleanedStudentWord === 'डक')
+        return true;
+
+      if (cleanedCorrectAnswer === 'सास' && cleanedStudentWord === 'साँस')
+        return true;
+      if (cleanedCorrectAnswer === 'सास' && cleanedStudentWord === 'सांस')
+        return true;
+      if (cleanedCorrectAnswer === 'ऐनक' && cleanedStudentWord === 'एनक')
+        return true;
+      if (cleanedCorrectAnswer === 'जनम' && cleanedStudentWord === 'जन्म')
+        return true;
+      if (cleanedCorrectAnswer === 'शकल' && cleanedStudentWord === 'शक्ल')
+        return true;
+      if (cleanedCorrectAnswer === 'समझ' && cleanedStudentWord === 'समज')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिशभ')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषि' && cleanedStudentWord === 'रिशि')
+        return true;
+      if (cleanedCorrectAnswer === 'वचन' && cleanedStudentWord === 'बचन')
+        return true;
+      if (cleanedCorrectAnswer === 'सिपाही' && cleanedStudentWord === 'सिपाई')
+        return true;
+      if (cleanedCorrectAnswer === 'महीना' && cleanedStudentWord === 'महिना')
+        return true;
+      if (cleanedCorrectAnswer === 'गणित' && cleanedStudentWord === 'गनित')
+        return true;
+      if (cleanedCorrectAnswer === 'औसत' && cleanedStudentWord === 'ओसत')
+        return true;
+      if (cleanedCorrectAnswer === 'औजार' && cleanedStudentWord === 'ओजार')
+        return true;
+      if (cleanedCorrectAnswer === 'औषधि' && cleanedStudentWord === 'ओषधि')
+        return true;
+      if (cleanedCorrectAnswer === 'ऐलान' && cleanedStudentWord === 'एलान')
+        return true;
+      if (cleanedCorrectAnswer === 'कैरम' && cleanedStudentWord === 'केरम')
+        return true;
+      if (cleanedCorrectAnswer === 'कापी' && cleanedStudentWord === 'कॉपी')
+        return true;
+      if (cleanedCorrectAnswer === 'काफी' && cleanedStudentWord === 'कॉफी')
+        return true;
+      if (cleanedCorrectAnswer === 'बहू' && cleanedStudentWord === 'बहु')
+        return true;
+      if (cleanedCorrectAnswer === 'पौधा' && cleanedStudentWord === 'पौदा')
+        return true;
+      if (cleanedCorrectAnswer === 'गोभी' && cleanedStudentWord === 'गोबी')
+        return true;
+      if (cleanedCorrectAnswer === 'कछुआ' && cleanedStudentWord === 'कछुवा')
+        return true;
+      if (cleanedCorrectAnswer === 'कौआ' && cleanedStudentWord === 'कौवा')
+        return true;
+      if (cleanedCorrectAnswer === 'कौआ' && cleanedStudentWord === 'कोवा')
+        return true;
+      if (cleanedCorrectAnswer === 'अखरोट' && cleanedStudentWord === 'अकरोट')
+        return true;
+      if (cleanedCorrectAnswer === 'मोबाइल' && cleanedStudentWord === 'मोबाईल')
+        return true;
+      if (cleanedCorrectAnswer === 'वीडियो' && cleanedStudentWord === 'विडियो')
+        return true;
+      if (cleanedCorrectAnswer === 'चोटी' && cleanedStudentWord === 'छोटी')
+        return true;
+      if (cleanedCorrectAnswer === 'चीनी' && cleanedStudentWord === 'चिनी')
+        return true;
+      if (cleanedCorrectAnswer === 'अधिकारी' && cleanedStudentWord === 'अधिकरी')
+        return true;
+      if (cleanedCorrectAnswer === 'सिख' && cleanedStudentWord === 'सीख')
+        return true;
+      if (cleanedCorrectAnswer === 'सिखा' && cleanedStudentWord === 'सीखा')
+        return true;
+      if (cleanedCorrectAnswer === 'पोछा' && cleanedStudentWord === 'पोचा')
+        return true;
+      if (cleanedCorrectAnswer === 'मैना' && cleanedStudentWord === 'मेना')
+        return true;
+      if (cleanedCorrectAnswer === 'नारियल' && cleanedStudentWord === 'नरियल')
+        return true;
+      if (cleanedCorrectAnswer === 'सुकून' && cleanedStudentWord === 'सकून')
+        return true;
+      if (cleanedCorrectAnswer === 'मसूर' && cleanedStudentWord === 'मसुर')
+        return true;
+      if (cleanedCorrectAnswer === 'सुबह' && cleanedStudentWord === 'सुबा')
+        return true;
+      if (cleanedCorrectAnswer === 'गई' && cleanedStudentWord === 'गाय')
+        return true;
+      if (cleanedCorrectAnswer === 'गई' && cleanedStudentWord === 'गाई')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिसब')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिसभ')
+        return true;
+      if (cleanedCorrectAnswer === 'बैठ' && cleanedStudentWord === 'बेट')
+        return true;
+
+      // markWord — inside studentWords.some((studentWord) => { ... })
+      if (cleanedCorrectAnswer === 'ऐश' && cleanedStudentWord === 'ऐसा')
+        return true;
+      if (cleanedCorrectAnswer === 'गए' && cleanedStudentWord === 'गाय')
+        return true;
+      if (cleanedCorrectAnswer === 'आए' && cleanedStudentWord === 'आई')
+        return true;
+      if (cleanedCorrectAnswer === 'उधर' && cleanedStudentWord === 'उधार')
+        return true;
+      if (cleanedCorrectAnswer === 'घट' && cleanedStudentWord === 'घाट')
+        return true;
+      if (cleanedCorrectAnswer === 'भय' && cleanedStudentWord === 'बाय')
+        return true;
+      if (cleanedCorrectAnswer === 'भय' && cleanedStudentWord === 'भया')
+        return true;
+      if (cleanedCorrectAnswer === 'गए' && cleanedStudentWord === 'गाए')
+        return true;
+      if (cleanedCorrectAnswer === 'चख' && cleanedStudentWord === 'चक्ख')
+        return true;
+      if (cleanedCorrectAnswer === 'जम' && cleanedStudentWord === 'जम्प')
+        return true;
+      if (cleanedCorrectAnswer === 'चख' && cleanedStudentWord === 'चक्क')
+        return true;
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'थप्प')
+        return true;
+      if (cleanedCorrectAnswer === 'खत' && cleanedStudentWord === 'खत्म')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिसाब')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषि' && cleanedStudentWord === 'रिसी')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिषभ')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषि' && cleanedStudentWord === 'रीसी')
+        return true;
+      if (cleanedCorrectAnswer === 'ठप' && cleanedStudentWord === 'थप्पू')
+        return true;
+      if (cleanedCorrectAnswer === 'गज' && cleanedStudentWord === 'गज़')
+        return true;
+      if (cleanedCorrectAnswer === 'ऋषभ' && cleanedStudentWord === 'रिशब')
+        return true;
+      if (cleanedCorrectAnswer === 'हजम' && cleanedStudentWord === 'हज़म')
+        return true;
+
+      // markWord — the .includes() block near the top (words the engine splits)
+      if (
+        cleanedCorrectAnswer === 'औसत' &&
+        cleanedFullStudentAnswer.includes('औरसात')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'हलचल' &&
+        cleanedFullStudentAnswer.includes('हालचाल')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'पनघट' &&
+        cleanedFullStudentAnswer.includes('पणघट')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'औरत' &&
+        cleanedFullStudentAnswer.includes('औररात')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'नटखट' &&
+        cleanedFullStudentAnswer.includes('नटकट')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'पनघट' &&
+        cleanedFullStudentAnswer.includes('पनघाट')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'टमटम' &&
+        cleanedFullStudentAnswer.includes('तमतम')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'ऐनक' &&
+        cleanedFullStudentAnswer.includes('एनक')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'औरत' &&
+        cleanedFullStudentAnswer.includes('औररत')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'जिससे' &&
+        cleanedFullStudentAnswer.includes('जिससे')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'बाबासाहेब' &&
+        cleanedFullStudentAnswer.includes('बाबासाहेब')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'टमटम' &&
+        cleanedFullStudentAnswer.includes('टम्टम्')
+      )
+        return true;
+      if (
+        cleanedCorrectAnswer === 'कछुआ' &&
+        cleanedFullStudentAnswer.includes('कछुआ')
+      )
+        return true;
+
+      // Schwa deletion: ignore trailing long ā (ा) in correctAnswer
+      if (
+        cleanedCorrectAnswer.endsWith(LONG_A) &&
+        cleanedStudentWord === cleanedCorrectAnswer.slice(0, -1)
+      ) {
+        return true;
+      }
+
+      // Match words that have characters in the same family in the same position.
+      // Also allow for the student to prepend some characters to the student answer.
+      if (cleanedCorrectAnswer.length === 0) {
+        console.error(
+          'markWord: cleanedCorrectAnswer is empty. Raw value was:',
+          correctAnswer,
+        );
+        return false;
+      }
+
+      const studentLetters = letters(cleanedStudentWord);
+      const correctLetters = letters(cleanedCorrectAnswer);
+      if (studentLetters.length >= correctLetters.length) {
+        const offset = studentLetters.length - correctLetters.length;
+        for (let i = 0; i < correctLetters.length; i++) {
+          if (!isEquivalent(studentLetters[i + offset], correctLetters[i])) {
+            return false;
+          }
+        }
+        return true;
+      }
+
+      return false;
+    });
+  }
+
+  /* markImage helpers */
+  private static splitWord(word: string): string[] {
+    return Array.from(word);
+  }
+
+  static markImage({ correctAnswer, studentAnswer }: MarkArgs): boolean {
+    const cleanedExampleWord = this.clean(correctAnswer);
+    const cleanedExampleChars = this.splitWord(cleanedExampleWord);
+    const rawTarget = cleanedExampleChars[0];
+    const target = MATRA_TO_VOWEL[rawTarget] ?? rawTarget;
+    // Hard coding: picture answers the first-grapheme rule cannot reach.
+    // ऋषि is heard as रि / री / रिशि, which start with र, not ऋ, and र is not
+    // in ऋ's family row. भालू loses its initial consonant. ओखली is mangled
+    // wholesale by both engines.
+    const IMAGE_HARDCODES: Record<string, string[]> = {
+      ऋषि: ['रि', 'री', 'रिशि', 'रिषि', 'ऋषी'],
+      भालू: ['आलू'],
+      ओखली: ['अखली', 'आखली', 'पोखली', 'उखली', 'खल्ली'],
+    };
+    const imageAccepted = IMAGE_HARDCODES[cleanedExampleWord];
+    if (imageAccepted) {
+      for (const studentWord of studentAnswer.split(/\s+/)) {
+        if (imageAccepted.includes(this.clean(studentWord))) return true;
+      }
+    }
+
+    const splitStudentAnswer = studentAnswer.split(/\s+/);
+    for (const studentWord of splitStudentAnswer) {
+      const cleanedStudentWord = this.clean(studentWord);
+      const cleanedStudentChars = this.splitWord(cleanedStudentWord);
+
+      if (
+        cleanedExampleChars.length === 0 ||
+        cleanedStudentChars.length === 0
+      ) {
+        continue;
+      }
+      if (
+        target !== cleanedStudentChars[0] &&
+        !sameFamily(target, cleanedStudentChars[0])
+      )
+        continue;
+      return true;
+    }
+    return false;
+  }
+
+  static markLetter({ correctAnswer, studentAnswer }: MarkArgs): boolean {
+    const cleanedCorrectAnswer = this.clean(correctAnswer);
+    const words = studentAnswer.trim().split(/\s+/);
+    const cCount = this.consonantCount(cleanedCorrectAnswer);
+
+    return words.some((w) => {
+      const cleaned = this.clean(w);
+
+      // Hard coding some common transcription engine mistakes.
+      if (cleanedCorrectAnswer === 'म' && cleaned === 'माँ') return true;
+      if (cleanedCorrectAnswer === 'ह' && cleaned === 'हां') return true;
+      if (cleanedCorrectAnswer === 'ह' && cleaned === 'हाँ') return true;
+      if (cleanedCorrectAnswer === 'औ' && cleaned === 'ओह') return true;
+      if (cleanedCorrectAnswer === 'ओ' && cleaned === 'ओह') return true;
+      if (cleanedCorrectAnswer === 'आ' && cleaned === 'हाँ') return true;
+      if (cleanedCorrectAnswer === 'आ' && cleaned === 'हां') return true;
+      if (cleanedCorrectAnswer === 'आ' && cleaned === 'का') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'आ') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'हाँ') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'हां') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'का') return true;
+      if (cleanedCorrectAnswer === 'ि' && cleaned === 'इ') return true;
+      if (cleanedCorrectAnswer === 'ी' && cleaned === 'ई') return true;
+      if (cleanedCorrectAnswer === 'ु' && cleaned === 'उ') return true;
+      if (cleanedCorrectAnswer === 'ू' && cleaned === 'ऊ') return true;
+      if (cleanedCorrectAnswer === 'ृ' && cleaned === 'ऋ') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'ए') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'ऐ') return true;
+      if (cleanedCorrectAnswer === 'ो' && cleaned === 'ओ') return true;
+      if (cleanedCorrectAnswer === 'ौ' && cleaned === 'औ') return true;
+      if (cleanedCorrectAnswer === 'ओ' && cleaned === 'आओ') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'री') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'रि') return true;
+      if (cleanedCorrectAnswer === 'श' && cleaned === 'शाह') return true;
+      if (cleanedCorrectAnswer === 'ष' && cleaned === 'शाह') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'बड़ा') return true;
+      if (cleanedCorrectAnswer === 'ी' && cleaned === 'बड़ी') return true;
+      if (cleanedCorrectAnswer === 'ए' && cleaned === 'ऐसे') return true;
+      if (cleanedCorrectAnswer === 'ब' && cleaned === 'वाह') return true;
+      if (cleanedCorrectAnswer === 'ख' && cleaned === 'हाँ') return true;
+      if (cleanedCorrectAnswer === 'ऐ' && cleaned === 'है') return true;
+      if (cleanedCorrectAnswer === 'ऐ' && cleaned === 'हाय') return true;
+      if (cleanedCorrectAnswer === 'छ' && cleaned === 'अच्छा') return true;
+      if (cleanedCorrectAnswer === 'ि' && cleaned === 'ई') return true;
+      if (cleanedCorrectAnswer === 'ी' && cleaned === 'इ') return true;
+      if (cleanedCorrectAnswer === 'ु' && cleaned === 'ऊ') return true;
+      if (cleanedCorrectAnswer === 'ू' && cleaned === 'उ') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'आए') return true;
+      if (cleanedCorrectAnswer === 'ऐ' && cleaned === 'आए') return true;
+      if (cleanedCorrectAnswer === 'औ' && cleaned === 'आओ') return true;
+      if (cleanedCorrectAnswer === 'ौ' && cleaned === 'आओ') return true;
+      if (cleanedCorrectAnswer === 'व' && cleaned === 'वाह') return true;
+      if (cleanedCorrectAnswer === 'भ' && cleaned === 'भाव') return true;
+
+      // markLetter — inside words.some((w) => { ... })
+      if (cleanedCorrectAnswer === 'च' && cleaned === 'क्या') return true;
+      if (cleanedCorrectAnswer === 'भ' && cleaned === 'वाह') return true;
+      if (cleanedCorrectAnswer === 'औ' && cleaned === 'और') return true;
+      if (cleanedCorrectAnswer === 'च' && cleaned === 'चार') return true;
+      if (cleanedCorrectAnswer === 'अ' && cleaned === 'हाँ') return true;
+      if (cleanedCorrectAnswer === 'ट' && cleaned === 'तो') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'एक') return true;
+      if (cleanedCorrectAnswer === 'ए' && cleaned === 'एक') return true;
+      if (cleanedCorrectAnswer === 'स' && cleaned === 'सर') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'थ्री') return true;
+      if (cleanedCorrectAnswer === 'म' && cleaned === 'मां') return true;
+      if (cleanedCorrectAnswer === 'ि' && cleaned === 'छोटी') return true;
+      if (cleanedCorrectAnswer === 'य' && cleaned === 'याह') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'फ्री') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'श्री') return true;
+      if (cleanedCorrectAnswer === 'ख' && cleaned === 'खासे') return true;
+      if (cleanedCorrectAnswer === 'स' && cleaned === 'शाह') return true;
+      if (cleanedCorrectAnswer === 'उ' && cleaned === 'ऊह') return true;
+      if (cleanedCorrectAnswer === 'ऊ' && cleaned === 'ऊह') return true;
+      if (cleanedCorrectAnswer === 'घ' && cleaned === 'घासे') return true;
+      if (cleanedCorrectAnswer === 'प' && cleaned === 'पासे') return true;
+      if (cleanedCorrectAnswer === 'भ' && cleaned === 'भासे') return true;
+      if (cleanedCorrectAnswer === 'व' && cleaned === 'वासे') return true;
+      if (cleanedCorrectAnswer === 'छ' && cleaned === 'छह') return true;
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'आह') return true;
+      if (cleanedCorrectAnswer === 'इ' && cleaned === 'इसे') return true;
+      if (cleanedCorrectAnswer === 'उ' && cleaned === 'उह') return true;
+      if (cleanedCorrectAnswer === 'ू' && cleaned === 'उह') return true;
+      if (cleanedCorrectAnswer === 'अ' && cleaned === 'अह') return true;
+      if (cleanedCorrectAnswer === 'स' && cleaned === 'सासे') return true;
+      if (cleanedCorrectAnswer === 'ऐ' && cleaned === 'ऐसे') return true;
+      if (cleanedCorrectAnswer === 'छ' && cleaned === 'छः') return true;
+      if (cleanedCorrectAnswer === 'आ' && cleaned === 'आह') return true;
+      if (cleanedCorrectAnswer === 'ि' && cleaned === 'इसे') return true;
+      if (cleanedCorrectAnswer === 'ु' && cleaned === 'उह') return true;
+      if (cleanedCorrectAnswer === 'च' && cleaned === 'चासे') return true;
+
+      // Standalone-matra correct answers have cCount === 0 and fall through
+      // the phoneme/conjunct routing below, so family equivalence never runs
+      // for them — only these hardcodes can accept an answer.
+
+      // Family-equivalent vowel (markWord already accepts these pairs).
+      if (cleanedCorrectAnswer === 'ा' && cleaned === 'अ') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'ऐ') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'ए') return true;
+      if (cleanedCorrectAnswer === 'ो' && cleaned === 'औ') return true;
+      if (cleanedCorrectAnswer === 'ौ' && cleaned === 'ओ') return true;
+
+      // Mirrors of the independent vowel's hardcodes above (a matra in
+      // isolation is pronounced the same as its vowel).
+      if (cleanedCorrectAnswer === 'ो' && cleaned === 'ओह') return true;
+      if (cleanedCorrectAnswer === 'ो' && cleaned === 'आओ') return true;
+      if (cleanedCorrectAnswer === 'ौ' && cleaned === 'ओह') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'है') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'हाय') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'ऐसे') return true;
+
+      // Family-transitive mirrors (े and ै share the ए/ऐ family row).
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'है') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'हाय') return true;
+      if (cleanedCorrectAnswer === 'े' && cleaned === 'आए') return true;
+      if (cleanedCorrectAnswer === 'ै' && cleaned === 'ऐसे') return true;
+
+      // Anusvara: without these no answer can ever be accepted for 'ं'.
+      if (cleanedCorrectAnswer === 'ं' && cleaned === 'अं') return true;
+      if (cleanedCorrectAnswer === 'ं' && cleaned === 'आं') return true;
+      if (cleanedCorrectAnswer === 'ं' && cleaned === 'हं') return true;
+
+      // ऋ is transcribed as a bare 'ji' / 'li' more often than as रि or री.
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'जी') return true;
+      if (cleanedCorrectAnswer === 'ऋ' && cleaned === 'ली') return true;
+      if (cleanedCorrectAnswer === 'ज' && cleaned === 'क्या') return true;
+      if (cleanedCorrectAnswer === 'ज' && cleaned === 'जाओ') return true;
+
+      // A bare consonant read with a trailing ो, as some dialects do.
+      if (cleanedCorrectAnswer === 'त' && cleaned === 'तो') return true;
+
+      // Bare-matra echo: cCount === 0 skips markPhoneme's exact-match path.
+      if (
+        VOWEL_MATRA_SET.has(cleanedCorrectAnswer) &&
+        cleaned === cleanedCorrectAnswer
+      )
+        return true;
+
+      if (cCount === 1) {
+        return this.markPhoneme(cleanedCorrectAnswer, cleaned);
+      } else if (cCount === 2) {
+        return this.markConjunct(cleanedCorrectAnswer, cleaned);
+      } else {
+        return false;
+      }
+    });
+  }
+
+  private static markPhoneme(correctAnswer: string, word: string): boolean {
+    if (!word || !correctAnswer) return false;
+    if (word === correctAnswer) return true;
+
+    const baseMatches =
+      word[0] === correctAnswer[0] || sameFamily(word[0], correctAnswer[0]);
+
+    if (baseMatches) {
+      if (word.slice(1) === correctAnswer.slice(1)) return true;
+      if (word.slice(1) === LONG_A && correctAnswer.slice(1) === '')
+        return true;
+    }
+    return false;
+  }
+
+  private static markConjunct(correctAnswer: string, word: string): boolean {
+    return word === correctAnswer;
+  }
+
+  // Splits an utterance into candidate word tokens. Punctuation — Devanagari
+  // danda/double danda, Latin sentence punctuation, quotes, brackets, dashes
+  // — separates tokens exactly like whitespace, so "घर।नल" and "dog." both
+  // tokenize cleanly. clean() strips punctuation attached to a token anyway;
+  // splitting additionally rescues word pairs glued together by punctuation
+  // with no space. Newlines/tabs fall under \s.
+  static tokenize(utterance: string): string[] {
+    return utterance
+      .split(/[\s।॥,.!?;:'"“”‘’()[\]{}\-–—~]+/u)
+      .filter((t) => t.length > 0);
+  }
+
+  // Grapheme-level levenshtein where family-equivalent graphemes substitute
+  // for free — a phoneme-family variant is the same sound, not an error.
+  static levenshtein(a: string[], b: string[]): number {
+    const rows = a.length + 1;
+    const cols = b.length + 1;
+    let prev = Array.from({ length: cols }, (_, j) => j);
+    for (let i = 1; i < rows; i++) {
+      const curr = new Array<number>(cols);
+      curr[0] = i;
+      for (let j = 1; j < cols; j++) {
+        const same = a[i - 1] === b[j - 1] || sameFamily(a[i - 1], b[j - 1]);
+        curr[j] = Math.min(
+          prev[j] + 1,
+          curr[j - 1] + 1,
+          prev[j - 1] + (same ? 0 : 1),
+        );
+      }
+      prev = curr;
+    }
+    return prev[cols - 1];
+  }
+
+  static detectIncorrectEndMatra({
+    correctAnswer,
+    studentAnswer,
+  }: MarkArgs): boolean {
+    const cleanedCorrect = this.clean(correctAnswer);
+    return studentAnswer
+      .trim()
+      .split(/\s+/)
+      .some((w) => this.clean(w) === cleanedCorrect + LONG_A);
+  }
+
+  static detectInsertion({ correctAnswer, studentAnswer }: MarkArgs): boolean {
+    const cleanedCorrect = this.clean(correctAnswer);
+    if (cleanedCorrect.length === 0) {
+      console.error(
+        'detectInsertion: cleanedCorrect is empty. Raw value was:',
+        correctAnswer,
+      );
+      return false;
+    }
+    return studentAnswer.split(/\s+/).some((studentWord) => {
+      const cleanedStudent = this.clean(studentWord);
+      if (cleanedStudent.length <= cleanedCorrect.length) return false;
+      const correctChars = Array.from(cleanedCorrect);
+      const studentChars = Array.from(cleanedStudent);
+      let ci = 0;
+      for (const ch of studentChars) {
+        if (ch === correctChars[ci]) ci++;
+        if (ci === correctChars.length) return true;
+      }
+      return false;
+    });
+  }
+
+  static detectIncorrectMiddleMatra({
+    correctAnswer,
+    studentAnswer,
+  }: MarkArgs): boolean {
+    const cleanT = correctAnswer.normalize('NFC');
+    const cleanS = studentAnswer.normalize('NFC');
+
+    if (this.consonantCount(cleanT) !== 4) return false;
+    if (cleanT.includes('\u094D')) return false;
+    if (this.consonantCount(cleanS) !== 4) return false;
+    if (cleanS.includes('\u094D')) return false;
+
+    const hasMatraBetween = (word: string) => {
+      const chars = [...word];
+      const idx = chars
+        .map((ch, i) => (this.isConsonant(ch) ? i : -1))
+        .filter((i) => i !== -1);
+
+      const between = chars.slice(idx[1] + 1, idx[2]);
+      return between.some((ch) => VOWEL_MATRA_SET.has(ch));
+    };
+
+    return !hasMatraBetween(cleanT) && hasMatraBetween(cleanS);
+  }
+}
+
+export type { MarkArgs };
+export const markWord = (args: MarkArgs) => EvaluateAnswer.markWord(args);
+// Normalization / tokenization / distance primitives reused by the
+// sentence-assessment module (sentence-assessment.ts).
+export const cleanWord = (str: string) => EvaluateAnswer.clean(str);
+export const tokenizeUtterance = (utterance: string) =>
+  EvaluateAnswer.tokenize(utterance);
+export const levenshteinDistance = (a: string[], b: string[]) =>
+  EvaluateAnswer.levenshtein(a, b);
+export const markImage = (args: MarkArgs) => EvaluateAnswer.markImage(args);
+export const markLetter = (args: MarkArgs) => EvaluateAnswer.markLetter(args);
+export const detectInsertion = (args: MarkArgs) =>
+  EvaluateAnswer.detectInsertion(args);
+export const detectIncorrectEndMatra = (args: MarkArgs) =>
+  EvaluateAnswer.detectIncorrectEndMatra(args);
+export const detectIncorrectMiddleMatra = (args: MarkArgs) =>
+  EvaluateAnswer.detectIncorrectMiddleMatra(args);
