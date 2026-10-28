@@ -59,8 +59,8 @@ export function App() {
   }
 
   return (
-    <div className="app">
-      <header className="topbar">
+    <div className="shell">
+      <header className="shell-top">
         <span className="brand">LIFTeracy</span>
         <button className="student-chip" onClick={() => { stopSounds(); setPicking(true); }}>
           <span className="avatar">{current.name.slice(0, 1)}</span>

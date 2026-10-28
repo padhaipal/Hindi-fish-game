@@ -68,7 +68,7 @@ export function openLesson(student: Student): { student: Student; view: LessonVi
   };
 }
 
-// Feed one answer (all STT engines' transcripts, or the teacher's tap) into
+// Feed one answer (all STT engines' transcripts) into
 // the student's open lesson.
 export function answerLesson(
   student: Student,
@@ -119,8 +119,7 @@ export function answerLesson(
   };
 }
 
-// For the teacher's "wrong" button on a word: an answer with the chosen
-// letters swapped for a letter the marker can't confuse with them, so the
+// For tests: a reading of the word with the chosen letters swapped for a letter the marker can't confuse with them, so the
 // machine drills exactly those letters.
 export function answerWithWrongLetters(word: string, wrongIndexes: number[]): string {
   const chars = Array.from(word);

@@ -30,8 +30,8 @@ export function StudentsScreen({ students, currentId, onChange, onPick, onClose 
   const sorted = [...students].sort((a, b) => a.name.localeCompare(b.name, "hi"));
 
   return (
-    <div className="app students">
-      <header className="topbar">
+    <div className="shell students">
+      <header className="shell-top">
         <span className="brand">LIFTeracy</span>
         {onClose && (
           <button className="link" onClick={onClose}>

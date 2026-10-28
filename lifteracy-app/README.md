@@ -19,11 +19,10 @@ pictures and sounds for its letters अ and ब.
   progress. Everything is saved on the phone.
 - **पाठ (Lesson)**: the same loop as the WhatsApp bot: word ➜ the misread letter
   ➜ a picture that starts with that sound ➜ the picture-letter card ➜ back to
-  the word. The child taps the mic and reads. The teacher can always mark the
-  answer with **✅ सही / ❌ गलत**. For a misread word, they tap the letter that
-  was wrong. This works with no STT keys and no internet.
-- **खेल (Games)**: games run inside the app on the child's weakest letters. For
-  now there's one, *मछली तालाब*, a fish game based on `/fish`.
+  the word. The child taps the mic and reads; speech-to-text marks the answer,
+  so the phone needs internet.
+- **खेल (Games)**: this repo's games, copied into `src/games` unchanged apart
+  from their way out, and opened full screen. For now: the fish game (`/fish`).
 - **प्रगति (Progress)**: the child's level, the words they finished, and their
   score for each letter.
 - **सेटिंग (Settings)**: which speech-to-text engines are on, and a mic test.

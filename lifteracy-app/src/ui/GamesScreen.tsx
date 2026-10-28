@@ -1,37 +1,48 @@
 import { useState } from "react";
 import type { Student } from "../store/students";
-import { LetterPond } from "../games/LetterPond";
-import { LESSON_WORDS } from "../lesson/words";
-import { LETTER_MEDIA } from "../media/letters";
+import { stopSounds } from "../media/player";
+import PondGame from "@/components/fish/PondGame";
+import { stopWinLoseSounds } from "@/lib/audio";
+import "../games/fish.css";
 
-// The games run inside the app and practise the current student's letters:
-// those in the lesson words that have pictures and sounds, weakest first.
-export function practiceLetters(student: Student): string[] {
-  const letters = [...new Set(LESSON_WORDS.flatMap((w) => Array.from(w)))].filter((c) => LETTER_MEDIA[c]);
-  return letters.sort((a, b) => (student.scores[a] ?? 0) - (student.scores[b] ?? 0));
-}
-
+// The repo's games, copied into src/games and run inside the app. Each opens
+// full screen with a ✕ to come back.
 const GAMES = [
-  { id: "pond", icon: "🐟", name: "मछली तालाब", about: "सही अक्षर वाली मछली पकड़ो" },
+  { id: "fish", icon: "🐟", name: "मछली पकड़ो", about: "सही अक्षर वाली मछली पकड़ो" },
 ];
 
 export function GamesScreen({ student }: { student: Student }) {
   const [playing, setPlaying] = useState<string | null>(null);
-  const letters = practiceLetters(student);
 
-  if (playing === "pond") {
-    return <LetterPond letters={letters} onExit={() => setPlaying(null)} />;
+  const exit = () => {
+    stopWinLoseSounds();
+    setPlaying(null);
+  };
+
+  if (playing === "fish") {
+    return (
+      <div className="fishgame">
+        <button className="fishgame-close" onClick={exit} aria-label="खेल बंद करें">
+          ✕
+        </button>
+        <PondGame onExit={exit} />
+      </div>
+    );
   }
 
   return (
     <div className="games">
       <h2>{student.name} के खेल</h2>
-      <p className="hint">
-        अभ्यास के अक्षर: <b>{letters.join(" ")}</b> (सबसे कमज़ोर पहले)
-      </p>
       <div className="game-grid">
         {GAMES.map((g) => (
-          <button key={g.id} className="game-tile" onClick={() => setPlaying(g.id)}>
+          <button
+            key={g.id}
+            className="game-tile"
+            onClick={() => {
+              stopSounds();
+              setPlaying(g.id);
+            }}
+          >
             <span className="game-icon">{g.icon}</span>
             <strong>{g.name}</strong>
             <small>{g.about}</small>

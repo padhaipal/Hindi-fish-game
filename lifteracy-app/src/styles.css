@@ -112,7 +112,7 @@ h3 {
 }
 
 /* ── layout ── */
-.app {
+.shell {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -120,7 +120,7 @@ h3 {
   margin: 0 auto;
   background: var(--bg);
 }
-.topbar {
+.shell-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -134,7 +134,7 @@ h3 {
   letter-spacing: 0.02em;
   font-size: 1.1rem;
 }
-.topbar .link {
+.shell-top .link {
   color: #fff;
 }
 .student-chip {
@@ -363,9 +363,9 @@ h3 {
   font-size: 8rem;
   background: none;
   box-shadow: none;
-  animation: pop 0.5s ease-out;
+  animation: sticker-pop 0.5s ease-out;
 }
-@keyframes pop {
+@keyframes sticker-pop {
   0% {
     transform: scale(0.3);
   }
@@ -445,64 +445,6 @@ h3 {
   color: var(--muted);
   font-size: 0.9rem;
 }
-.teacher-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 8px 10px;
-  margin-top: 4px;
-}
-.teacher-row span {
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-.teacher-row button {
-  flex: 1;
-  border-radius: 12px;
-  padding: 10px;
-  font-weight: 700;
-  min-height: 48px;
-}
-.teacher-row .ok {
-  background: #e3f6ea;
-  color: var(--ok);
-}
-.teacher-row .no {
-  background: #fdecec;
-  color: var(--no);
-}
-.pick-letters {
-  background: var(--card);
-  border-radius: var(--radius);
-  padding: 14px;
-  text-align: center;
-}
-.pick-letters p {
-  margin: 0 0 10px;
-  font-weight: 700;
-}
-.letter-chips {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-bottom: 14px;
-}
-.chip {
-  font-size: 2.6rem;
-  width: 76px;
-  height: 76px;
-  border-radius: 16px;
-  background: var(--bg);
-  border: 3px solid #d5e1ea;
-}
-.chip.on {
-  border-color: var(--no);
-  background: #fdecec;
-  color: var(--no);
-}
 .done-actions {
   display: grid;
   gap: 10px;
@@ -535,108 +477,6 @@ h3 {
 .game-icon {
   font-size: 2.6rem;
 }
-.pond-game {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  gap: 10px;
-}
-.pond-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.pond-target {
-  font-size: 2.6rem;
-  font-weight: 800;
-  background: var(--card);
-  border-radius: 18px;
-  padding: 2px 18px;
-  color: var(--brand-dark);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
-}
-.pond-target span {
-  font-size: 1.1rem;
-}
-.pond-stars {
-  font-weight: 700;
-}
-.pond {
-  position: relative;
-  flex: 1;
-  min-height: 360px;
-  border-radius: 24px;
-  background: linear-gradient(#8fd3f4, #3aa6d8);
-  overflow: hidden;
-}
-.fish {
-  position: absolute;
-  left: 0;
-  display: flex;
-  align-items: center;
-  animation-name: swim;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-  padding: 6px;
-}
-.fish-body {
-  display: grid;
-  place-items: center;
-  width: 78px;
-  height: 56px;
-  border-radius: 50% 60% 60% 50%;
-  background: var(--fish);
-  font-size: 2rem;
-  font-weight: 800;
-  box-shadow: inset -6px -4px 0 rgba(0, 0, 0, 0.08);
-}
-.fish-tail {
-  width: 0;
-  height: 0;
-  border-top: 18px solid transparent;
-  border-bottom: 18px solid transparent;
-  border-right: 26px solid var(--fish);
-  margin-left: -6px;
-}
-.fish.caught {
-  animation: splash 0.6s forwards;
-  pointer-events: none;
-}
-.fish.shake .fish-body {
-  animation: shake 0.4s;
-}
-/* fish swim right to left, head first */
-@keyframes swim {
-  from {
-    left: 100%;
-  }
-  to {
-    left: -130px;
-  }
-}
-@keyframes splash {
-  to {
-    transform: scale(1.6);
-    opacity: 0;
-  }
-}
-@keyframes shake {
-  25% {
-    transform: translateX(-6px);
-  }
-  75% {
-    transform: translateX(6px);
-  }
-}
-.pond-done {
-  text-align: center;
-  padding-top: 24px;
-}
-.pond-done p {
-  font-size: 1.4rem;
-  font-weight: 700;
-}
-
 /* ── progress ── */
 .stats {
   display: grid;

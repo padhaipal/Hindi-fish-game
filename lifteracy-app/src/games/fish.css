@@ -1,0 +1,454 @@
+/* ---------------------------------------------------------------------------
+   FISH GAME — copied from this repo's app/globals.css (the /fish game), with
+   every rule scoped under .fishgame so it can't touch the rest of the app.
+   The keyframes keep their original names (pop, shake, splash, floatUp).
+--------------------------------------------------------------------------- */
+
+/* full screen over the app, like the original page */
+.fishgame {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  font-family: "Baloo 2", "Comic Sans MS", "Segoe UI", system-ui, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.fishgame button {
+  font-family: inherit;
+}
+/* the app's own way out: top centre, between the score and level pills */
+.fishgame-close {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #0a3d57;
+}
+
+/* ---- App frame ---------------------------------------------------------- */
+.fishgame .app {
+  position: relative;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(#aef0ff 0%, #62d0f5 45%, #2bb4ec 100%);
+  overflow: hidden;
+}
+
+/* ---- Top bar ------------------------------------------------------------ */
+.fishgame .topbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 6px;
+  z-index: 5;
+}
+
+.fishgame .scorePill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffffcc;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #d98200;
+  box-shadow: 0 3px 0 #00000018;
+  min-width: 78px;
+  justify-content: center;
+}
+
+.fishgame .levelPill {
+  background: #ffffffcc;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #1f8bbf;
+  box-shadow: 0 3px 0 #00000018;
+}
+
+/* ---- Target (picture + letter) ----------------------------------------- */
+.fishgame .target {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 auto;
+  padding: 2px 8px 8px;
+  z-index: 5;
+}
+
+.fishgame .targetLabel {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0d5a7a;
+  margin-bottom: 4px;
+}
+
+/* picture on the left, letter on the right */
+.fishgame .targetRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.fishgame .wordPic {
+  width: 104px;
+  height: 104px;
+  border-radius: 24px;
+  background: #fff;
+  border: 5px solid #8fd3ff;
+  box-shadow: 0 6px 0 #00000020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.fishgame .wordEmoji {
+  font-size: 62px;
+  line-height: 1;
+}
+
+.fishgame .targetCard {
+  background: #fff;
+  border: 5px solid #ffd23f;
+  border-radius: 26px;
+  width: 104px;
+  height: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 68px;
+  line-height: 1;
+  font-weight: 800;
+  color: #0a3d57;
+  box-shadow: 0 6px 0 #00000020;
+  animation: pop 0.4s ease;
+}
+
+.fishgame .targetSound {
+  margin-top: 8px;
+  background: #ffd23f;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #7a5200;
+  box-shadow: 0 4px 0 #00000022;
+  cursor: pointer;
+}
+.fishgame .targetSound:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #00000022;
+}
+
+/* ---- Timer bar ---------------------------------------------------------- */
+.fishgame .timerWrap {
+  flex: 0 0 auto;
+  height: 18px;
+  margin: 4px 16px 8px;
+  background: #ffffff66;
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px #00000022;
+}
+.fishgame .timerFill {
+  height: 100%;
+  /* Green at the RIGHT (lots of time) → yellow → red at the LEFT. The bar
+     shrinks from the right, so the red left end is what's left as time runs out. */
+  background: linear-gradient(90deg, #ff4d4d, #ffd23f, #7be36b);
+  border-radius: 999px;
+}
+.fishgame .timerFill.low {
+  background: #ff4d4d; /* almost out of time — solid red */
+}
+
+/* ---- Pond (play area) --------------------------------------------------- */
+.fishgame .pond {
+  position: relative;
+  flex: 1 1 auto;
+  margin: 0 8px 8px;
+  border-radius: 28px;
+  background: radial-gradient(circle at 30% 20%, #8fe4ff 0%, #3bb6e8 60%, #1f97cf 100%);
+  box-shadow: inset 0 6px 18px #00000022, inset 0 -8px 22px #00000022;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+.fishgame .pond::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 20% 80%, #ffffff22 0 8px, transparent 9px),
+    radial-gradient(circle at 70% 30%, #ffffff1a 0 6px, transparent 7px),
+    radial-gradient(circle at 85% 70%, #ffffff1a 0 5px, transparent 6px);
+  pointer-events: none;
+}
+
+/* ---- Fish --------------------------------------------------------------- */
+/* button = position (set by JS). 88x88 square so it swivels around its centre. */
+.fishgame .fish {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 88px;
+  height: 88px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  will-change: transform;
+  touch-action: manipulation;
+}
+
+/* inner = target of shake / splash animations (keeps position transform clean) */
+.fishgame .fishInner {
+  position: absolute;
+  inset: 0;
+}
+
+/* graphic = the fish body; SWIVELS to face travel direction (set by JS) */
+.fishgame .fishGraphic {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 50%;
+  transition: transform 0.25s ease;
+  pointer-events: none;
+}
+
+/* body: a glossy oval pointing right, with a soft highlight + belly shading */
+.fishgame .fBody {
+  position: absolute;
+  left: 16px;
+  top: 25px;
+  width: 56px;
+  height: 38px;
+  border-radius: 52% 60% 60% 52% / 50%;
+  background: radial-gradient(
+      circle at 70% 30%,
+      rgba(255, 255, 255, 0.45),
+      rgba(255, 255, 255, 0) 45%
+    ),
+    var(--fish-color, #ff9a3d);
+  box-shadow: inset 0 -7px 10px rgba(0, 0, 0, 0.16),
+    inset 0 5px 6px rgba(255, 255, 255, 0.18);
+}
+
+/* tail: a notched fin on the LEFT (the back) */
+.fishgame .fTail {
+  position: absolute;
+  left: 0;
+  top: 30px;
+  width: 24px;
+  height: 28px;
+  background: var(--fish-color, #ff9a3d);
+  clip-path: polygon(100% 50%, 0 0, 30% 50%, 0 100%);
+  filter: brightness(0.88);
+}
+
+/* dorsal fin on top */
+.fishgame .fFin {
+  position: absolute;
+  left: 30px;
+  top: 13px;
+  width: 26px;
+  height: 16px;
+  background: var(--fish-color, #ff9a3d);
+  clip-path: polygon(0 100%, 55% 0, 100% 100%);
+  filter: brightness(0.92);
+}
+
+/* eye near the nose (front, right side) */
+.fishgame .fEye {
+  position: absolute;
+  left: 56px;
+  top: 30px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+.fishgame .fEye::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #222;
+}
+
+/* the letter: always upright + centred, never rotates with the body */
+.fishgame .fishLetter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 34px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Wrong tap: gentle shake (on the inner wrapper, so position stays intact). */
+.fishgame .fish.shake .fishInner {
+  animation: shake 0.42s ease;
+}
+
+/* Correct tap: splash away (scale + fade the whole inner wrapper). */
+.fishgame .fish.caught {
+  pointer-events: none;
+}
+.fishgame .fish.caught .fishInner {
+  animation: splash 0.5s ease forwards;
+}
+
+/* ---- Reward burst (coin / star) ---------------------------------------- */
+.fishgame .burst {
+  position: absolute;
+  z-index: 6;
+  font-size: 46px;
+  pointer-events: none;
+  animation: floatUp 0.8s ease forwards;
+}
+
+/* ---- Overlays ----------------------------------------------------------- */
+.fishgame .overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  background: #00344bcc;
+  backdrop-filter: blur(2px);
+}
+.fishgame .overlayCard {
+  background: #fff;
+  border-radius: 30px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 10px 0 #00000022;
+  animation: pop 0.35s ease;
+}
+.fishgame .overlayEmoji {
+  font-size: 64px;
+  line-height: 1;
+}
+.fishgame .overlayTitle {
+  font-size: 30px;
+  font-weight: 800;
+  color: #0a3d57;
+  margin: 10px 0 4px;
+}
+.fishgame .overlayStars {
+  font-size: 40px;
+  letter-spacing: 4px;
+  margin: 8px 0 16px;
+}
+.fishgame .bigButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  border: none;
+  border-radius: 999px;
+  padding: 18px 24px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(#37d67a, #1faa5a);
+  box-shadow: 0 6px 0 #14773f;
+  cursor: pointer;
+  text-decoration: none; /* in case it is an <a> link */
+  box-sizing: border-box;
+}
+
+/* Final-screen PadhaiPal picture + fallback badge */
+.fishgame .padhaipalImg {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  border-radius: 18px;
+  margin: 4px auto 16px;
+  display: block;
+}
+.fishgame .brandBadge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 6px auto 16px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #1f8bbf;
+}
+.fishgame .bigButton:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #14773f;
+}
+.fishgame .bigButton.blue {
+  background: linear-gradient(#39b9f0, #1f8bbf);
+  box-shadow: 0 6px 0 #14688f;
+}
+
+
+/* link to the other game on a start screen */
+.fishgame .overlayLink {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #1f8bbf;
+  text-decoration: none;
+  /* a <button> here, not the original's <a> */
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* ---- Keyframes ---------------------------------------------------------- */
+@keyframes pop {
+  0% { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0) rotate(0); }
+  20% { transform: translateX(-6px) rotate(-4deg); }
+  40% { transform: translateX(6px) rotate(4deg); }
+  60% { transform: translateX(-5px) rotate(-3deg); }
+  80% { transform: translateX(5px) rotate(3deg); }
+}
+@keyframes splash {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.2) translateY(-20px); opacity: 0; }
+}
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  30% { transform: translateY(-14px) scale(1.2); opacity: 1; }
+  100% { transform: translateY(-70px) scale(1); opacity: 0; }
+}

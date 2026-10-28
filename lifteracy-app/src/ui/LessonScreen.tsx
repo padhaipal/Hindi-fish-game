@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { Student } from "../store/students";
-import { answerLesson, answerWithWrongLetters, openLesson, type LessonView } from "../lesson/session";
+import { answerLesson, openLesson, type LessonView } from "../lesson/session";
 import { mediaForTurn } from "../media/manifest";
 import { playEffect, playSounds, stopSounds } from "../media/player";
 import { startRecording, type Recorder } from "../stt/recorder";
 import { transcribe, type Transcript } from "../stt/engines";
 import { VisualCard } from "./VisualCard";
 
-type Phase = "ready" | "recording" | "thinking" | "pickLetters";
+type Phase = "ready" | "recording" | "thinking";
 
 const STEP_LABEL: Record<string, string> = {
   word: "शब्द पढ़ो",
@@ -29,7 +29,6 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
   const [phase, setPhase] = useState<Phase>("ready");
   const [heard, setHeard] = useState<Transcript[] | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const [wrongIdx, setWrongIdx] = useState<number[]>([]);
   const recorder = useRef<Recorder | null>(null);
   // Always the latest student, for async callbacks.
   const studentRef = useRef(student);
@@ -38,7 +37,6 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
   const show = (v: LessonView) => {
     setView(v);
     setPhase("ready");
-    setWrongIdx([]);
     void playSounds(mediaForTurn(v.stids).sounds);
   };
 
@@ -98,8 +96,8 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
       const failed = transcripts.every((t) => t.error);
       setNote(
         failed
-          ? "आवाज़ जाँच नहीं पाया (इंटरनेट या सर्वर)। बच्चे का जवाब सुनकर ✅ / ❌ दबाएँ।"
-          : "आवाज़ समझ नहीं आई। फिर से बोलें, या नीचे ✅ / ❌ से बताएँ।",
+          ? "आवाज़ जाँच नहीं पाया। इंटरनेट देखें और फिर से बोलें।"
+          : "आवाज़ समझ नहीं आई। माइक पास रखकर फिर से बोलें।",
       );
       return;
     }
@@ -144,32 +142,6 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
             🎮 खेल खेलो
           </button>
         </div>
-      ) : phase === "pickLetters" ? (
-        <div className="pick-letters">
-          <p>कौन सा अक्षर गलत पढ़ा?</p>
-          <div className="letter-chips">
-            {Array.from(view.word).map((ch, i) => (
-              <button
-                key={i}
-                className={wrongIdx.includes(i) ? "chip on" : "chip"}
-                onClick={() => setWrongIdx((w) => (w.includes(i) ? w.filter((x) => x !== i) : [...w, i]))}
-              >
-                {ch}
-              </button>
-            ))}
-          </div>
-          <div className="row">
-            <button className="secondary" onClick={() => setPhase("ready")}>
-              रद्द करें
-            </button>
-            <button
-              className="primary"
-              onClick={() => submit([wrongIdx.length ? answerWithWrongLetters(view.word, wrongIdx) : "~"])}
-            >
-              {wrongIdx.length ? "ठीक है" : "पूरा गलत"}
-            </button>
-          </div>
-        </div>
       ) : (
         <div className="answer-area">
           <button
@@ -183,19 +155,6 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
           <p className="mic-hint">
             {phase === "recording" ? "सुन रहा हूँ… बोलने के बाद दबाएँ" : phase === "thinking" ? "समझ रहा हूँ…" : "दबाएँ और बोलें"}
           </p>
-          <div className="teacher-row">
-            <span>शिक्षक:</span>
-            <button className="ok" disabled={busy} onClick={() => submit([view.expected])}>
-              ✅ सही
-            </button>
-            <button
-              className="no"
-              disabled={busy}
-              onClick={() => (view.state === "word" && Array.from(view.word).length > 1 ? setPhase("pickLetters") : submit(["~"]))}
-            >
-              ❌ गलत
-            </button>
-          </div>
         </div>
       )}
     </div>
