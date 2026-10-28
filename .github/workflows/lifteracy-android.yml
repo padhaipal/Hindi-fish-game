@@ -1,5 +1,5 @@
-# Builds the LIFTeracy teacher app (lifteracy-app/) into an installable
-# debug APK. Download it from the run's "Artifacts" section.
+# Builds the LIFTeracy teacher app (lifteracy-app/) into an installable APK.
+# Download it from the run's "Artifacts" section (lifteracy-debug-apk).
 name: LIFTeracy Android APK
 
 on:
@@ -15,6 +15,11 @@ jobs:
     defaults:
       run:
         working-directory: lifteracy-app
+    env:
+      # Optional repository variables (Settings → Secrets and variables →
+      # Actions → Variables) to point the app at a different STT server.
+      VITE_STT_SERVER_URL: ${{ vars.LIFTERACY_STT_URL }}
+      VITE_STT_ACCESS_CODE: ${{ vars.LIFTERACY_STT_ACCESS_CODE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +46,9 @@ jobs:
         working-directory: lifteracy-app/android
         run: ./gradlew assembleDebug --no-daemon
 
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk lifteracy.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: lifteracy-debug-apk
-          path: lifteracy-app/android/app/build/outputs/apk/debug/app-debug.apk
+          path: lifteracy-app/lifteracy.apk

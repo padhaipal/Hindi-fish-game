@@ -5,7 +5,6 @@ import { mediaForTurn } from "../media/manifest";
 import { playEffect, playSounds, stopSounds } from "../media/player";
 import { startRecording, type Recorder } from "../stt/recorder";
 import { transcribe, type Transcript } from "../stt/engines";
-import { enabledEngines, loadKeys } from "../stt/keys";
 import { VisualCard } from "./VisualCard";
 
 type Phase = "ready" | "recording" | "thinking" | "pickLetters";
@@ -35,7 +34,6 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
   // Always the latest student, for async callbacks.
   const studentRef = useRef(student);
   studentRef.current = student;
-  const engines = enabledEngines(loadKeys());
 
   const show = (v: LessonView) => {
     setView(v);
@@ -92,12 +90,17 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
       setNote("कुछ सुनाई नहीं दिया। माइक दबाकर, बोलकर, फिर से दबाएँ।");
       return;
     }
-    const transcripts = await transcribe(recording.wav, loadKeys());
+    const transcripts = await transcribe(recording.wav);
     setHeard(transcripts);
     const texts = transcripts.map((t) => t.text).filter(Boolean);
     if (texts.length === 0) {
       setPhase("ready");
-      setNote("आवाज़ समझ नहीं आई। फिर से बोलें, या नीचे ✅ / ❌ से बताएँ।");
+      const failed = transcripts.every((t) => t.error);
+      setNote(
+        failed
+          ? "आवाज़ जाँच नहीं पाया (इंटरनेट या सर्वर)। बच्चे का जवाब सुनकर ✅ / ❌ दबाएँ।"
+          : "आवाज़ समझ नहीं आई। फिर से बोलें, या नीचे ✅ / ❌ से बताएँ।",
+      );
       return;
     }
     submit(texts);
@@ -169,22 +172,16 @@ export function LessonScreen({ student, onUpdate, onPlayGame }: Props) {
         </div>
       ) : (
         <div className="answer-area">
-          {engines.length > 0 ? (
-            <button
-              className={`mic ${phase}`}
-              onClick={phase === "recording" ? stopMic : startMic}
-              disabled={phase === "thinking"}
-              aria-label={phase === "recording" ? "रोकें" : "बोलें"}
-            >
-              {phase === "recording" ? "⏹" : phase === "thinking" ? "…" : "🎤"}
-            </button>
-          ) : (
-            <p className="hint small">
-              बोलकर जाँचने के लिए <b>सेटिंग</b> में STT key डालें। तब तक बच्चे का जवाब सुनकर ✅ या ❌ दबाएँ।
-            </p>
-          )}
+          <button
+            className={`mic ${phase}`}
+            onClick={phase === "recording" ? stopMic : startMic}
+            disabled={phase === "thinking"}
+            aria-label={phase === "recording" ? "रोकें" : "बोलें"}
+          >
+            {phase === "recording" ? "⏹" : phase === "thinking" ? "…" : "🎤"}
+          </button>
           <p className="mic-hint">
-            {phase === "recording" ? "सुन रहा हूँ… बोलने के बाद दबाएँ" : phase === "thinking" ? "समझ रहा हूँ…" : engines.length ? "दबाएँ और बोलें" : ""}
+            {phase === "recording" ? "सुन रहा हूँ… बोलने के बाद दबाएँ" : phase === "thinking" ? "समझ रहा हूँ…" : "दबाएँ और बोलें"}
           </p>
           <div className="teacher-row">
             <span>शिक्षक:</span>

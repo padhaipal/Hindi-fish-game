@@ -26,7 +26,7 @@ pictures and sounds for its letters अ and ब.
   now there's one, *मछली तालाब*, a fish game based on `/fish`.
 - **प्रगति (Progress)**: the child's level, the words they finished, and their
   score for each letter.
-- **सेटिंग (Settings)**: the STT keys, and a mic test.
+- **सेटिंग (Settings)**: which speech-to-text engines are on, and a mic test.
 
 ## Same engine as the bot
 
@@ -38,25 +38,35 @@ database are rewritten for the phone in `src/lesson/`:
 - scoring: `gradeAndRecord`, with the same +1.01 / −3.001 and the −10 floor
 - the starting seed scores
 
-Speech-to-text calls the engines production runs (Sarvam `saaras:v4`, Azure
-fast transcription, Bodhan `indic-transcribe`), with the same settings. Every
-engine that has a key runs in parallel, and their transcripts are joined the
-way pp-sketch joins them.
+Speech-to-text uses the engines production runs (Sarvam `saaras:v4`, Azure
+fast transcription, Bodhan `indic-transcribe`), with the same settings, via
+the STT server below. Their transcripts are joined the way pp-sketch joins
+them.
 
-## STT keys
+## STT keys (on the server, not the phones)
 
-Open the app ➜ **सेटिंग** ➜ paste any of:
+The phones send each recording to a small relay, the **LIFTeracy STT
+server** (`server/api/stt.ts`). It runs every engine that has a key and
+returns all their transcripts. The keys live only in that server's Vercel
+environment variables, so every phone works with no setup.
 
-| field | where it's from |
-|-------|-----------------|
-| Sarvam API key | pp-sketch `SARVAM_API_KEY` |
-| Azure Speech key + endpoint | `AZURE_SPEECH_KEY`, `AZURE_SPEECH_ENDPOINT` |
-| Bodhan API key | `BODHAN_API_KEY` |
+Vercel project `lifteracy-stt` (Root Directory `lifteracy-app/server`) ➜
+Settings ➜ Environment Variables:
 
-Tap **सहेजें**, then **🎤 माइक से बोलकर जाँचें** to check they work. The keys
-stay on that phone only and are never in the code or the APK. Anyone holding
-the unlocked phone could still read them, so for a wide rollout use per-teacher
-keys or a small proxy server.
+| variable | value |
+|----------|-------|
+| `SARVAM_API_KEY` | same as pp-sketch |
+| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_ENDPOINT` | same as pp-sketch |
+| `BODHAN_API_KEY` | same as pp-sketch |
+| `APP_ACCESS_CODE` | optional. When set, anyone without the code can't use the server (and your STT credit). Put the same code in the GitHub repository variable `LIFTERACY_STT_ACCESS_CODE`, so the APK has it built in |
+
+Set any of the engine keys and redeploy. The app's **सेटिंग** screen shows
+which engines are on, and has a mic test.
+
+The app calls `https://lifteracy-stt.vercel.app` by default. If the server
+gets a different address, set the repository variable `LIFTERACY_STT_URL`
+(GitHub ➜ Settings ➜ Secrets and variables ➜ Actions ➜ Variables) and the
+next APK uses it. It can also be changed per phone under सेटिंग ➜ सर्वर.
 
 ## Media
 
@@ -77,9 +87,10 @@ entry in `letters.ts`. `npm test` checks that every lesson step has media.
 ## Getting the APK
 
 Every push that changes `lifteracy-app/` runs the **LIFTeracy Android APK**
-GitHub Action. Open the run and download `lifteracy-debug-apk` from
-*Artifacts*. Unzip it, copy `app-debug.apk` to the phone, and install it
-(allow "install unknown apps").
+GitHub Action. While logged in to GitHub, open the run, scroll to
+*Artifacts* and download `lifteracy-debug-apk`. Unzip it and send
+`lifteracy.apk` to the phone (WhatsApp, Drive…), then tap it to install
+(allow "install unknown apps"). Reinstalling keeps the students' data.
 
 ## Developing
 
@@ -95,5 +106,5 @@ npm run android:sync   # build the web app and copy it into android/
 npm run android:open   # open in Android Studio, run on a phone
 ```
 
-The mic needs `localhost` or HTTPS in a browser. In a browser, the STT calls
-may be blocked by CORS; in the app they go through Android's native HTTP.
+The mic needs `localhost` or HTTPS in a browser. To point a dev build at a
+different STT server, set `VITE_STT_SERVER_URL` in `lifteracy-app/.env.local`.

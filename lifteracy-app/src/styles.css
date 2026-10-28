@@ -720,3 +720,17 @@ h3 {
   text-align: center;
   margin-top: 32px;
 }
+.server-status {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 600;
+}
+.advanced {
+  margin-top: 28px;
+}
+.advanced summary {
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 0;
+}

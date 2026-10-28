@@ -1,0 +1,7 @@
+{
+  "name": "lifteracy-stt",
+  "private": true,
+  "description": "Speech-to-text relay for the LIFTeracy teacher app: holds the STT keys so the phones don't.",
+  "type": "module",
+  "engines": { "node": "22.x" }
+}
