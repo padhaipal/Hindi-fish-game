@@ -8,7 +8,8 @@
 // A slim progress bar floats across the top the whole time (home + the letter +
 // five stops). Each game hands back with onDone/onFinish; we show a quick
 // "शाबाश!" flash and flow straight into the next stop. Finishing the last stop
-// celebrates and offers the next letter.
+// celebrates and sends the child back to PadhaiPal on WhatsApp (no navigation
+// to other screens from there).
 //
 // The games run in a locked single-letter, forgiving "adventure" mode (see the
 // lockedLetter/onFinish props on PondGame + PondHopGame); the other steps are
@@ -16,16 +17,18 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import PondHopGame from "@/components/pondhop/PondHopGame";
 import PondGame from "@/components/fish/PondGame";
 import BalloonPop from "@/components/balloon/BalloonPop";
 import BuildLetter from "@/components/build/BuildLetter";
 import TraceStep from "@/components/adventure/TraceStep";
 import FreeWriteStep from "@/components/adventure/FreeWriteStep";
-import { getLetter, ALL_LETTERS } from "@/lib/letters";
+import { getLetter } from "@/lib/letters";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 import { trackStepReached, trackAdventureComplete } from "@/lib/analytics";
+
+// Finishing the letter sends the child back to the PadhaiPal WhatsApp bot.
+const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 type StepDef = { key: string; icon: string; render: (letterId: string, done: () => void) => React.ReactNode };
 
@@ -58,10 +61,6 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
     if (phase === "playing") trackStepReached(STEPS[step].key, step + 1, STEPS.length);
     else if (phase === "done") trackAdventureComplete(STEPS.length);
   }, [step, phase]);
-
-  // Next letter in the alphabet (wraps around) — for the "next letter" button.
-  const idx = ALL_LETTERS.findIndex((l) => l.id === letterId);
-  const nextLetter = ALL_LETTERS[(idx + 1) % ALL_LETTERS.length];
 
   const finishStep = useCallback(() => {
     if (guardRef.current) return;
@@ -99,9 +98,6 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
     <div className="adv">
       {/* Floating progress bar */}
       <div className="advBar">
-        <Link href="/" className="advHome" aria-label="घर" onClick={() => stopWinLoseSounds()}>
-          🏠
-        </Link>
         <span className="advBarLetter">{letter.char}</span>
         <div className="advTrack">
           {STEPS.map((s, i) => {
@@ -140,15 +136,12 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
             <p style={{ fontSize: 17, color: "#0a3d57", margin: "2px 0 16px" }}>
               तुमने “{letter.char}” की सैर पूरी कर ली!
             </p>
-            <Link className="bigButton" href={`/letter/${nextLetter.id}`} onClick={() => stopWinLoseSounds()}>
-              ▶ अगला अक्षर “{nextLetter.char}”
-            </Link>
+            <a className="bigButton" href={PADHAIPAL_URL} onClick={() => stopWinLoseSounds()}>
+              वापस WhatsApp खोलें
+            </a>
             <button type="button" className="bigButton blue" style={{ marginTop: 12 }} onClick={restart}>
               🔁 फिर से
             </button>
-            <Link href="/" className="overlayLink" onClick={() => stopWinLoseSounds()}>
-              🏠 घर
-            </Link>
           </div>
         </div>
       )}

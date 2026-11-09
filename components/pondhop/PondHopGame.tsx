@@ -31,6 +31,7 @@ import {
   unlockAudio,
 } from "@/lib/audio";
 import { speakLetterName, speakLetterWord } from "@/lib/letterVoice";
+import AnaarIcon from "@/components/shared/AnaarIcon";
 
 const PADHAIPAL_URL = "https://wa.me/918528097842";
 
@@ -282,6 +283,8 @@ export default function PondHopGame({
                 <LattuIcon size={46} />
               ) : target.id === "ttha" ? (
                 <ThelaIcon size={46} />
+              ) : target.id === "a" ? (
+                <AnaarIcon size={46} />
               ) : (
                 <span className="hopTargetEmoji">{target.emoji}</span>
               )}
