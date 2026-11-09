@@ -10,7 +10,8 @@
 //
 // Authored by tracing the rendered Devanagari glyph and following the ALfA
 // stroke-order charts (public/lekhan/strokes/*.png). Body strokes come first,
-// then the vertical stem, then the head-line last (and any dot/matra after).
+// then the vertical stem, then any dot/matra, then the head-line LAST, drawn
+// left → right.
 // Single-point strokes (e.g. the anusvara dot on अं) are drawn as a dot and must
 // be tapped. TraceSlate re-fits each letter's bounding box into the slate, so
 // only the SHAPE matters, not absolute placement.
@@ -60,8 +61,8 @@ export const HINDI_STROKES: Record<string, LetterStrokes> = {
   ai: [
     [[44, 20], [30, 22], [26, 36], [36, 44], [46, 36], [40, 48], [28, 60], [32, 76], [48, 88], [64, 82]],
     [[68, 16], [68, 90]],
-    [[12, 16], [74, 16]],
     [[32, 14], [26, 2]],
+    [[12, 16], [74, 16]],
   ],
   au: [
     [[42, 22], [28, 16], [16, 28], [22, 42], [36, 42], [44, 32], [40, 46], [26, 54], [16, 68], [24, 84], [40, 88], [52, 76], [48, 62]],
@@ -75,8 +76,8 @@ export const HINDI_STROKES: Record<string, LetterStrokes> = {
     [[46, 24], [30, 18], [16, 30], [22, 44], [38, 44], [46, 34], [42, 48], [26, 56], [16, 70], [24, 86], [42, 90], [54, 78], [50, 64]],
     [[46, 52], [72, 52]],
     [[72, 18], [72, 92]],
-    [[12, 18], [76, 18]],
     [[52, 6]],
+    [[12, 18], [76, 18]],
   ],
   tta: [
     [[34, 24], [52, 22], [60, 30], [54, 42], [40, 44], [36, 56], [44, 70], [60, 74], [70, 66]],
