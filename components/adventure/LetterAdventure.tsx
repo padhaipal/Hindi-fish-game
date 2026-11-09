@@ -17,7 +17,6 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import PondHopGame from "@/components/pondhop/PondHopGame";
 import PondGame from "@/components/fish/PondGame";
 import BalloonPop from "@/components/balloon/BalloonPop";
@@ -99,9 +98,6 @@ export default function LetterAdventure({ letterId }: { letterId: string }) {
     <div className="adv">
       {/* Floating progress bar */}
       <div className="advBar">
-        <Link href="/" className="advHome" aria-label="घर" onClick={() => stopWinLoseSounds()}>
-          🏠
-        </Link>
         <span className="advBarLetter">{letter.char}</span>
         <div className="advTrack">
           {STEPS.map((s, i) => {

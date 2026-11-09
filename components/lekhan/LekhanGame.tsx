@@ -20,6 +20,7 @@ import { LETTERS, getLetter, letterWordAudio } from "@/lib/letters";
 import { BLOCK_WORDS } from "@/lib/blocks/words";
 import { getLetterStrokes, getWordStrokes, type Stroke } from "@/lib/lekhan/hindiStrokes";
 import LattuIcon from "@/components/shared/LattuIcon";
+import AnaarIcon from "@/components/shared/AnaarIcon";
 import {
   playLetterSound,
   playWordSound,
@@ -170,6 +171,8 @@ export default function LekhanGame() {
             <div className="lekhanPrompt">
               {item.isLa ? (
                 <LattuIcon size={84} />
+              ) : item.id === "a" ? (
+                <AnaarIcon size={84} />
               ) : (
                 <span className="lekhanEmoji" style={item.kab ? { fontSize: 66 } : undefined}>
                   {item.emoji}

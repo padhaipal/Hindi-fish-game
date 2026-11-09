@@ -130,7 +130,7 @@ export const LETTERS: Letter[] = [
 // ---------------------------------------------------------------------------
 const EXTRA_LETTERS: Letter[] = [
   // --- vowels (स्वर) — words/pics from the standard varnamala chart --------
-  { id: "a", char: "अ", roman: "a", audio: "/audio/letters/a.mp3", word: "अनार", emoji: "🍎", lookAlikes: [], soundAlikes: [] },
+  { id: "a", char: "अ", roman: "a", audio: "/audio/letters/a.mp3", word: "अनार", emoji: "🔴", lookAlikes: [], soundAlikes: [] },
   { id: "aa", char: "आ", roman: "aa", audio: "/audio/letters/aa.mp3", word: "आम", emoji: "🥭", lookAlikes: ["a"], soundAlikes: ["a"] },
   { id: "i", char: "इ", roman: "i", audio: "/audio/letters/i.mp3", word: "इमली", emoji: "🫘", lookAlikes: ["ii"], soundAlikes: ["ii"] },
   { id: "ii", char: "ई", roman: "ii", audio: "/audio/letters/ii.mp3", word: "ईंट", emoji: "🧱", lookAlikes: ["i"], soundAlikes: ["i"] },

@@ -16,6 +16,7 @@ import LattuIcon from "@/components/shared/LattuIcon";
 import ThelaIcon from "@/components/shared/ThelaIcon";
 import { playBingSound, unlockAudio } from "@/lib/audio";
 import { speakLetterWord } from "@/lib/letterVoice";
+import AnaarIcon from "@/components/shared/AnaarIcon";
 
 const SKIP_AFTER_MS = 20000;
 
@@ -65,6 +66,8 @@ export default function FreeWriteStep({ letterId, onDone }: Props) {
             <LattuIcon size={62} />
           ) : letterId === "ttha" ? (
             <ThelaIcon size={62} />
+          ) : letterId === "a" ? (
+            <AnaarIcon size={62} />
           ) : (
             <span style={{ fontSize: 56 }}>{letter.emoji}</span>
           )}

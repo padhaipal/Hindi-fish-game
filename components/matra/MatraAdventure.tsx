@@ -15,16 +15,18 @@
 // ---------------------------------------------------------------------------
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import MatraGame from "@/components/matra/MatraGame";
 import MatraPond from "@/components/matra/MatraPond";
 import MatraFish from "@/components/matra/MatraFish";
 import MatraBasket from "@/components/matra/MatraBasket";
 import MatraWriteStep from "@/components/matra/MatraWriteStep";
-import { MATRAS, getMatra, matraChip } from "@/lib/matras";
+import { getMatra, matraChip } from "@/lib/matras";
 import { playWinSound, stopWinLoseSounds, unlockAudio } from "@/lib/audio";
 import { trackStepReached, trackAdventureComplete } from "@/lib/analytics";
 import { stopTts } from "@/lib/tts";
+
+// Finishing the matra sends the child back to the PadhaiPal WhatsApp bot.
+const PADHAIPAL_URL = "https://wa.me/918528097842";
 
 type StepDef = {
   key: string;
@@ -59,9 +61,6 @@ export default function MatraAdventure({ matraId }: { matraId: string }) {
     if (phase === "playing") trackStepReached(STEPS[step].key, step + 1, STEPS.length);
     else if (phase === "done") trackAdventureComplete(STEPS.length);
   }, [step, phase]);
-
-  const idx = MATRAS.findIndex((m) => m.id === matraId);
-  const nextMatra = MATRAS[(idx + 1) % MATRAS.length];
 
   const finishStep = useCallback(() => {
     if (guardRef.current) return;
@@ -100,9 +99,6 @@ export default function MatraAdventure({ matraId }: { matraId: string }) {
   return (
     <div className="adv">
       <div className="advBar">
-        <Link href="/" className="advHome" aria-label="घर" onClick={() => { stopWinLoseSounds(); stopTts(); }}>
-          🏠
-        </Link>
         <span className="advBarLetter">{matraChip(matra)}</span>
         <div className="advTrack">
           {STEPS.map((s, i) => {
@@ -142,15 +138,12 @@ export default function MatraAdventure({ matraId }: { matraId: string }) {
             <p style={{ fontSize: 17, color: "#0a3d57", margin: "2px 0 16px" }}>
               तुमने “{matra.sign}” मात्रा की सैर पूरी कर ली!
             </p>
-            <Link className="bigButton" href={`/matra/${nextMatra.id}`} onClick={() => { stopWinLoseSounds(); stopTts(); }}>
-              ▶ अगली मात्रा “{matraChip(nextMatra)}”
-            </Link>
+            <a className="bigButton" href={PADHAIPAL_URL} onClick={() => { stopWinLoseSounds(); stopTts(); }}>
+              वापस WhatsApp खोलें
+            </a>
             <button type="button" className="bigButton blue" style={{ marginTop: 12 }} onClick={restart}>
               🔁 फिर से
             </button>
-            <Link href="/" className="overlayLink" onClick={() => { stopWinLoseSounds(); stopTts(); }}>
-              🏠 घर
-            </Link>
           </div>
         </div>
       )}

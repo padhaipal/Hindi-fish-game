@@ -7,6 +7,7 @@
 
 import { getLetter } from "@/lib/letters";
 import LattuIcon from "@/components/shared/LattuIcon";
+import AnaarIcon from "@/components/shared/AnaarIcon";
 
 export interface MemCard {
   id: number;
@@ -52,6 +53,8 @@ export default function Card({ card, flipped, matched, flash, w, h, onTap }: Car
             <span className="memChar">{getLetter(card.letterId).char}</span>
           ) : card.letterId === "la" ? (
             <LattuIcon size={Math.round(w * 0.66)} />
+          ) : card.letterId === "a" ? (
+            <AnaarIcon size={Math.round(w * 0.66)} />
           ) : (
             <span className="memPic">{getLetter(card.letterId).emoji}</span>
           )}

@@ -11,7 +11,8 @@
 // The letters used by this app are derived from the medial axis (skeleton) of
 // the rendered Devanagari glyph, so the traced guide matches the printed letter;
 // stroke order/segmentation follows the ALfA charts (body → डंडा → head-line);
-// the head-line (शिरोरेखा) is ALWAYS the last stroke and runs left → right.
+// the head-line (शिरोरेखा) runs left → right and is the last stroke (only the
+// अनुस्वार dot of अं comes after it).
 // TraceSlate re-fits each letter's bounding box into the slate, so only the
 // SHAPE matters, not absolute placement.
 // ---------------------------------------------------------------------------
@@ -98,8 +99,8 @@ export const HINDI_STROKES: Record<string, LetterStrokes> = {
     [[40, 44], [53, 53], [53, 71], [50, 76], [43, 78], [31, 78], [22, 72], [8, 55], [10, 48]],
     [[78, 51], [53, 53]],
     [[78, 13], [78, 87]],
-    [[61, 7]],
     [[64, 13], [92, 13]],
+    [[61, 7]],
   ],
   ka: [
     [[39, 43], [33, 38], [21, 40], [15, 49], [17, 63], [22, 68], [30, 70], [51, 64]],
