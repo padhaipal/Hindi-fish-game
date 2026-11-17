@@ -1724,3 +1724,14 @@ body > div {
 .gameButton.gbLesson { background: linear-gradient(#2fc2b6, #1b9d93); box-shadow: 0 6px 0 #12726b; }
 .gameButton.gbLesson:active { transform: translateY(4px); box-shadow: 0 2px 0 #12726b; }
 .gameButton.gbLesson .lessonBtnLetters { margin-left: auto; font-size: 14px; font-weight: 700; opacity: 0.9; letter-spacing: 1px; }
+
+/* Small credit line at the bottom of the home card (audio license). */
+.homeCredits {
+  margin: 18px 0 0;
+  font-size: 12px;
+  color: #7a8a99;
+  text-align: center;
+}
+.homeCredits a {
+  color: inherit;
+}

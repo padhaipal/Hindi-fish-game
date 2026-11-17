@@ -60,6 +60,15 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        {/* Required by the Phonicademy audio license (c, e, i, k, l, p, t sounds). */}
+        <p className="homeCredits">
+          Phonics sounds: Phonicademy (
+          <a href="https://phonicademy.com" target="_blank" rel="noopener noreferrer">
+            phonicademy.com
+          </a>
+          )
+        </p>
       </div>
     </main>
   );
